@@ -128,20 +128,33 @@ export default function TestPage() {
           </div>
         )}
 
-        <div className="mt-8 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
+        <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+          <h3 className="text-lg font-semibold mb-2 text-blue-900 dark:text-blue-200">
+            📊 Google Sheets 連接測試
+          </h3>
+          <p className="text-blue-800 dark:text-blue-300 mb-4">
+            環境變數已設定！您可以測試與 Google Sheets 的實際連接：
+          </p>
+          <a
+            href="/sheets-test"
+            className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+          >
+            🔗 前往 Sheets 連接測試頁面
+          </a>
+        </div>
+
+        <div className="mt-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
           <h3 className="text-lg font-semibold mb-2 text-yellow-900 dark:text-yellow-200">
             ⚠️ 注意事項
           </h3>
           <ul className="list-disc list-inside space-y-1 text-yellow-800 dark:text-yellow-300">
-            <li>目前為測試環境，尚未連接真實的 Google Sheets</li>
-            <li>
-              如需完整功能，請參考 <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">.env.example</code> 設定環境變數
-            </li>
+            <li>環境變數已設定：Spreadsheet ID = {process.env.NEXT_PUBLIC_SPREADSHEET_ID?.substring(0, 20)}...</li>
+            <li>測試 Google Sheets 連接前，請先設定 Spreadsheet 結構（參考 SHEETS_SETUP.md）</li>
             <li>Google Sheets API 需要在 Google Cloud Console 中啟用</li>
           </ul>
         </div>
 
-        <div className="mt-8 flex gap-4">
+        <div className="mt-8 flex gap-4 flex-wrap">
           <a
             href="/"
             className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
@@ -149,10 +162,16 @@ export default function TestPage() {
             返回首頁
           </a>
           <a
+            href="/sheets-test"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            📊 Sheets 連接測試
+          </a>
+          <a
             href="/dashboard"
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
           >
-            前往 Dashboard（開發中）
+            前往 Dashboard
           </a>
         </div>
       </div>
