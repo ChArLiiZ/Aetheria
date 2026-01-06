@@ -70,10 +70,53 @@ export default function SheetsTestPage() {
         ],
       ];
 
-      await appendToSheet(SHEETS.USERS, testData);
-      setStatus('✅ 寫入成功！請檢查 Google Sheets Users 表格');
+      console.log('📝 準備寫入資料:', testData);
+
+      const result = await appendToSheet(SHEETS.USERS, testData);
+
+      console.log('✅ Apps Script 返回:', result);
+
+      setStatus(`✅ 寫入成功！\n\nApps Script 返回:\n${JSON.stringify(result, null, 2)}\n\n請立即：\n1. 切換到 Google Sheets\n2. 按 F5 重新整理頁面\n3. 檢查 Users tab 是否有新資料`);
     } catch (error: any) {
-      setStatus(`❌ 寫入失敗: ${error.message || String(error)}`);
+      console.error('❌ 寫入錯誤:', error);
+      setStatus(`❌ 寫入失敗: ${error.message || String(error)}\n\n完整錯誤:\n${JSON.stringify(error, null, 2)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Direct test of Apps Script URL
+  const handleDirectTest = async () => {
+    setLoading(true);
+    setStatus('正在直接測試 Apps Script URL...');
+
+    try {
+      if (!sheetsApiUrl) {
+        throw new Error('Apps Script URL 未設定');
+      }
+
+      const testUrl = new URL(sheetsApiUrl);
+      testUrl.searchParams.append('action', 'checkSheets');
+
+      console.log('🔗 測試 URL:', testUrl.toString());
+
+      const response = await fetch(testUrl.toString(), {
+        method: 'GET',
+        redirect: 'follow',
+      });
+
+      console.log('📡 HTTP 狀態:', response.status);
+
+      const text = await response.text();
+      console.log('📄 原始響應:', text);
+
+      const data = JSON.parse(text);
+      console.log('📦 解析後的數據:', data);
+
+      setStatus(`✅ 直接測試成功！\n\nHTTP 狀態: ${response.status}\n\n完整響應:\n${JSON.stringify(data, null, 2)}`);
+    } catch (error: any) {
+      console.error('❌ 直接測試錯誤:', error);
+      setStatus(`❌ 直接測試失敗:\n${error.message || String(error)}`);
     } finally {
       setLoading(false);
     }
@@ -128,31 +171,42 @@ export default function SheetsTestPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={handleCheckSheets}
-                disabled={loading}
-                className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition"
-              >
-                1. 檢查所有表格
-              </button>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <button
+                  onClick={handleDirectTest}
+                  disabled={loading}
+                  className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition font-medium"
+                >
+                  🔧 0. 直接測試 Apps Script URL
+                </button>
+                <button
+                  onClick={handleCheckSheets}
+                  disabled={loading}
+                  className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition"
+                >
+                  1. 檢查所有表格
+                </button>
+              </div>
 
-              <button
-                onClick={handleTestRead}
-                disabled={loading}
-                className="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition"
-              >
-                2. 測試讀取 (Users)
-              </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                  onClick={handleTestRead}
+                  disabled={loading}
+                  className="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition"
+                >
+                  2. 測試讀取 (Users)
+                </button>
 
-              <button
-                onClick={handleTestWrite}
-                disabled={loading}
-                className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition"
-              >
-                3. 測試寫入 (Users)
-              </button>
-            </div>
+                <button
+                  onClick={handleTestWrite}
+                  disabled={loading}
+                  className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 transition"
+                >
+                  3. 測試寫入 (Users)
+                </button>
+              </div>
+            </>
           )}
         </div>
 
