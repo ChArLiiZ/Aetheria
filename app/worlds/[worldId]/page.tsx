@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { World, WorldStateSchemaItem, SchemaFieldType } from '@/types';
-import { getWorldById, updateWorld, worldNameExists } from '@/services/sheets/worlds-appsscript';
+import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/sheets/worlds-appsscript';
 import {
   getSchemaByWorldId,
   createSchemaItem,
@@ -64,10 +64,16 @@ function WorldEditorPageContent() {
   });
   const [schemaErrors, setSchemaErrors] = useState<Record<string, string>>({});
 
+  const isNewWorld = worldId === 'new';
+
   // Load data
   useEffect(() => {
-    loadData();
-  }, [worldId, user]);
+    if (!isNewWorld) {
+      loadData();
+    } else {
+      setLoading(false);
+    }
+  }, [worldId, user, isNewWorld]);
 
   const loadData = async () => {
     if (!user) return;
@@ -134,17 +140,38 @@ function WorldEditorPageContent() {
 
     try {
       setSavingBasic(true);
-      await updateWorld(worldId, user.user_id, {
-        name: basicFormData.name.trim(),
-        description: basicFormData.description.trim(),
-        rules_text: basicFormData.rules_text.trim(),
-      });
 
-      await loadData();
-      alert('✅ 儲存成功！');
+      if (isNewWorld) {
+        // Create new world
+        const newWorld = await createWorld(user.user_id, {
+          name: basicFormData.name.trim(),
+          description: basicFormData.description.trim(),
+          rules_text: basicFormData.rules_text.trim(),
+        });
+
+        // Replace URL with actual world ID
+        router.replace(`/worlds/${newWorld.world_id}`);
+
+        // Load the new world data
+        setWorld(newWorld);
+        alert('✅ 世界觀建立成功！您現在可以設定狀態種類。');
+
+        // Switch to states tab to encourage setting up states
+        setActiveTab('states');
+      } else {
+        // Update existing world
+        await updateWorld(worldId, user.user_id, {
+          name: basicFormData.name.trim(),
+          description: basicFormData.description.trim(),
+          rules_text: basicFormData.rules_text.trim(),
+        });
+
+        await loadData();
+        alert('✅ 儲存成功！');
+      }
     } catch (err: any) {
-      console.error('Failed to update world:', err);
-      alert(`更新失敗: ${err.message || '未知錯誤'}`);
+      console.error('Failed to save world:', err);
+      alert(`${isNewWorld ? '建立' : '更新'}失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingBasic(false);
     }
@@ -243,7 +270,7 @@ function WorldEditorPageContent() {
 
   const handleSubmitSchema = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || isNewWorld) return;
 
     const isValid = await validateSchemaForm();
     if (!isValid) return;
@@ -311,10 +338,6 @@ function WorldEditorPageContent() {
     );
   }
 
-  if (!world) {
-    return null;
-  }
-
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
       <div className="max-w-5xl mx-auto">
@@ -322,10 +345,12 @@ function WorldEditorPageContent() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              編輯世界觀：{world.name}
+              {isNewWorld ? '新建世界觀' : `編輯世界觀：${world?.name || ''}`}
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              管理世界觀的基本設定與狀態種類
+              {isNewWorld
+                ? '建立一個新的故事世界觀，定義世界的基本設定和狀態種類'
+                : '管理世界觀的基本設定與狀態種類'}
             </p>
           </div>
           <button
@@ -350,14 +375,20 @@ function WorldEditorPageContent() {
               📝 基本設定
             </button>
             <button
-              onClick={() => setActiveTab('states')}
+              onClick={() => !isNewWorld && setActiveTab('states')}
+              disabled={isNewWorld}
               className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${
                 activeTab === 'states'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : isNewWorld
+                  ? 'border-transparent text-gray-400 dark:text-gray-600 cursor-not-allowed'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
               }`}
             >
               🎯 狀態種類 ({schemas.length})
+              {isNewWorld && (
+                <span className="ml-2 text-xs">(請先建立世界觀)</span>
+              )}
             </button>
           </nav>
         </div>
@@ -426,13 +457,27 @@ function WorldEditorPageContent() {
             </div>
 
             {/* Save Button */}
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-4">
+              {!isNewWorld && (
+                <button
+                  onClick={() => router.push('/worlds')}
+                  className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  取消
+                </button>
+              )}
               <button
                 onClick={handleSaveBasic}
                 disabled={savingBasic}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
               >
-                {savingBasic ? '儲存中...' : '儲存變更'}
+                {savingBasic
+                  ? isNewWorld
+                    ? '建立中...'
+                    : '儲存中...'
+                  : isNewWorld
+                  ? '建立世界觀'
+                  : '儲存變更'}
               </button>
             </div>
           </div>
