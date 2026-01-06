@@ -117,8 +117,8 @@ export default function LoginPage() {
 
         <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
           <p className="text-blue-800 dark:text-blue-200 text-xs">
-            ℹ️ <strong>開發模式</strong>：帳號資料暫存在瀏覽器 localStorage 中。<br />
-            清除瀏覽器資料後將會遺失。待 Google Sheets 寫入權限設定完成後將切換為雲端儲存。
+            ℹ️ 資料儲存在 Google Sheets 中。<br />
+            如無法登入，請確認已完成 Apps Script 設定（參考 APPS_SCRIPT_SETUP.md）。
           </p>
         </div>
       </div>

@@ -58,11 +58,11 @@ export default function TestPage() {
 
   // 測試環境變數
   const testEnv = () => {
+    const sheetsApiUrl = process.env.NEXT_PUBLIC_SHEETS_API_URL;
     const env = {
       spreadsheetId: process.env.NEXT_PUBLIC_SPREADSHEET_ID || '未設定',
-      hasApiKey: !!process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-      sheetsApiUrl: process.env.NEXT_PUBLIC_SHEETS_API_URL || '未設定',
-      mode: process.env.NEXT_PUBLIC_SHEETS_API_URL ? 'Apps Script (真實 Google Sheets)' : 'localStorage (本地模擬)',
+      sheetsApiUrl: sheetsApiUrl || '❌ 未設定 - 請參考 APPS_SCRIPT_SETUP.md',
+      status: sheetsApiUrl ? '✅ 已設定 Apps Script API' : '⚠️ 尚未設定 Apps Script API',
     };
 
     setTestResult(JSON.stringify(env, null, 2));
