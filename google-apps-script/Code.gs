@@ -86,10 +86,27 @@ function appendToSheet(sheetName, values) {
     throw new Error('找不到工作表: ' + sheetName);
   }
 
-  sheet.getRange(sheet.getLastRow() + 1, 1, values.length, values[0].length)
-    .setValues(values);
+  // 檢查 values 是否有效
+  if (!values || !Array.isArray(values) || values.length === 0) {
+    throw new Error('無效的資料格式');
+  }
 
-  return { rowsAdded: values.length };
+  // 獲取下一個空行
+  const lastRow = sheet.getLastRow();
+  const nextRow = lastRow + 1;
+
+  // 寫入資料
+  const numRows = values.length;
+  const numCols = values[0].length;
+
+  Logger.log('Appending to ' + sheetName + ' at row ' + nextRow + ', ' + numRows + ' rows, ' + numCols + ' cols');
+
+  sheet.getRange(nextRow, 1, numRows, numCols).setValues(values);
+
+  // 強制刷新（確保寫入）
+  SpreadsheetApp.flush();
+
+  return { rowsAdded: values.length, startRow: nextRow };
 }
 
 // 更新 Sheet 資料
