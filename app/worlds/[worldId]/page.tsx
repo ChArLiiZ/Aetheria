@@ -38,6 +38,7 @@ function WorldEditorPageContent() {
   const [world, setWorld] = useState<World | null>(null);
   const [schemas, setSchemas] = useState<WorldStateSchemaItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creatingWorld, setCreatingWorld] = useState(false);
 
   // Basic info form
   const [basicFormData, setBasicFormData] = useState({
@@ -132,6 +133,49 @@ function WorldEditorPageContent() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleCreateWorld = async () => {
+    if (!user) return;
+
+    const isValid = await validateBasicForm();
+    if (!isValid) {
+      setActiveTab('basic');
+      return;
+    }
+
+    try {
+      setCreatingWorld(true);
+
+      // Create new world
+      const newWorld = await createWorld(user.user_id, {
+        name: basicFormData.name.trim(),
+        description: basicFormData.description.trim(),
+        rules_text: basicFormData.rules_text.trim(),
+      });
+
+      // Create all schema items
+      for (const schema of schemas) {
+        await createSchemaItem(newWorld.world_id, user.user_id, {
+          schema_key: schema.schema_key,
+          display_name: schema.display_name,
+          type: schema.type,
+          ai_description: schema.ai_description,
+          default_value_json: schema.default_value_json,
+          enum_options_json: schema.enum_options_json,
+          number_constraints_json: schema.number_constraints_json,
+        });
+      }
+
+      // Redirect to the new world's edit page
+      router.push(`/worlds/${newWorld.world_id}`);
+      alert(`✅ 世界觀「${newWorld.name}」建立成功！${schemas.length > 0 ? `已設定 ${schemas.length} 個狀態種類。` : ''}`);
+    } catch (err: any) {
+      console.error('Failed to create world:', err);
+      alert(`建立失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setCreatingWorld(false);
+    }
+  };
+
   const handleSaveBasic = async () => {
     if (!user) return;
 
@@ -141,37 +185,18 @@ function WorldEditorPageContent() {
     try {
       setSavingBasic(true);
 
-      if (isNewWorld) {
-        // Create new world
-        const newWorld = await createWorld(user.user_id, {
-          name: basicFormData.name.trim(),
-          description: basicFormData.description.trim(),
-          rules_text: basicFormData.rules_text.trim(),
-        });
+      // Update existing world
+      await updateWorld(worldId, user.user_id, {
+        name: basicFormData.name.trim(),
+        description: basicFormData.description.trim(),
+        rules_text: basicFormData.rules_text.trim(),
+      });
 
-        // Replace URL with actual world ID
-        router.replace(`/worlds/${newWorld.world_id}`);
-
-        // Load the new world data
-        setWorld(newWorld);
-        alert('✅ 世界觀建立成功！您現在可以設定狀態種類。');
-
-        // Switch to states tab to encourage setting up states
-        setActiveTab('states');
-      } else {
-        // Update existing world
-        await updateWorld(worldId, user.user_id, {
-          name: basicFormData.name.trim(),
-          description: basicFormData.description.trim(),
-          rules_text: basicFormData.rules_text.trim(),
-        });
-
-        await loadData();
-        alert('✅ 儲存成功！');
-      }
+      await loadData();
+      alert('✅ 儲存成功！');
     } catch (err: any) {
       console.error('Failed to save world:', err);
-      alert(`${isNewWorld ? '建立' : '更新'}失敗: ${err.message || '未知錯誤'}`);
+      alert(`更新失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingBasic(false);
     }
@@ -238,14 +263,25 @@ function WorldEditorPageContent() {
     } else if (!/^[a-z_]+$/.test(schemaFormData.schema_key)) {
       newErrors.schema_key = '狀態 Key 只能包含小寫字母和底線';
     } else if (user) {
-      const exists = await schemaKeyExists(
-        worldId,
-        user.user_id,
-        schemaFormData.schema_key,
-        editingSchemaId || undefined
-      );
-      if (exists) {
-        newErrors.schema_key = '此狀態 Key 已存在';
+      if (isNewWorld) {
+        // Check in local state
+        const exists = schemas.some(
+          s => s.schema_key === schemaFormData.schema_key && s.schema_id !== editingSchemaId
+        );
+        if (exists) {
+          newErrors.schema_key = '此狀態 Key 已存在';
+        }
+      } else {
+        // Check in database
+        const exists = await schemaKeyExists(
+          worldId,
+          user.user_id,
+          schemaFormData.schema_key,
+          editingSchemaId || undefined
+        );
+        if (exists) {
+          newErrors.schema_key = '此狀態 Key 已存在';
+        }
       }
     }
 
@@ -270,7 +306,7 @@ function WorldEditorPageContent() {
 
   const handleSubmitSchema = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || isNewWorld) return;
+    if (!user) return;
 
     const isValid = await validateSchemaForm();
     if (!isValid) return;
@@ -282,6 +318,8 @@ function WorldEditorPageContent() {
         type: schemaFormData.type,
         ai_description: schemaFormData.ai_description.trim(),
         default_value_json: schemaFormData.default_value.trim(),
+        enum_options_json: '',
+        number_constraints_json: '',
       };
 
       if (schemaFormData.type === 'enum') {
@@ -297,14 +335,39 @@ function WorldEditorPageContent() {
         });
       }
 
-      if (editingSchemaId) {
-        await updateSchemaItem(editingSchemaId, user.user_id, data);
+      if (isNewWorld) {
+        // In new mode, just update local state
+        if (editingSchemaId) {
+          // Edit existing local schema
+          setSchemas(schemas.map(s =>
+            s.schema_id === editingSchemaId
+              ? { ...s, ...data, updated_at: new Date().toISOString() }
+              : s
+          ));
+        } else {
+          // Add new local schema
+          const newSchema: WorldStateSchemaItem = {
+            schema_id: `temp-${Date.now()}`,
+            world_id: 'temp',
+            user_id: user.user_id,
+            sort_order: schemas.length + 1,
+            updated_at: new Date().toISOString(),
+            ...data,
+          };
+          setSchemas([...schemas, newSchema]);
+        }
+        resetSchemaForm();
       } else {
-        await createSchemaItem(worldId, user.user_id, data);
-      }
+        // In edit mode, save to database
+        if (editingSchemaId) {
+          await updateSchemaItem(editingSchemaId, user.user_id, data);
+        } else {
+          await createSchemaItem(worldId, user.user_id, data);
+        }
 
-      await loadData();
-      resetSchemaForm();
+        await loadData();
+        resetSchemaForm();
+      }
     } catch (err: any) {
       console.error('Failed to save schema:', err);
       alert(`儲存失敗: ${err.message || '未知錯誤'}`);
@@ -314,13 +377,19 @@ function WorldEditorPageContent() {
   const handleDeleteSchema = async (schemaId: string, displayName: string) => {
     if (!user) return;
 
-    if (!confirm(`確定要刪除「${displayName}」嗎？\n\n此操作無法復原！`)) {
+    if (!confirm(`確定要刪除「${displayName}」嗎？${isNewWorld ? '' : '\n\n此操作無法復原！'}`)) {
       return;
     }
 
     try {
-      await deleteSchemaItem(schemaId, user.user_id);
-      await loadData();
+      if (isNewWorld) {
+        // In new mode, just remove from local state
+        setSchemas(schemas.filter(s => s.schema_id !== schemaId));
+      } else {
+        // In edit mode, delete from database
+        await deleteSchemaItem(schemaId, user.user_id);
+        await loadData();
+      }
     } catch (err: any) {
       console.error('Failed to delete schema:', err);
       alert(`刪除失敗: ${err.message || '未知錯誤'}`);
@@ -375,20 +444,14 @@ function WorldEditorPageContent() {
               📝 基本設定
             </button>
             <button
-              onClick={() => !isNewWorld && setActiveTab('states')}
-              disabled={isNewWorld}
+              onClick={() => setActiveTab('states')}
               className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${
                 activeTab === 'states'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : isNewWorld
-                  ? 'border-transparent text-gray-400 dark:text-gray-600 cursor-not-allowed'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
               }`}
             >
               🎯 狀態種類 ({schemas.length})
-              {isNewWorld && (
-                <span className="ml-2 text-xs">(請先建立世界觀)</span>
-              )}
             </button>
           </nav>
         </div>
@@ -456,30 +519,24 @@ function WorldEditorPageContent() {
               )}
             </div>
 
-            {/* Save Button */}
-            <div className="flex justify-end gap-4">
-              {!isNewWorld && (
+            {/* Save Button (only in edit mode) */}
+            {!isNewWorld && (
+              <div className="flex justify-end gap-4">
                 <button
                   onClick={() => router.push('/worlds')}
                   className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
                 >
                   取消
                 </button>
-              )}
-              <button
-                onClick={handleSaveBasic}
-                disabled={savingBasic}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-              >
-                {savingBasic
-                  ? isNewWorld
-                    ? '建立中...'
-                    : '儲存中...'
-                  : isNewWorld
-                  ? '建立世界觀'
-                  : '儲存變更'}
-              </button>
-            </div>
+                <button
+                  onClick={handleSaveBasic}
+                  disabled={savingBasic}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
+                >
+                  {savingBasic ? '儲存中...' : '儲存變更'}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div>
@@ -804,6 +861,39 @@ function WorldEditorPageContent() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Create World Button (only in new mode) */}
+        {isNewWorld && (
+          <div className="mt-8 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                  準備好建立世界觀了嗎？
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {schemas.length > 0
+                    ? `已設定 ${schemas.length} 個狀態種類，點擊建立按鈕即可完成！`
+                    : '您可以先設定狀態種類，也可以稍後再添加。'}
+                </p>
+              </div>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => router.push('/worlds')}
+                  className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleCreateWorld}
+                  disabled={creatingWorld}
+                  className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 font-semibold"
+                >
+                  {creatingWorld ? '建立中...' : '✨ 建立世界觀'}
+                </button>
+              </div>
             </div>
           </div>
         )}
