@@ -4,11 +4,26 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '@/types';
 import { getSession, saveSession, clearSession } from '@/lib/auth/session';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
-import {
-  getUserByEmail,
-  createUser as createUserInDb,
-  updateLastLogin,
-} from '@/services/sheets/users';
+// 根據環境變數決定使用哪個實作
+// 如果設定了 SHEETS_API_URL，使用 Apps Script 版本（真正寫入 Google Sheets）
+// 否則使用 mock 版本（localStorage）
+const USE_APPS_SCRIPT = !!process.env.NEXT_PUBLIC_SHEETS_API_URL;
+
+let getUserByEmail: any;
+let createUserInDb: any;
+let updateLastLogin: any;
+
+if (USE_APPS_SCRIPT) {
+  const appsScriptService = require('@/services/sheets/users-appsscript');
+  getUserByEmail = appsScriptService.getUserByEmail;
+  createUserInDb = appsScriptService.createUser;
+  updateLastLogin = appsScriptService.updateLastLogin;
+} else {
+  const mockService = require('@/services/sheets/users.mock');
+  getUserByEmail = mockService.getUserByEmail;
+  createUserInDb = mockService.createUser;
+  updateLastLogin = mockService.updateLastLogin;
+}
 
 interface AuthContextType {
   user: User | null;

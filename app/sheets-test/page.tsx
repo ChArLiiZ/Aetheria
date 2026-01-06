@@ -71,8 +71,21 @@ export default function SheetsTestPage() {
 
       await appendToSheet(SHEETS.USERS, testData);
       setStatus('✅ 寫入成功！請檢查 Google Sheets');
-    } catch (error) {
-      setStatus(`❌ 寫入失敗: ${error instanceof Error ? error.message : String(error)}`);
+    } catch (error: any) {
+      console.error('Write test error:', error);
+      let errorMessage = '未知錯誤';
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (error?.result?.error?.message) {
+        errorMessage = error.result.error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else {
+        errorMessage = JSON.stringify(error, null, 2);
+      }
+
+      setStatus(`❌ 寫入失敗: ${errorMessage}\n\n💡 提示：使用 API Key 只能讀取資料，無法寫入。\n如需寫入功能，請使用 OAuth 2.0 或 Service Account。`);
     } finally {
       setLoading(false);
     }
