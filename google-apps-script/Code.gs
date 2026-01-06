@@ -10,18 +10,6 @@
  * 4. 複製 Web App URL 到前端 .env.local
  */
 
-// CORS 處理
-function doOptions(e) {
-  return ContentService.createTextOutput()
-    .setMimeType(ContentService.MimeType.JSON)
-    .setContent(JSON.stringify({ status: 'ok' }))
-    .setHeaders({
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    });
-}
-
 // 主要處理函數
 function doGet(e) {
   return handleRequest(e);
@@ -160,13 +148,8 @@ function checkAllSheets() {
   return result;
 }
 
-// 建立回應
+// 建立回應（Apps Script Web App 預設支援 CORS）
 function createResponse(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeaders({
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    });
+    .setMimeType(ContentService.MimeType.JSON);
 }
