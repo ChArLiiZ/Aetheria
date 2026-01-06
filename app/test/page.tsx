@@ -61,6 +61,8 @@ export default function TestPage() {
     const env = {
       spreadsheetId: process.env.NEXT_PUBLIC_SPREADSHEET_ID || '未設定',
       hasApiKey: !!process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
+      sheetsApiUrl: process.env.NEXT_PUBLIC_SHEETS_API_URL || '未設定',
+      mode: process.env.NEXT_PUBLIC_SHEETS_API_URL ? 'Apps Script (真實 Google Sheets)' : 'localStorage (本地模擬)',
     };
 
     setTestResult(JSON.stringify(env, null, 2));

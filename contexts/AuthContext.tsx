@@ -4,25 +4,36 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '@/types';
 import { getSession, saveSession, clearSession } from '@/lib/auth/session';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
-// 根據環境變數決定使用哪個實作
-// 如果設定了 SHEETS_API_URL，使用 Apps Script 版本（真正寫入 Google Sheets）
-// 否則使用 mock 版本（localStorage）
-const USE_APPS_SCRIPT = !!process.env.NEXT_PUBLIC_SHEETS_API_URL;
+// 動態匯入服務 - 根據是否設定 Apps Script URL 來決定
+import {
+  getUserByEmail as getUserByEmailMock,
+  createUser as createUserMock,
+  updateLastLogin as updateLastLoginMock,
+} from '@/services/sheets/users.mock';
 
-let getUserByEmail: any;
-let createUserInDb: any;
-let updateLastLogin: any;
+import {
+  getUserByEmail as getUserByEmailAppsScript,
+  createUser as createUserAppsScript,
+  updateLastLogin as updateLastLoginAppsScript,
+} from '@/services/sheets/users-appsscript';
 
-if (USE_APPS_SCRIPT) {
-  const appsScriptService = require('@/services/sheets/users-appsscript');
-  getUserByEmail = appsScriptService.getUserByEmail;
-  createUserInDb = appsScriptService.createUser;
-  updateLastLogin = appsScriptService.updateLastLogin;
-} else {
-  const mockService = require('@/services/sheets/users.mock');
-  getUserByEmail = mockService.getUserByEmail;
-  createUserInDb = mockService.createUser;
-  updateLastLogin = mockService.updateLastLogin;
+// 執行時檢查環境變數
+function getService() {
+  const hasAppsScript = !!process.env.NEXT_PUBLIC_SHEETS_API_URL;
+
+  if (hasAppsScript) {
+    return {
+      getUserByEmail: getUserByEmailAppsScript,
+      createUser: createUserAppsScript,
+      updateLastLogin: updateLastLoginAppsScript,
+    };
+  } else {
+    return {
+      getUserByEmail: getUserByEmailMock,
+      createUser: createUserMock,
+      updateLastLogin: updateLastLoginMock,
+    };
+  }
 }
 
 interface AuthContextType {
@@ -51,8 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
+      const service = getService();
+
       // Get user from database
-      const dbUser = await getUserByEmail(email);
+      const dbUser = await service.getUserByEmail(email);
 
       if (!dbUser) {
         throw new Error('帳號或密碼錯誤');
@@ -70,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Update last login
-      await updateLastLogin(dbUser.user_id);
+      await service.updateLastLogin(dbUser.user_id);
 
       // Save session
       saveSession(dbUser);
@@ -83,8 +96,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, displayName: string, password: string) => {
     try {
+      const service = getService();
+
       // Check if email already exists
-      const existingUser = await getUserByEmail(email);
+      const existingUser = await service.getUserByEmail(email);
       if (existingUser) {
         throw new Error('此電子郵件已被註冊');
       }
@@ -93,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const passwordHash = await hashPassword(password);
 
       // Create user
-      const newUser = await createUserInDb({
+      const newUser = await service.createUser({
         email,
         display_name: displayName,
         password_hash: passwordHash,
@@ -102,9 +117,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Save session
       saveSession(newUser);
       setUser(newUser);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration failed:', error);
-      throw error;
+
+      // 提供更友善的錯誤訊息
+      if (error.message?.includes('fetch')) {
+        throw new Error('無法連接到資料庫。請確認 Apps Script API 已正確設定。');
+      } else if (error.message?.includes('SHEETS_API_URL')) {
+        throw new Error('Apps Script URL 未設定。目前使用本地儲存模式。');
+      } else {
+        throw error;
+      }
     }
   };
 
