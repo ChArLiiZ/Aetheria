@@ -86,8 +86,8 @@ export async function readSheet(
 export async function appendToSheet(
   sheetName: SheetName,
   values: any[][]
-): Promise<void> {
-  await callAppsScript({
+): Promise<any> {
+  return await callAppsScript({
     action: 'append',
     sheet: sheetName,
     values: values,

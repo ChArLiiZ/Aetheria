@@ -122,6 +122,52 @@ export default function SheetsTestPage() {
     }
   };
 
+  // Direct test of append operation
+  const handleDirectAppendTest = async () => {
+    setLoading(true);
+    setStatus('正在直接測試寫入操作的完整請求...');
+
+    try {
+      if (!sheetsApiUrl) {
+        throw new Error('Apps Script URL 未設定');
+      }
+
+      const testData = [['test-' + Date.now(), 'direct@test.com', 'Direct Test', 'hash', new Date().toISOString(), new Date().toISOString(), 'active', '']];
+
+      const testUrl = new URL(sheetsApiUrl);
+      testUrl.searchParams.append('action', 'append');
+      testUrl.searchParams.append('sheet', 'Users');
+      testUrl.searchParams.append('values', JSON.stringify(testData));
+
+      console.log('🔗 完整請求 URL:', testUrl.toString());
+      console.log('📝 測試資料:', testData);
+
+      const response = await fetch(testUrl.toString(), {
+        method: 'GET',
+        redirect: 'follow',
+      });
+
+      console.log('📡 HTTP 狀態:', response.status);
+
+      const text = await response.text();
+      console.log('📄 原始響應文本:', text);
+
+      const data = JSON.parse(text);
+      console.log('📦 解析後的數據:', data);
+
+      if (data.success) {
+        setStatus(`✅ 直接寫入測試成功！\n\nHTTP 狀態: ${response.status}\n\n完整響應:\n${JSON.stringify(data, null, 2)}\n\n🔍 如果 data.rowsAdded 和 data.startRow 存在，表示您已正確部署新版本！\n如果沒有這些欄位，請重新部署 Apps Script。\n\n請立即檢查 Google Sheets Users tab！`);
+      } else {
+        setStatus(`❌ Apps Script 返回錯誤:\n${data.error}\n\n完整響應:\n${JSON.stringify(data, null, 2)}`);
+      }
+    } catch (error: any) {
+      console.error('❌ 直接寫入測試錯誤:', error);
+      setStatus(`❌ 直接寫入測試失敗:\n${error.message || String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
       <div className="max-w-4xl mx-auto">
@@ -189,7 +235,7 @@ export default function SheetsTestPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <button
                   onClick={handleTestRead}
                   disabled={loading}
@@ -205,6 +251,19 @@ export default function SheetsTestPage() {
                 >
                   3. 測試寫入 (Users)
                 </button>
+              </div>
+
+              <div className="mb-4">
+                <button
+                  onClick={handleDirectAppendTest}
+                  disabled={loading}
+                  className="w-full px-4 py-4 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 transition font-bold"
+                >
+                  🚨 診斷：直接測試寫入請求（查看完整響應）
+                </button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                  這個測試會顯示 Apps Script 的完整返回值，幫助診斷問題
+                </p>
               </div>
             </>
           )}
