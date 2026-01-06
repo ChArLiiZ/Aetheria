@@ -58,8 +58,8 @@ function NewWorldPageContent() {
         rules_text: formData.rules_text.trim(),
       });
 
-      // Redirect to schema editor
-      router.push(`/worlds/${newWorld.world_id}/schema`);
+      // Redirect to world editor (with states tab)
+      router.push(`/worlds/${newWorld.world_id}`);
     } catch (err: any) {
       console.error('Failed to create world:', err);
       alert(`建立失敗: ${err.message || '未知錯誤'}`);
@@ -163,7 +163,7 @@ function NewWorldPageContent() {
               disabled={submitting}
               className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
             >
-              {submitting ? '建立中...' : '建立並設定 Schema'}
+              {submitting ? '建立中...' : '建立世界觀'}
             </button>
           </div>
         </form>

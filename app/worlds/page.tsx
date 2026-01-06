@@ -134,16 +134,10 @@ function WorldsPageContent() {
                   {/* Actions */}
                   <div className="flex gap-2">
                     <button
-                      onClick={() => router.push(`/worlds/${world.world_id}/edit`)}
-                      className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                    >
-                      編輯
-                    </button>
-                    <button
-                      onClick={() => router.push(`/worlds/${world.world_id}/schema`)}
+                      onClick={() => router.push(`/worlds/${world.world_id}`)}
                       className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                     >
-                      Schema
+                      編輯設定
                     </button>
                     <button
                       onClick={() => handleDelete(world.world_id, world.name)}
