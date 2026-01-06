@@ -65,11 +65,19 @@ export async function readSheet(
   sheetName: SheetName,
   range?: string
 ): Promise<any[][]> {
-  return callAppsScript({
+  const result = await callAppsScript({
     action: 'read',
     sheet: sheetName,
     range: range || '',
   });
+
+  // Ensure we always return an array
+  if (!Array.isArray(result)) {
+    console.error('readSheet returned non-array:', result);
+    return [];
+  }
+
+  return result;
 }
 
 /**
@@ -131,6 +139,12 @@ export async function checkAllSheets(): Promise<Record<string, boolean>> {
  * Convert sheet rows to objects using header row
  */
 export function rowsToObjects<T>(rows: any[][]): T[] {
+  // Safety check: ensure rows is an array
+  if (!Array.isArray(rows)) {
+    console.error('rowsToObjects received non-array:', rows);
+    return [];
+  }
+
   if (rows.length === 0) return [];
 
   const headers = rows[0];
