@@ -85,6 +85,46 @@ export default function SheetsTestPage() {
     }
   };
 
+  // Check Apps Script version
+  const handleCheckVersion = async () => {
+    setLoading(true);
+    setStatus('正在檢查 Apps Script 版本...');
+
+    try {
+      if (!sheetsApiUrl) {
+        throw new Error('Apps Script URL 未設定');
+      }
+
+      const testUrl = new URL(sheetsApiUrl);
+      testUrl.searchParams.append('action', 'version');
+
+      console.log('🔗 檢查版本 URL:', testUrl.toString());
+
+      const response = await fetch(testUrl.toString(), {
+        method: 'GET',
+        redirect: 'follow',
+      });
+
+      const text = await response.text();
+      const data = JSON.parse(text);
+
+      console.log('📦 版本信息:', data);
+
+      if (data.success && data.data && data.data.version === '2.0') {
+        setStatus(`✅ Apps Script 版本正確！\n\n版本: ${data.data.version}\n部署時間: ${data.data.deployed}\n功能: ${data.data.features.join(', ')}\n\n✅ 您可以繼續測試寫入功能！`);
+      } else if (data.success && data.data) {
+        setStatus(`⚠️ Apps Script 版本過舊或未知！\n\n${JSON.stringify(data, null, 2)}\n\n❌ 請重新部署 Apps Script！`);
+      } else {
+        setStatus(`❌ 無法識別版本信息\n\n完整響應:\n${JSON.stringify(data, null, 2)}\n\n這表示您的 Apps Script 是舊版本（沒有 version 端點）\n請立即重新部署！`);
+      }
+    } catch (error: any) {
+      console.error('❌ 版本檢查錯誤:', error);
+      setStatus(`❌ 版本檢查失敗: ${error.message}\n\n這表示您的 Apps Script 可能是舊版本或有語法錯誤。\n請重新部署 Apps Script！`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Direct test of Apps Script URL
   const handleDirectTest = async () => {
     setLoading(true);
@@ -218,6 +258,19 @@ export default function SheetsTestPage() {
             </div>
           ) : (
             <>
+              <div className="mb-4">
+                <button
+                  onClick={handleCheckVersion}
+                  disabled={loading}
+                  className="w-full px-4 py-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 transition font-bold text-lg"
+                >
+                  ⚡ 第一步：檢查 Apps Script 版本
+                </button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                  👆 點這裡確認 Apps Script 是否已正確部署新版本
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <button
                   onClick={handleDirectTest}

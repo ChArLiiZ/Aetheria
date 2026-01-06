@@ -27,6 +27,10 @@ function handleRequest(e) {
     let result;
 
     switch (action) {
+      case 'version':
+        result = { version: '2.0', deployed: new Date().toISOString(), features: ['flush', 'logging', 'validation'] };
+        break;
+
       case 'read':
         result = readSheet(params.sheet, params.range);
         break;
