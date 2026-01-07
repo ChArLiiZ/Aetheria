@@ -73,21 +73,31 @@ function CharactersListPageContent() {
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              角色管理
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              建立與管理跨世界共用的角色卡
-            </p>
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+            >
+              ← 返回主選單
+            </button>
           </div>
-          <button
-            onClick={() => router.push('/characters/new')}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-          >
-            + 新增角色
-          </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                角色管理
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                建立與管理跨世界共用的角色卡
+              </p>
+            </div>
+            <button
+              onClick={() => router.push('/characters/new')}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+            >
+              + 新增角色
+            </button>
+          </div>
         </div>
 
         {/* Characters List */}
