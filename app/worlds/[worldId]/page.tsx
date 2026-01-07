@@ -618,10 +618,19 @@ function WorldEditorPageContent() {
                     }
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                   >
-                    <option value="text">文字 (text)</option>
-                    <option value="number">數字 (number)</option>
-                    <option value="enum">列舉 (enum)</option>
+                    <option value="text">文字 (text) - 單行文字</option>
+                    <option value="number">數字 (number) - 數值型態</option>
+                    <option value="bool">布林 (bool) - 真/假值</option>
+                    <option value="enum">列舉 (enum) - 多選一</option>
+                    <option value="list_text">文字列表 (list_text) - 多項文字</option>
                   </select>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    {schemaFormData.type === 'text' && '適合：名稱、描述等單行文字'}
+                    {schemaFormData.type === 'number' && '適合：生命值、金錢、等級等數值'}
+                    {schemaFormData.type === 'bool' && '適合：是否存活、是否完成任務等真假值'}
+                    {schemaFormData.type === 'enum' && '適合：職業、陣營等固定選項'}
+                    {schemaFormData.type === 'list_text' && '適合：背包物品、已學技能等多項文字列表'}
+                  </p>
                 </div>
 
                 {/* AI Description */}
@@ -648,21 +657,42 @@ function WorldEditorPageContent() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     預設值
                   </label>
-                  <input
-                    type="text"
-                    value={schemaFormData.default_value}
-                    onChange={(e) =>
-                      setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    placeholder={
-                      schemaFormData.type === 'number'
-                        ? '100'
-                        : schemaFormData.type === 'enum'
-                        ? '選項1'
-                        : '預設文字'
-                    }
-                  />
+                  {schemaFormData.type === 'bool' ? (
+                    <select
+                      value={schemaFormData.default_value}
+                      onChange={(e) =>
+                        setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">（不設定）</option>
+                      <option value="true">真 (true)</option>
+                      <option value="false">假 (false)</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={schemaFormData.default_value}
+                      onChange={(e) =>
+                        setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      placeholder={
+                        schemaFormData.type === 'number'
+                          ? '100'
+                          : schemaFormData.type === 'enum'
+                          ? '選項1'
+                          : schemaFormData.type === 'list_text'
+                          ? '["物品1", "物品2"]（JSON 格式）'
+                          : '預設文字'
+                      }
+                    />
+                  )}
+                  {schemaFormData.type === 'list_text' && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      提示：list_text 類型請使用 JSON 陣列格式，例如：["物品1", "物品2"]
+                    </p>
+                  )}
                 </div>
 
                 {/* Number Constraints */}
@@ -828,7 +858,11 @@ function WorldEditorPageContent() {
                                 ? '文字'
                                 : schema.type === 'number'
                                 ? '數字'
-                                : '列舉'}
+                                : schema.type === 'bool'
+                                ? '布林'
+                                : schema.type === 'enum'
+                                ? '列舉'
+                                : '文字列表'}
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
