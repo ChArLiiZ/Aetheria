@@ -23,6 +23,7 @@ interface SchemaFormData {
   ai_description: string;
   default_value: string;
   enum_options: string[];
+  list_text_items: string[];
   number_min?: number;
   number_max?: number;
   number_step?: number;
@@ -59,6 +60,7 @@ function WorldEditorPageContent() {
     ai_description: '',
     default_value: '',
     enum_options: [''],
+    list_text_items: [''],
     number_min: undefined,
     number_max: undefined,
     number_step: 1,
@@ -211,6 +213,7 @@ function WorldEditorPageContent() {
       ai_description: '',
       default_value: '',
       enum_options: [''],
+      list_text_items: [''],
       number_min: undefined,
       number_max: undefined,
       number_step: 1,
@@ -230,6 +233,18 @@ function WorldEditorPageContent() {
       }
     }
 
+    let listTextItems: string[] = [''];
+    if (schema.type === 'list_text' && schema.default_value_json) {
+      try {
+        listTextItems = JSON.parse(schema.default_value_json);
+        if (!Array.isArray(listTextItems) || listTextItems.length === 0) {
+          listTextItems = [''];
+        }
+      } catch (e) {
+        listTextItems = [''];
+      }
+    }
+
     let numberMin, numberMax, numberStep;
     if (schema.type === 'number' && schema.number_constraints_json) {
       try {
@@ -245,8 +260,9 @@ function WorldEditorPageContent() {
       display_name: schema.display_name,
       type: schema.type,
       ai_description: schema.ai_description,
-      default_value: schema.default_value_json || '',
+      default_value: schema.type === 'list_text' ? '' : (schema.default_value_json || ''),
       enum_options: enumOptions.length > 0 ? enumOptions : [''],
+      list_text_items: listTextItems,
       number_min: numberMin,
       number_max: numberMax,
       number_step: numberStep || 1,
@@ -333,6 +349,11 @@ function WorldEditorPageContent() {
           max: schemaFormData.number_max,
           step: schemaFormData.number_step || 1,
         });
+      }
+
+      if (schemaFormData.type === 'list_text') {
+        const validItems = schemaFormData.list_text_items.filter((item) => item.trim());
+        data.default_value_json = JSON.stringify(validItems);
       }
 
       if (isNewWorld) {
@@ -652,48 +673,43 @@ function WorldEditorPageContent() {
                   )}
                 </div>
 
-                {/* Default Value */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    預設值
-                  </label>
-                  {schemaFormData.type === 'bool' ? (
-                    <select
-                      value={schemaFormData.default_value}
-                      onChange={(e) =>
-                        setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
-                      }
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    >
-                      <option value="">（不設定）</option>
-                      <option value="true">真 (true)</option>
-                      <option value="false">假 (false)</option>
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={schemaFormData.default_value}
-                      onChange={(e) =>
-                        setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
-                      }
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                      placeholder={
-                        schemaFormData.type === 'number'
-                          ? '100'
-                          : schemaFormData.type === 'enum'
-                          ? '選項1'
-                          : schemaFormData.type === 'list_text'
-                          ? '["物品1", "物品2"]（JSON 格式）'
-                          : '預設文字'
-                      }
-                    />
-                  )}
-                  {schemaFormData.type === 'list_text' && (
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      提示：list_text 類型請使用 JSON 陣列格式，例如：["物品1", "物品2"]
-                    </p>
-                  )}
-                </div>
+                {/* Default Value (not for list_text) */}
+                {schemaFormData.type !== 'list_text' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      預設值
+                    </label>
+                    {schemaFormData.type === 'bool' ? (
+                      <select
+                        value={schemaFormData.default_value}
+                        onChange={(e) =>
+                          setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
+                        }
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                      >
+                        <option value="">（不設定）</option>
+                        <option value="true">真 (true)</option>
+                        <option value="false">假 (false)</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={schemaFormData.default_value}
+                        onChange={(e) =>
+                          setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
+                        }
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                        placeholder={
+                          schemaFormData.type === 'number'
+                            ? '100'
+                            : schemaFormData.type === 'enum'
+                            ? '選項1'
+                            : '預設文字'
+                        }
+                      />
+                    )}
+                  </div>
+                )}
 
                 {/* Number Constraints */}
                 {schemaFormData.type === 'number' && (
@@ -799,6 +815,59 @@ function WorldEditorPageContent() {
                     {schemaErrors.enum_options && (
                       <p className="mt-1 text-sm text-red-600">{schemaErrors.enum_options}</p>
                     )}
+                  </div>
+                )}
+
+                {/* List Text Items */}
+                {schemaFormData.type === 'list_text' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      預設項目 <span className="text-gray-500">(可選，可新增多個)</span>
+                    </label>
+                    {schemaFormData.list_text_items.map((item, index) => (
+                      <div key={index} className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={item}
+                          onChange={(e) => {
+                            const newItems = [...schemaFormData.list_text_items];
+                            newItems[index] = e.target.value;
+                            setSchemaFormData({ ...schemaFormData, list_text_items: newItems });
+                          }}
+                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                          placeholder={`項目 ${index + 1}`}
+                        />
+                        {schemaFormData.list_text_items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newItems = schemaFormData.list_text_items.filter(
+                                (_, i) => i !== index
+                              );
+                              setSchemaFormData({ ...schemaFormData, list_text_items: newItems });
+                            }}
+                            className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                          >
+                            刪除
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSchemaFormData({
+                          ...schemaFormData,
+                          list_text_items: [...schemaFormData.list_text_items, ''],
+                        })
+                      }
+                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                    >
+                      + 新增項目
+                    </button>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      提示：例如設定「長劍」、「治療藥水」等預設物品
+                    </p>
                   </div>
                 )}
 
