@@ -167,9 +167,9 @@ function WorldEditorPageContent() {
         });
       }
 
-      // Redirect to the new world's edit page
-      router.push(`/worlds/${newWorld.world_id}`);
+      // Redirect to worlds list page
       alert(`✅ 世界觀「${newWorld.name}」建立成功！${schemas.length > 0 ? `已設定 ${schemas.length} 個狀態種類。` : ''}`);
+      router.push('/worlds');
     } catch (err: any) {
       console.error('Failed to create world:', err);
       alert(`建立失敗: ${err.message || '未知錯誤'}`);
