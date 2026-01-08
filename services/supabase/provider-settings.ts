@@ -10,11 +10,18 @@ export type Provider = 'openrouter' | 'gemini' | 'openai';
 /**
  * Get all provider settings for a user
  */
-export async function getProviderSettings(userId: string): Promise<ProviderSettings[]> {
+export async function getProviderSettings(): Promise<ProviderSettings[]> {
+  // Get current authenticated user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from('provider_settings')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', user.id);
 
   if (error) {
     throw new Error('Failed to fetch provider settings: ' + error.message);
@@ -27,13 +34,19 @@ export async function getProviderSettings(userId: string): Promise<ProviderSetti
  * Get a specific provider setting for a user
  */
 export async function getProviderSetting(
-  userId: string,
   provider: Provider
 ): Promise<ProviderSettings | null> {
+  // Get current authenticated user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('provider_settings')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', user.id)
     .eq('provider', provider)
     .single();
 
@@ -91,13 +104,19 @@ export async function upsertProviderSettings(
  * Delete provider settings (remove API key and all settings for a provider)
  */
 export async function deleteProviderSettings(
-  userId: string,
   provider: Provider
 ): Promise<void> {
+  // Get current authenticated user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+
   const { error } = await supabase
     .from('provider_settings')
     .delete()
-    .eq('user_id', userId)
+    .eq('user_id', user.id)
     .eq('provider', provider);
 
   if (error) {

@@ -142,7 +142,7 @@ function SettingsPageContent() {
       setLoading(true);
 
       // Load provider settings
-      const settings = await getProviderSettings(user.user_id);
+      const settings = await getProviderSettings();
       const settingsMap: Record<Provider, ProviderSettings | null> = {
         openrouter: null,
         gemini: null,
@@ -217,7 +217,7 @@ function SettingsPageContent() {
     }
 
     try {
-      await deleteProviderSettings(user.user_id, selectedProvider);
+      await deleteProviderSettings(selectedProvider);
       setProviderSettings({
         ...providerSettings,
         [selectedProvider]: null,
