@@ -114,3 +114,34 @@ export async function emailExists(email: string): Promise<boolean> {
   const user = await getUserByEmail(email);
   return user !== null;
 }
+
+/**
+ * Update user password
+ */
+export async function updatePassword(userId: string, newPasswordHash: string): Promise<void> {
+  const rows = await readSheet(SHEETS.USERS);
+  const rowIndex = findRowIndex(rows, 'user_id', userId);
+
+  if (rowIndex === -1) {
+    throw new Error('User not found');
+  }
+
+  const users = rowsToObjects<User>(rows);
+  const user = users[rowIndex - 1];
+
+  const updatedUser: User = {
+    ...user,
+    password_hash: newPasswordHash,
+    updated_at: now(),
+  };
+
+  const row = objectToRow(updatedUser, HEADERS);
+  await updateSheet(SHEETS.USERS, `A${rowIndex}:H${rowIndex}`, [row]);
+}
+
+/**
+ * Update user display name
+ */
+export async function updateDisplayName(userId: string, newDisplayName: string): Promise<void> {
+  await updateUser(userId, { display_name: newDisplayName });
+}
