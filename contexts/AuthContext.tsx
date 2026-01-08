@@ -2,11 +2,11 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '@/types';
-import { getSession, saveSession, clearSession } from '@/lib/auth/session';
-// 使用 Supabase 服務
+import { supabase } from '@/lib/supabase/client';
 import {
   login as loginWithSupabase,
   register as registerWithSupabase,
+  logout as logoutWithSupabase,
   getCurrentUser,
 } from '@/services/supabase/auth';
 
@@ -15,7 +15,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, displayName: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -25,13 +25,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load session on mount
+  // Load session on mount and listen for auth changes
   useEffect(() => {
-    const session = getSession();
-    if (session) {
-      setUser(session.user);
-    }
-    setLoading(false);
+    // Get initial session
+    const initAuth = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error('Failed to load user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const currentUser = await getCurrentUser();
+          setUser(currentUser);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        } else if (event === 'USER_UPDATED' && session?.user) {
+          const currentUser = await getCurrentUser();
+          setUser(currentUser);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -42,16 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(result.error || '登入失敗');
       }
 
-      // Save session
-      saveSession(result.user);
       setUser(result.user);
     } catch (error: any) {
       console.error('Login failed:', error);
-
-      // 友善的錯誤訊息
-      if (error.message?.includes('SUPABASE')) {
-        throw new Error('請先設定 Supabase 連接。參考 SUPABASE_SETUP.md');
-      }
       throw error;
     }
   };
@@ -64,23 +84,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(result.error || '註冊失敗');
       }
 
-      // Save session
-      saveSession(result.user);
       setUser(result.user);
     } catch (error: any) {
       console.error('Registration failed:', error);
-
-      // 友善的錯誤訊息
-      if (error.message?.includes('SUPABASE')) {
-        throw new Error('請先設定 Supabase 連接。參考 SUPABASE_SETUP.md');
-      }
       throw error;
     }
   };
 
-  const logout = () => {
-    clearSession();
-    setUser(null);
+  const logout = async () => {
+    try {
+      await logoutWithSupabase();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   const value: AuthContextType = {

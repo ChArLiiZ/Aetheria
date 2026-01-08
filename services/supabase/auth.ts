@@ -1,9 +1,10 @@
 /**
- * Authentication Service (Supabase)
+ * Authentication Service (Supabase Auth)
  *
- * Handles user authentication via API routes
+ * Uses Supabase's built-in authentication system
  */
 
+import { supabase } from '@/lib/supabase/client';
 import type { User } from '@/types';
 
 /**
@@ -15,24 +16,53 @@ export async function register(
   displayName: string
 ): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    // Validate password (at least 6 characters, lowercase allowed)
+    // Validate password (at least 6 characters)
     if (password.length < 6) {
       return { success: false, error: '密碼長度至少需要 6 個字符' };
     }
 
-    const response = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, displayName }),
+    // Sign up with Supabase Auth
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      email: email.toLowerCase(),
+      password,
+      options: {
+        data: {
+          display_name: displayName,
+        },
+      },
     });
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      return { success: false, error: result.error || '註冊失敗' };
+    if (signUpError) {
+      return { success: false, error: signUpError.message };
     }
 
-    return { success: true, user: result.user };
+    if (!authData.user) {
+      return { success: false, error: '註冊失敗' };
+    }
+
+    // Fetch the created profile from public.users
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('user_id', authData.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      // Profile might not be created yet due to trigger, return basic user info
+      return {
+        success: true,
+        user: {
+          user_id: authData.user.id,
+          email: authData.user.email!,
+          display_name: displayName,
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as User,
+      };
+    }
+
+    return { success: true, user: profile as User };
   } catch (error: any) {
     return { success: false, error: error.message || '註冊失敗' };
   }
@@ -46,30 +76,72 @@ export async function login(
   password: string
 ): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+    // Sign in with Supabase Auth
+    const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase(),
+      password,
     });
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      return { success: false, error: result.error || '登入失敗' };
+    if (signInError) {
+      return { success: false, error: 'Email 或密碼錯誤' };
     }
 
-    return { success: true, user: result.user };
+    if (!authData.user) {
+      return { success: false, error: '登入失敗' };
+    }
+
+    // Fetch user profile
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('user_id', authData.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return { success: false, error: '無法取得用戶資料' };
+    }
+
+    // Update last login
+    await supabase
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('user_id', authData.user.id);
+
+    return { success: true, user: profile as User };
   } catch (error: any) {
     return { success: false, error: error.message || '登入失敗' };
   }
 }
 
 /**
- * Get current user by ID
+ * Logout user
  */
-export async function getCurrentUser(userId: string): Promise<User | null> {
-  // This can be removed since we use session storage
-  return null;
+export async function logout(): Promise<void> {
+  await supabase.auth.signOut();
+}
+
+/**
+ * Get current session
+ */
+export async function getCurrentSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
+}
+
+/**
+ * Get current user
+ */
+export async function getCurrentUser(): Promise<User | null> {
+  const session = await getCurrentSession();
+  if (!session?.user) return null;
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .single();
+
+  return profile as User | null;
 }
 
 /**
@@ -80,16 +152,13 @@ export async function updateDisplayName(
   newDisplayName: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch('/api/auth/update-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, displayName: newDisplayName }),
-    });
+    const { error } = await supabase
+      .from('users')
+      .update({ display_name: newDisplayName })
+      .eq('user_id', userId);
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      return { success: false, error: result.error || '更新失敗' };
+    if (error) {
+      return { success: false, error: error.message };
     }
 
     return { success: true };
@@ -112,16 +181,29 @@ export async function updatePassword(
       return { success: false, error: '新密碼長度至少需要 6 個字符' };
     }
 
-    const response = await fetch('/api/auth/update-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, oldPassword, newPassword }),
+    // Get current user's email to verify old password
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser?.email) {
+      return { success: false, error: '無法取得用戶資訊' };
+    }
+
+    // Verify old password by attempting to sign in
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: authUser.email,
+      password: oldPassword,
     });
 
-    const result = await response.json();
+    if (signInError) {
+      return { success: false, error: '舊密碼錯誤' };
+    }
 
-    if (!response.ok) {
-      return { success: false, error: result.error || '更新密碼失敗' };
+    // Update password
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      return { success: false, error: error.message };
     }
 
     return { success: true };
