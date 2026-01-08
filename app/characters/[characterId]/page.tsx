@@ -10,7 +10,7 @@ import {
   createCharacter,
   updateCharacter,
   characterNameExists,
-} from '@/services/sheets/characters-appsscript';
+} from '@/services/supabase/characters';
 
 function CharacterEditorPageContent() {
   const { user } = useAuth();

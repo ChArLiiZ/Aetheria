@@ -3,13 +3,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '@/types';
 import { getSession, saveSession, clearSession } from '@/lib/auth/session';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
-// 直接使用 Apps Script 服務（Google Sheets）
+// 使用 Supabase 服務
 import {
-  getUserByEmail,
-  createUser as createUserInDb,
-  updateLastLogin,
-} from '@/services/sheets/users-appsscript';
+  login as loginWithSupabase,
+  register as registerWithSupabase,
+  getCurrentUser,
+} from '@/services/supabase/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -37,36 +36,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      // Get user from database
-      const dbUser = await getUserByEmail(email);
+      const result = await loginWithSupabase(email, password);
 
-      if (!dbUser) {
-        throw new Error('帳號或密碼錯誤');
+      if (!result.success || !result.user) {
+        throw new Error(result.error || '登入失敗');
       }
-
-      // Verify password
-      const isValid = await verifyPassword(password, dbUser.password_hash);
-      if (!isValid) {
-        throw new Error('帳號或密碼錯誤');
-      }
-
-      // Check if user is active
-      if (dbUser.status !== 'active') {
-        throw new Error('此帳號已被停用');
-      }
-
-      // Update last login
-      await updateLastLogin(dbUser.user_id);
 
       // Save session
-      saveSession(dbUser);
-      setUser(dbUser);
+      saveSession(result.user);
+      setUser(result.user);
     } catch (error: any) {
       console.error('Login failed:', error);
 
       // 友善的錯誤訊息
-      if (error.message?.includes('SHEETS_API_URL')) {
-        throw new Error('請先設定 Google Apps Script API。參考 APPS_SCRIPT_SETUP.md');
+      if (error.message?.includes('SUPABASE')) {
+        throw new Error('請先設定 Supabase 連接。參考 SUPABASE_SETUP.md');
       }
       throw error;
     }
@@ -74,31 +58,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, displayName: string, password: string) => {
     try {
-      // Check if email already exists
-      const existingUser = await getUserByEmail(email);
-      if (existingUser) {
-        throw new Error('此電子郵件已被註冊');
+      const result = await registerWithSupabase(email, password, displayName);
+
+      if (!result.success || !result.user) {
+        throw new Error(result.error || '註冊失敗');
       }
 
-      // Hash password
-      const passwordHash = await hashPassword(password);
-
-      // Create user
-      const newUser = await createUserInDb({
-        email,
-        display_name: displayName,
-        password_hash: passwordHash,
-      });
-
       // Save session
-      saveSession(newUser);
-      setUser(newUser);
+      saveSession(result.user);
+      setUser(result.user);
     } catch (error: any) {
       console.error('Registration failed:', error);
 
       // 友善的錯誤訊息
-      if (error.message?.includes('SHEETS_API_URL')) {
-        throw new Error('請先設定 Google Apps Script API。參考 APPS_SCRIPT_SETUP.md');
+      if (error.message?.includes('SUPABASE')) {
+        throw new Error('請先設定 Supabase 連接。參考 SUPABASE_SETUP.md');
       }
       throw error;
     }

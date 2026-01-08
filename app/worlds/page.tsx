@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { World } from '@/types';
-import { getWorldsByUserId, deleteWorld } from '@/services/sheets/worlds-appsscript';
+import { getWorldsByUserId, deleteWorld } from '@/services/supabase/worlds';
 
 function WorldsPageContent() {
   const { user } = useAuth();

@@ -10,13 +10,12 @@ import {
   upsertProviderSettings,
   deleteProviderSettings,
   Provider,
-} from '@/services/sheets/provider-settings-appsscript';
+} from '@/services/supabase/provider-settings';
 import {
   getUserById,
   updateDisplayName,
   updatePassword,
-} from '@/services/sheets/users-appsscript';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+} from '@/services/supabase/users';
 import { testProviderConnection } from '@/services/api/provider-test';
 
 // Model presets for each provider

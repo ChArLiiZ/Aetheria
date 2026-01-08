@@ -5,14 +5,14 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { World, WorldStateSchemaItem, SchemaFieldType } from '@/types';
-import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/sheets/worlds-appsscript';
+import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/supabase/worlds';
 import {
   getSchemaByWorldId,
   createSchemaItem,
   updateSchemaItem,
   deleteSchemaItem,
   schemaKeyExists,
-} from '@/services/sheets/world-schema-appsscript';
+} from '@/services/supabase/world-schema';
 
 type Tab = 'basic' | 'states';
 

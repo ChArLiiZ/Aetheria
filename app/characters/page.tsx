@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Character } from '@/types';
-import { getCharacters, deleteCharacter } from '@/services/sheets/characters-appsscript';
+import { getCharacters, deleteCharacter } from '@/services/supabase/characters';
 
 function CharactersListPageContent() {
   const { user } = useAuth();
