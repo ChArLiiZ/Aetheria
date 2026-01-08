@@ -17,6 +17,7 @@ import {
   updatePassword,
 } from '@/services/sheets/users-appsscript';
 import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { testProviderConnection } from '@/services/api/provider-test';
 
 // Model presets for each provider
 const MODEL_PRESETS: Record<Provider, string[]> = {
@@ -244,19 +245,21 @@ function SettingsPageContent() {
     try {
       setTestingProvider(true);
 
-      // Simple test: try to make a minimal API call
-      // This is a placeholder - you'll need to implement actual API testing
-      // based on each provider's API format
+      // Test actual API connection
+      const result = await testProviderConnection(selectedProvider, apiKey.trim(), model.trim());
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      alert(
-        '✅ 測試成功！\n\nAPI Key 和模型設定看起來正常。\n\n注意：這只是基本測試，實際使用時可能還會遇到其他問題。'
-      );
+      if (result.success) {
+        alert(
+          `✅ ${result.message}\n\n${result.details}\n\n注意：這是基本連接測試，實際使用時可能還會遇到其他問題。`
+        );
+      } else {
+        alert(
+          `❌ ${result.message}\n\n${result.details}\n\n請檢查：\n1. API Key 是否正確\n2. 模型名稱是否正確\n3. API Key 是否有足夠的額度`
+        );
+      }
     } catch (err: any) {
       console.error('Test failed:', err);
-      alert(`測試失敗: ${err.message || '未知錯誤'}\n\n請檢查 API Key 和模型名稱是否正確。`);
+      alert(`測試失敗: ${err.message || '未知錯誤'}\n\n請檢查網路連接和 API Key。`);
     } finally {
       setTestingProvider(false);
     }
