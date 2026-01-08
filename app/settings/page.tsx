@@ -11,11 +11,11 @@ import {
   deleteProviderSettings,
   Provider,
 } from '@/services/supabase/provider-settings';
+import { getUserById } from '@/services/supabase/users';
 import {
-  getUserById,
   updateDisplayName,
   updatePassword,
-} from '@/services/supabase/users';
+} from '@/services/supabase/auth';
 import { testProviderConnection } from '@/services/api/provider-test';
 
 // Model presets for each provider
@@ -274,7 +274,13 @@ function SettingsPageContent() {
 
     try {
       setSavingDisplayName(true);
-      await updateDisplayName(user.user_id, displayName.trim());
+      const result = await updateDisplayName(user.user_id, displayName.trim());
+
+      if (!result.success) {
+        alert(`更新失敗: ${result.error || '未知錯誤'}`);
+        return;
+      }
+
       alert('✅ 顯示名稱更新成功！');
     } catch (err: any) {
       console.error('Failed to update display name:', err);
@@ -305,19 +311,12 @@ function SettingsPageContent() {
     try {
       setSavingPassword(true);
 
-      const userData = await getUserById(user.user_id);
-      if (!userData) {
-        throw new Error('找不到用戶資料');
-      }
+      const result = await updatePassword(user.user_id, oldPassword, newPassword);
 
-      const isValid = await verifyPassword(oldPassword, userData.password_hash);
-      if (!isValid) {
-        alert('舊密碼錯誤');
+      if (!result.success) {
+        alert(`更新失敗: ${result.error || '未知錯誤'}`);
         return;
       }
-
-      const newPasswordHash = await hashPassword(newPassword);
-      await updatePassword(user.user_id, newPasswordHash);
 
       alert('✅ 密碼更新成功！');
       setOldPassword('');
