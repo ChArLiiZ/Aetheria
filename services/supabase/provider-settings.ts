@@ -71,13 +71,17 @@ export async function upsertProviderSettings(
     default_params?: AIParams;
   }
 ): Promise<ProviderSettings> {
+  console.log('[upsertProviderSettings] Starting...', { provider });
+
   // Get current authenticated user to ensure user_id matches auth.uid()
   const { data: { user } } = await supabase.auth.getUser();
+  console.log('[upsertProviderSettings] Got user:', user?.id);
 
   if (!user) {
     throw new Error('User not authenticated');
   }
 
+  console.log('[upsertProviderSettings] Upserting to database...');
   const { data: upsertedSettings, error } = await supabase
     .from('provider_settings')
     .upsert(
@@ -93,10 +97,13 @@ export async function upsertProviderSettings(
     .select()
     .single();
 
+  console.log('[upsertProviderSettings] Database response:', { error, upsertedSettings });
+
   if (error || !upsertedSettings) {
     throw new Error('Failed to upsert provider settings: ' + error?.message);
   }
 
+  console.log('[upsertProviderSettings] Success!');
   return upsertedSettings as ProviderSettings;
 }
 
