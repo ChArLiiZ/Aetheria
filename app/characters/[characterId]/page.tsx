@@ -118,7 +118,7 @@ function CharacterEditorPageContent() {
       const validTags = formData.tags.filter((tag) => tag.trim());
 
       if (isNewCharacter) {
-        await createCharacter({
+        await createCharacter(user.user_id, {
           canonical_name: formData.canonical_name.trim(),
           core_profile_text: formData.core_profile_text.trim(),
           tags: validTags.length > 0 ? validTags : undefined,

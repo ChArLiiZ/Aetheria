@@ -148,7 +148,7 @@ function WorldEditorPageContent() {
       setCreatingWorld(true);
 
       // Create new world
-      const newWorld = await createWorld({
+      const newWorld = await createWorld(user.user_id, {
         name: basicFormData.name.trim(),
         description: basicFormData.description.trim(),
         rules_text: basicFormData.rules_text.trim(),
@@ -156,7 +156,7 @@ function WorldEditorPageContent() {
 
       // Create all schema items
       for (const schema of schemas) {
-        await createSchemaItem(newWorld.world_id, {
+        await createSchemaItem(newWorld.world_id, user.user_id, {
           schema_key: schema.schema_key,
           display_name: schema.display_name,
           type: schema.type,
@@ -383,7 +383,7 @@ function WorldEditorPageContent() {
         if (editingSchemaId) {
           await updateSchemaItem(editingSchemaId, user.user_id, data);
         } else {
-          await createSchemaItem(worldId, data);
+          await createSchemaItem(worldId, user.user_id, data);
         }
 
         await loadData();

@@ -58,6 +58,7 @@ export async function getSchemaItemById(
  */
 export async function createSchemaItem(
   worldId: string,
+  userId: string,
   data: {
     schema_key: string;
     display_name: string;
@@ -68,15 +69,8 @@ export async function createSchemaItem(
     number_constraints_json?: string;
   }
 ): Promise<WorldStateSchemaItem> {
-  // Get current session (faster than getUser in client-side)
-  const { data: { session } } = await supabase.auth.getSession();
-
-  if (!session?.user) {
-    throw new Error('User not authenticated');
-  }
-
   // Get current max sort_order
-  const existingSchemas = await getSchemaByWorldId(worldId, session.user.id);
+  const existingSchemas = await getSchemaByWorldId(worldId, userId);
   const maxSortOrder = existingSchemas.length > 0
     ? Math.max(...existingSchemas.map(s => s.sort_order))
     : 0;
@@ -85,7 +79,7 @@ export async function createSchemaItem(
     .from('world_state_schema')
     .insert({
       world_id: worldId,
-      user_id: session.user.id,
+      user_id: userId,
       schema_key: data.schema_key,
       display_name: data.display_name,
       type: data.type,
