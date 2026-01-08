@@ -11,17 +11,17 @@ export type Provider = 'openrouter' | 'gemini' | 'openai';
  * Get all provider settings for a user
  */
 export async function getProviderSettings(): Promise<ProviderSettings[]> {
-  // Get current authenticated user
-  const { data: { user } } = await supabase.auth.getUser();
+  // Get current session (faster than getUser in client-side)
+  const { data: { session } } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!session?.user) {
     return [];
   }
 
   const { data, error } = await supabase
     .from('provider_settings')
     .select('*')
-    .eq('user_id', user.id);
+    .eq('user_id', session.user.id);
 
   if (error) {
     throw new Error('Failed to fetch provider settings: ' + error.message);
@@ -36,17 +36,17 @@ export async function getProviderSettings(): Promise<ProviderSettings[]> {
 export async function getProviderSetting(
   provider: Provider
 ): Promise<ProviderSettings | null> {
-  // Get current authenticated user
-  const { data: { user } } = await supabase.auth.getUser();
+  // Get current session (faster than getUser in client-side)
+  const { data: { session } } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!session?.user) {
     return null;
   }
 
   const { data, error } = await supabase
     .from('provider_settings')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .eq('provider', provider)
     .single();
 
@@ -73,11 +73,11 @@ export async function upsertProviderSettings(
 ): Promise<ProviderSettings> {
   console.log('[upsertProviderSettings] Starting...', { provider });
 
-  // Get current authenticated user to ensure user_id matches auth.uid()
-  const { data: { user } } = await supabase.auth.getUser();
-  console.log('[upsertProviderSettings] Got user:', user?.id);
+  // Get current session (faster than getUser in client-side)
+  const { data: { session } } = await supabase.auth.getSession();
+  console.log('[upsertProviderSettings] Got session:', session?.user?.id);
 
-  if (!user) {
+  if (!session?.user) {
     throw new Error('User not authenticated');
   }
 
@@ -86,7 +86,7 @@ export async function upsertProviderSettings(
     .from('provider_settings')
     .upsert(
       {
-        user_id: user.id,
+        user_id: session.user.id,
         provider,
         api_key: data.api_key,
         default_model: data.default_model,
@@ -113,17 +113,17 @@ export async function upsertProviderSettings(
 export async function deleteProviderSettings(
   provider: Provider
 ): Promise<void> {
-  // Get current authenticated user
-  const { data: { user } } = await supabase.auth.getUser();
+  // Get current session (faster than getUser in client-side)
+  const { data: { session } } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!session?.user) {
     throw new Error('User not authenticated');
   }
 
   const { error } = await supabase
     .from('provider_settings')
     .delete()
-    .eq('user_id', user.id)
+    .eq('user_id', session.user.id)
     .eq('provider', provider);
 
   if (error) {

@@ -56,17 +56,17 @@ export async function createCharacter(
     tags?: string[];
   }
 ): Promise<Character> {
-  // Get current authenticated user to ensure user_id matches auth.uid()
-  const { data: { user } } = await supabase.auth.getUser();
+  // Get current session (faster than getUser in client-side)
+  const { data: { session } } = await supabase.auth.getSession();
 
-  if (!user) {
+  if (!session?.user) {
     throw new Error('User not authenticated');
   }
 
   const { data: newCharacter, error } = await supabase
     .from('characters')
     .insert({
-      user_id: user.id,
+      user_id: session.user.id,
       canonical_name: data.canonical_name,
       core_profile_text: data.core_profile_text,
       tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
