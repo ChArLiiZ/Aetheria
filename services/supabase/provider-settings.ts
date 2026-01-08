@@ -72,39 +72,47 @@ export async function upsertProviderSettings(
   }
 ): Promise<ProviderSettings> {
   console.log('[upsertProviderSettings] Starting...', { provider });
+  console.log('[upsertProviderSettings] Supabase client:', supabase);
+  console.log('[upsertProviderSettings] About to call getSession()...');
 
-  // Get current session (faster than getUser in client-side)
-  const { data: { session } } = await supabase.auth.getSession();
-  console.log('[upsertProviderSettings] Got session:', session?.user?.id);
+  try {
+    const sessionResult = await supabase.auth.getSession();
+    console.log('[upsertProviderSettings] getSession() returned:', sessionResult);
+    const { data: { session } } = sessionResult;
+    console.log('[upsertProviderSettings] Got session:', session?.user?.id);
 
-  if (!session?.user) {
-    throw new Error('User not authenticated');
+    if (!session?.user) {
+      throw new Error('User not authenticated');
+    }
+
+    console.log('[upsertProviderSettings] Upserting to database...');
+    const { data: upsertedSettings, error } = await supabase
+      .from('provider_settings')
+      .upsert(
+        {
+          user_id: session.user.id,
+          provider,
+          api_key: data.api_key,
+          default_model: data.default_model,
+          default_params_json: data.default_params ? JSON.stringify(data.default_params) : '{}',
+        },
+        { onConflict: 'user_id,provider' }
+      )
+      .select()
+      .single();
+
+    console.log('[upsertProviderSettings] Database response:', { error, upsertedSettings });
+
+    if (error || !upsertedSettings) {
+      throw new Error('Failed to upsert provider settings: ' + error?.message);
+    }
+
+    console.log('[upsertProviderSettings] Success!');
+    return upsertedSettings as ProviderSettings;
+  } catch (err) {
+    console.error('[upsertProviderSettings] Caught error:', err);
+    throw err;
   }
-
-  console.log('[upsertProviderSettings] Upserting to database...');
-  const { data: upsertedSettings, error } = await supabase
-    .from('provider_settings')
-    .upsert(
-      {
-        user_id: session.user.id,
-        provider,
-        api_key: data.api_key,
-        default_model: data.default_model,
-        default_params_json: data.default_params ? JSON.stringify(data.default_params) : '{}',
-      },
-      { onConflict: 'user_id,provider' }
-    )
-    .select()
-    .single();
-
-  console.log('[upsertProviderSettings] Database response:', { error, upsertedSettings });
-
-  if (error || !upsertedSettings) {
-    throw new Error('Failed to upsert provider settings: ' + error?.message);
-  }
-
-  console.log('[upsertProviderSettings] Success!');
-  return upsertedSettings as ProviderSettings;
 }
 
 /**
