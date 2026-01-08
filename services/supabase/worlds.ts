@@ -51,17 +51,23 @@ export async function getWorldById(
  * Create new world
  */
 export async function createWorld(
-  userId: string,
   data: {
     name: string;
     description: string;
     rules_text: string;
   }
 ): Promise<World> {
+  // Get current authenticated user to ensure user_id matches auth.uid()
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+
   const { data: newWorld, error } = await supabase
     .from('worlds')
     .insert({
-      user_id: userId,
+      user_id: user.id,
       name: data.name,
       description: data.description,
       rules_text: data.rules_text,

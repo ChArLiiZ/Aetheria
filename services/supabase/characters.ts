@@ -50,17 +50,23 @@ export async function getCharacterById(
  * Create a new character
  */
 export async function createCharacter(
-  userId: string,
   data: {
     canonical_name: string;
     core_profile_text: string;
     tags?: string[];
   }
 ): Promise<Character> {
+  // Get current authenticated user to ensure user_id matches auth.uid()
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+
   const { data: newCharacter, error } = await supabase
     .from('characters')
     .insert({
-      user_id: userId,
+      user_id: user.id,
       canonical_name: data.canonical_name,
       core_profile_text: data.core_profile_text,
       tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',

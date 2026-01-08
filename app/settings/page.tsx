@@ -184,7 +184,7 @@ function SettingsPageContent() {
 
     try {
       setSavingProvider(true);
-      const result = await upsertProviderSettings(user.user_id, selectedProvider, {
+      const result = await upsertProviderSettings(selectedProvider, {
         api_key: apiKey.trim(),
         default_model: model.trim(),
         default_params: {

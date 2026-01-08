@@ -51,7 +51,6 @@ export async function getProviderSetting(
  * Create or update provider settings (upsert)
  */
 export async function upsertProviderSettings(
-  userId: string,
   provider: Provider,
   data: {
     api_key: string;
@@ -59,11 +58,18 @@ export async function upsertProviderSettings(
     default_params?: AIParams;
   }
 ): Promise<ProviderSettings> {
+  // Get current authenticated user to ensure user_id matches auth.uid()
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+
   const { data: upsertedSettings, error } = await supabase
     .from('provider_settings')
     .upsert(
       {
-        user_id: userId,
+        user_id: user.id,
         provider,
         api_key: data.api_key,
         default_model: data.default_model,
