@@ -4,10 +4,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { Story, World, Character, StoryMode } from '@/types';
+import { Story, World, Character, StoryMode, StoryCharacter } from '@/types';
 import { getStoryById, createStory, updateStory, storyTitleExists } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
 import { getCharacters } from '@/services/supabase/characters';
+import {
+  getStoryCharacters,
+  addStoryCharacter,
+  removeStoryCharacter,
+  isCharacterInStory
+} from '@/services/supabase/story-characters';
 
 // Pagination helper
 const ITEMS_PER_PAGE = 6;
@@ -24,6 +30,7 @@ function StoryDetailPageContent() {
   const [story, setStory] = useState<Story | null>(null);
   const [worlds, setWorlds] = useState<World[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -69,7 +76,11 @@ function StoryDetailPageContent() {
 
       // Load story if editing
       if (!isNewStory) {
-        const storyData = await getStoryById(storyId, user.user_id);
+        const [storyData, storyCharsData] = await Promise.all([
+          getStoryById(storyId, user.user_id),
+          getStoryCharacters(storyId, user.user_id),
+        ]);
+
         if (!storyData) {
           alert('故事不存在');
           router.push('/stories');
@@ -77,6 +88,7 @@ function StoryDetailPageContent() {
         }
 
         setStory(storyData);
+        setStoryCharacters(storyCharsData);
         setFormData({
           world_id: storyData.world_id,
           title: storyData.title,
@@ -238,6 +250,49 @@ function StoryDetailPageContent() {
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
     setCharacterPage(1); // Reset to first page when filter changes
+  };
+
+  // Story character management
+  const handleAddCharacter = async (characterId: string) => {
+    if (!user || isNewStory) return;
+
+    try {
+      // Check if character is already in story
+      const alreadyInStory = await isCharacterInStory(storyId, characterId, user.user_id);
+      if (alreadyInStory) {
+        alert('此角色已在故事中');
+        return;
+      }
+
+      await addStoryCharacter(user.user_id, {
+        story_id: storyId,
+        character_id: characterId,
+        is_player: false,
+      });
+
+      alert('✅ 角色已加入故事！');
+      loadData(); // Reload to get updated story characters
+    } catch (err: any) {
+      console.error('Failed to add character:', err);
+      alert(`新增角色失敗: ${err.message || '未知錯誤'}`);
+    }
+  };
+
+  const handleRemoveCharacter = async (storyCharacterId: string, characterName: string) => {
+    if (!user || isNewStory) return;
+
+    if (!confirm(`確定要從故事中移除「${characterName}」嗎？\n\n這將同時刪除該角色的所有狀態數據。`)) {
+      return;
+    }
+
+    try {
+      await removeStoryCharacter(storyCharacterId, user.user_id);
+      alert('✅ 角色已移除！');
+      loadData(); // Reload to get updated story characters
+    } catch (err: any) {
+      console.error('Failed to remove character:', err);
+      alert(`移除角色失敗: ${err.message || '未知錯誤'}`);
+    }
   };
 
   if (loading) {
@@ -689,6 +744,124 @@ function StoryDetailPageContent() {
             </button>
           </div>
         </div>
+
+        {/* Story Characters Management (only for existing stories) */}
+        {!isNewStory && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                故事角色
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {storyCharacters.length} 個角色
+              </p>
+            </div>
+
+            {/* Story characters list */}
+            {storyCharacters.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400 mb-4">
+                  還沒有加入任何角色到故事中
+                </p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">
+                  從下方選擇角色加入故事
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {storyCharacters.map((storyChar) => {
+                  const char = characters.find((c) => c.character_id === storyChar.character_id);
+                  if (!char) return null;
+
+                  return (
+                    <div
+                      key={storyChar.story_character_id}
+                      className="border border-gray-300 dark:border-gray-600 rounded-lg p-4"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                            {storyChar.display_name_override || char.canonical_name}
+                            {storyChar.is_player && (
+                              <span className="ml-2 px-2 py-0.5 text-xs bg-blue-600 text-white rounded">
+                                玩家角色
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                            {char.core_profile_text}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            handleRemoveCharacter(
+                              storyChar.story_character_id,
+                              storyChar.display_name_override || char.canonical_name
+                            )
+                          }
+                          className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          title="移除角色"
+                        >
+                          移除
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add character section */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                新增角色到故事
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {characters
+                  .filter(
+                    (char) =>
+                      !storyCharacters.some((sc) => sc.character_id === char.character_id)
+                  )
+                  .map((char) => {
+                    const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+                    return (
+                      <button
+                        key={char.character_id}
+                        onClick={() => handleAddCharacter(char.character_id)}
+                        className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
+                      >
+                        <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
+                          {char.canonical_name}
+                        </h4>
+                        <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mb-1">
+                          {char.core_profile_text}
+                        </p>
+                        {charTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {charTags.slice(0, 3).map((tag: string) => (
+                              <span
+                                key={tag}
+                                className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+              {characters.filter(
+                (char) => !storyCharacters.some((sc) => sc.character_id === char.character_id)
+              ).length === 0 && (
+                <p className="text-center text-gray-500 dark:text-gray-400 py-4">
+                  所有角色都已加入故事中
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Play Button (only for existing stories) */}
         {!isNewStory && story?.status === 'active' && (
