@@ -80,24 +80,40 @@ export async function upsertProviderSettings(
 
   console.log('[upsertProviderSettings] Calling supabase.from().upsert()...');
 
-  const { data: upsertedSettings, error } = await supabase
-    .from('provider_settings')
-    .upsert(payload, { onConflict: 'user_id,provider' })
-    .select()
-    .single();
+  try {
+    // 添加超时保护
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+    });
 
-  console.log('[upsertProviderSettings] Database response:', {
-    hasData: !!upsertedSettings,
-    error: error?.message,
-  });
+    const upsertPromise = supabase
+      .from('provider_settings')
+      .upsert(payload, { onConflict: 'user_id,provider' })
+      .select()
+      .single();
 
-  if (error || !upsertedSettings) {
-    console.error('[upsertProviderSettings] Error details:', error);
-    throw new Error('Failed to upsert provider settings: ' + error?.message);
+    const result = await Promise.race([upsertPromise, timeoutPromise]);
+
+    console.log('[upsertProviderSettings] Promise.race completed');
+
+    const { data: upsertedSettings, error } = result as any;
+
+    console.log('[upsertProviderSettings] Database response:', {
+      hasData: !!upsertedSettings,
+      error: error?.message,
+    });
+
+    if (error || !upsertedSettings) {
+      console.error('[upsertProviderSettings] Error details:', error);
+      throw new Error('Failed to upsert provider settings: ' + error?.message);
+    }
+
+    console.log('[upsertProviderSettings] Success!');
+    return upsertedSettings as ProviderSettings;
+  } catch (err: any) {
+    console.error('[upsertProviderSettings] Caught exception:', err);
+    throw err;
   }
-
-  console.log('[upsertProviderSettings] Success!');
-  return upsertedSettings as ProviderSettings;
 }
 
 /**
