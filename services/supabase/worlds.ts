@@ -9,11 +9,19 @@ import type { World } from '@/types';
  * Get all worlds for a user
  */
 export async function getWorldsByUserId(userId: string): Promise<World[]> {
-  const { data, error } = await supabase
+  // Use Promise.race to prevent hanging issues
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  });
+
+  const fetchPromise = supabase
     .from('worlds')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
+
+  const result = await Promise.race([fetchPromise, timeoutPromise]);
+  const { data, error } = result as any;
 
   if (error) {
     throw new Error('Failed to fetch worlds: ' + error.message);
@@ -29,12 +37,20 @@ export async function getWorldById(
   worldId: string,
   userId: string
 ): Promise<World | null> {
-  const { data, error } = await supabase
+  // Use Promise.race to prevent hanging issues
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  });
+
+  const fetchPromise = supabase
     .from('worlds')
     .select('*')
     .eq('world_id', worldId)
     .eq('user_id', userId)
     .single();
+
+  const result = await Promise.race([fetchPromise, timeoutPromise]);
+  const { data, error } = result as any;
 
   if (error) {
     if (error.code === 'PGRST116') {

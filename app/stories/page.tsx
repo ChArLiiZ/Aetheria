@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Story } from '@/types';
 import { getStories, deleteStory } from '@/services/supabase/stories';
-import { getWorldById } from '@/services/supabase/worlds';
+import { getWorldsByUserId } from '@/services/supabase/worlds';
 
 interface StoryWithWorld extends Story {
   world_name?: string;
@@ -28,25 +28,23 @@ function StoriesPageContent() {
 
     try {
       setLoading(true);
-      const storiesData = await getStories(user.user_id);
 
-      // Fetch world names for each story
-      const storiesWithWorlds = await Promise.all(
-        storiesData.map(async (story) => {
-          try {
-            const world = await getWorldById(story.world_id, user.user_id);
-            return {
-              ...story,
-              world_name: world?.name || '未知世界觀',
-            };
-          } catch {
-            return {
-              ...story,
-              world_name: '未知世界觀',
-            };
-          }
-        })
+      // Fetch stories and worlds in parallel
+      const [storiesData, worldsData] = await Promise.all([
+        getStories(user.user_id),
+        getWorldsByUserId(user.user_id),
+      ]);
+
+      // Create a map of world_id to world_name for quick lookup
+      const worldMap = new Map(
+        worldsData.map((world) => [world.world_id, world.name])
       );
+
+      // Match world names to stories
+      const storiesWithWorlds = storiesData.map((story) => ({
+        ...story,
+        world_name: worldMap.get(story.world_id) || '未知世界觀',
+      }));
 
       setStories(storiesWithWorlds);
     } catch (err: any) {
@@ -108,11 +106,12 @@ function StoriesPageContent() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-        <div className="max-w-6xl mx-auto">
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-gray-400">載入中...</p>
         </div>
-      </main>
+      </div>
     );
   }
 
