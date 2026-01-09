@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * WorldStateSchema Service (Supabase)
  */

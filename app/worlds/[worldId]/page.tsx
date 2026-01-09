@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { World, WorldStateSchemaItem, SchemaFieldType } from '@/types';
+import { World, WorldStateSchema, SchemaFieldType } from '@/types';
 import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/supabase/worlds';
 import {
   getSchemaByWorldId,
@@ -37,7 +37,7 @@ function WorldEditorPageContent() {
 
   const [activeTab, setActiveTab] = useState<Tab>('basic');
   const [world, setWorld] = useState<World | null>(null);
-  const [schemas, setSchemas] = useState<WorldStateSchemaItem[]>([]);
+  const [schemas, setSchemas] = useState<WorldStateSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingWorld, setCreatingWorld] = useState(false);
 
@@ -223,7 +223,7 @@ function WorldEditorPageContent() {
     setShowSchemaForm(false);
   };
 
-  const handleEditSchema = (schema: WorldStateSchemaItem) => {
+  const handleEditSchema = (schema: WorldStateSchema) => {
     let enumOptions: string[] = [''];
     if (schema.type === 'enum' && schema.enum_options_json) {
       try {
@@ -367,7 +367,7 @@ function WorldEditorPageContent() {
           ));
         } else {
           // Add new local schema
-          const newSchema: WorldStateSchemaItem = {
+          const newSchema: WorldStateSchema = {
             schema_id: `temp-${Date.now()}`,
             world_id: 'temp',
             user_id: user.user_id,

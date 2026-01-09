@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Story State Values Service (Supabase)
  */

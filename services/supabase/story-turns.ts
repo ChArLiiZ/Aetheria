@@ -1,56 +1,56 @@
 // @ts-nocheck
 /**
- * Story Characters Service (Supabase)
+ * Story Turns Service (Supabase)
  */
 
 import { supabase } from '@/lib/supabase/client';
-import type { StoryCharacter } from '@/types';
+import type { StoryTurn } from '@/types';
 
 /**
- * Get all characters in a story
+ * Get all turns for a story
  */
-export async function getStoryCharacters(
+export async function getStoryTurns(
   storyId: string,
   userId: string
-): Promise<StoryCharacter[]> {
+): Promise<StoryTurn[]> {
   // Use Promise.race to prevent hanging issues
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
   });
 
   const fetchPromise = supabase
-    .from('story_characters')
+    .from('story_turns')
     .select('*')
     .eq('story_id', storyId)
     .eq('user_id', userId)
-    .order('created_at', { ascending: true });
+    .order('turn_index', { ascending: true });
 
   const result = await Promise.race([fetchPromise, timeoutPromise]);
   const { data, error } = result as any;
 
   if (error) {
-    throw new Error('Failed to fetch story characters: ' + error.message);
+    throw new Error('Failed to fetch story turns: ' + error.message);
   }
 
-  return (data || []) as StoryCharacter[];
+  return (data || []) as StoryTurn[];
 }
 
 /**
- * Get a single story character by ID
+ * Get a single turn by ID
  */
-export async function getStoryCharacterById(
-  storyCharacterId: string,
+export async function getStoryTurnById(
+  turnId: string,
   userId: string
-): Promise<StoryCharacter | null> {
+): Promise<StoryTurn | null> {
   // Use Promise.race to prevent hanging issues
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
   });
 
   const fetchPromise = supabase
-    .from('story_characters')
+    .from('story_turns')
     .select('*')
-    .eq('story_character_id', storyCharacterId)
+    .eq('turn_id', turnId)
     .eq('user_id', userId)
     .single();
 
@@ -61,30 +61,37 @@ export async function getStoryCharacterById(
     if (error.code === 'PGRST116') {
       return null;
     }
-    throw new Error('Failed to fetch story character: ' + error.message);
+    throw new Error('Failed to fetch story turn: ' + error.message);
   }
 
-  return data as StoryCharacter;
+  return data as StoryTurn;
 }
 
 /**
- * Add a character to a story
+ * Create a new turn
  */
-export async function addStoryCharacter(
+export async function createStoryTurn(
   userId: string,
   data: {
     story_id: string;
-    character_id: string;
-    display_name_override?: string;
-    is_player?: boolean;
+    turn_index: number;
+    user_input_text: string;
+    narrative_text: string;
+    dialogue_json: string;
+    scene_tags_json?: string;
+    token_usage_json?: string;
   }
-): Promise<StoryCharacter> {
+): Promise<StoryTurn> {
   const payload = {
     user_id: userId,
     story_id: data.story_id,
-    character_id: data.character_id,
-    display_name_override: data.display_name_override,
-    is_player: data.is_player || false,
+    turn_index: data.turn_index,
+    user_input_text: data.user_input_text,
+    narrative_text: data.narrative_text,
+    dialogue_json: data.dialogue_json,
+    scene_tags_json: data.scene_tags_json || '',
+    token_usage_json: data.token_usage_json,
+    error_flag: false,
   };
 
   // Use Promise.race to prevent hanging issues
@@ -93,30 +100,27 @@ export async function addStoryCharacter(
   });
 
   const insertPromise = supabase
-    .from('story_characters')
+    .from('story_turns')
     .insert(payload)
     .select()
     .single();
 
   const result = await Promise.race([insertPromise, timeoutPromise]);
-  const { data: newStoryCharacter, error } = result as any;
+  const { data: newTurn, error } = result as any;
 
-  if (error || !newStoryCharacter) {
-    throw new Error('Failed to add story character: ' + error?.message);
+  if (error || !newTurn) {
+    throw new Error('Failed to create story turn: ' + error?.message);
   }
 
-  return newStoryCharacter as StoryCharacter;
+  return newTurn as StoryTurn;
 }
 
 /**
- * Update a story character
+ * Mark a turn as having an error
  */
-export async function updateStoryCharacter(
-  storyCharacterId: string,
-  userId: string,
-  updates: {
-    display_name_override?: string;
-  }
+export async function markTurnAsError(
+  turnId: string,
+  userId: string
 ): Promise<void> {
   // Use Promise.race to prevent hanging issues
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -124,24 +128,24 @@ export async function updateStoryCharacter(
   });
 
   const updatePromise = supabase
-    .from('story_characters')
-    .update(updates)
-    .eq('story_character_id', storyCharacterId)
+    .from('story_turns')
+    .update({ error_flag: true })
+    .eq('turn_id', turnId)
     .eq('user_id', userId);
 
   const result = await Promise.race([updatePromise, timeoutPromise]);
   const { error } = result as any;
 
   if (error) {
-    throw new Error('Failed to update story character: ' + error.message);
+    throw new Error('Failed to mark turn as error: ' + error.message);
   }
 }
 
 /**
- * Remove a character from a story
+ * Delete a turn (usually only for error recovery)
  */
-export async function removeStoryCharacter(
-  storyCharacterId: string,
+export async function deleteStoryTurn(
+  turnId: string,
   userId: string
 ): Promise<void> {
   // Use Promise.race to prevent hanging issues
@@ -150,33 +154,15 @@ export async function removeStoryCharacter(
   });
 
   const deletePromise = supabase
-    .from('story_characters')
+    .from('story_turns')
     .delete()
-    .eq('story_character_id', storyCharacterId)
+    .eq('turn_id', turnId)
     .eq('user_id', userId);
 
   const result = await Promise.race([deletePromise, timeoutPromise]);
   const { error } = result as any;
 
   if (error) {
-    throw new Error('Failed to remove story character: ' + error.message);
+    throw new Error('Failed to delete story turn: ' + error.message);
   }
-}
-
-/**
- * Check if a character is already in a story
- */
-export async function isCharacterInStory(
-  storyId: string,
-  characterId: string,
-  userId: string
-): Promise<boolean> {
-  const { data } = await supabase
-    .from('story_characters')
-    .select('story_character_id')
-    .eq('story_id', storyId)
-    .eq('character_id', characterId)
-    .eq('user_id', userId);
-
-  return (data?.length || 0) > 0;
 }
