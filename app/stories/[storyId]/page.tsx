@@ -37,6 +37,10 @@ function StoryDetailPageContent() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
 
+  // Creation tabs (only for new story)
+  const [currentTab, setCurrentTab] = useState<'basic' | 'characters' | 'ai'>('basic');
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+
   // State editing
   const [editingStoryCharacter, setEditingStoryCharacter] = useState<StoryCharacter | null>(null);
   const [worldSchema, setWorldSchema] = useState<WorldStateSchema[]>([]);
@@ -236,6 +240,19 @@ function StoryDetailPageContent() {
           story_prompt: formData.story_prompt.trim(),
         });
 
+        // Add selected characters to the story
+        if (selectedCharacterIds.length > 0) {
+          await Promise.all(
+            selectedCharacterIds.map((characterId) =>
+              addStoryCharacter(user.user_id, {
+                story_id: newStory.story_id,
+                character_id: characterId,
+                is_player: characterId === formData.player_character_id,
+              })
+            )
+          );
+        }
+
         alert('✅ 故事創建成功！');
         router.push(`/stories/${newStory.story_id}`);
       } else {
@@ -417,7 +434,48 @@ function StoryDetailPageContent() {
 
         {/* Form */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          {/* World Selection */}
+          {/* Tabs (only for new story) */}
+          {isNewStory && (
+            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setCurrentTab('basic')}
+                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${
+                    currentTab === 'basic'
+                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  基本設定
+                </button>
+                <button
+                  onClick={() => setCurrentTab('characters')}
+                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${
+                    currentTab === 'characters'
+                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  故事角色 {selectedCharacterIds.length > 0 && `(${selectedCharacterIds.length})`}
+                </button>
+                <button
+                  onClick={() => setCurrentTab('ai')}
+                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${
+                    currentTab === 'ai'
+                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  AI 設定
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Basic Settings */}
+          {(isNewStory && currentTab === 'basic') || !isNewStory ? (
+            <>
+              {/* World Selection */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               世界觀 *
@@ -794,23 +852,142 @@ function StoryDetailPageContent() {
             </div>
           )}
 
-          {/* Story Prompt */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              AI 提示詞 *
-            </label>
-            <textarea
-              value={formData.story_prompt}
-              onChange={(e) => setFormData({ ...formData, story_prompt: e.target.value })}
-              rows={6}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm font-mono"
-              placeholder="給 AI 的指示，例如：\n- 故事風格和語氣\n- 角色行為準則\n- 特殊規則"
-            />
-            {errors.story_prompt && <p className="mt-1 text-sm text-red-600">{errors.story_prompt}</p>}
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              這個提示詞會在每次 AI 生成回應時使用，用來指導 AI 的行為
-            </p>
-          </div>
+            </>
+          ) : null}
+
+          {/* Tab: Characters */}
+          {isNewStory && currentTab === 'characters' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  選擇故事角色
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  選擇要加入故事的角色（可以在創建後繼續新增或移除）
+                </p>
+              </div>
+
+              {selectedCharacterIds.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                    已選擇 ({selectedCharacterIds.length} 個角色)
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedCharacterIds.map((charId) => {
+                      const char = characters.find((c) => c.character_id === charId);
+                      if (!char) return null;
+                      const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+
+                      return (
+                        <div
+                          key={charId}
+                          className="flex items-start justify-between p-3 border border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg"
+                        >
+                          <div className="flex-1">
+                            <h5 className="font-medium text-gray-900 dark:text-white text-sm">
+                              {char.canonical_name}
+                            </h5>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
+                              {char.core_profile_text}
+                            </p>
+                            {charTags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {charTags.slice(0, 2).map((tag: string) => (
+                                  <span
+                                    key={tag}
+                                    className="px-1.5 py-0.5 text-xs bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200 rounded"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() =>
+                              setSelectedCharacterIds((prev) =>
+                                prev.filter((id) => id !== charId)
+                              )
+                            }
+                            className="ml-3 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          >
+                            移除
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                  可選擇的角色
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {characters
+                    .filter((char) => !selectedCharacterIds.includes(char.character_id))
+                    .map((char) => {
+                      const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+                      return (
+                        <button
+                          key={char.character_id}
+                          onClick={() =>
+                            setSelectedCharacterIds((prev) => [...prev, char.character_id])
+                          }
+                          className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
+                        >
+                          <h5 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
+                            {char.canonical_name}
+                          </h5>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mb-1">
+                            {char.core_profile_text}
+                          </p>
+                          {charTags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {charTags.slice(0, 3).map((tag: string) => (
+                                <span
+                                  key={tag}
+                                  className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+                {characters.filter((char) => !selectedCharacterIds.includes(char.character_id))
+                  .length === 0 && (
+                  <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                    所有角色都已選擇
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab: AI Settings */}
+          {(isNewStory && currentTab === 'ai') || !isNewStory ? (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                AI 提示詞 *
+              </label>
+              <textarea
+                value={formData.story_prompt}
+                onChange={(e) => setFormData({ ...formData, story_prompt: e.target.value })}
+                rows={6}
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm font-mono"
+                placeholder="給 AI 的指示，例如：\n- 故事風格和語氣\n- 角色行為準則\n- 特殊規則"
+              />
+              {errors.story_prompt && <p className="mt-1 text-sm text-red-600">{errors.story_prompt}</p>}
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                這個提示詞會在每次 AI 生成回應時使用，用來指導 AI 的行為
+              </p>
+            </div>
+          ) : null}
 
           {/* Actions */}
           <div className="flex gap-4">
