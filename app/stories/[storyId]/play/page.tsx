@@ -4,11 +4,25 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { Story, StoryTurn, ProviderSettings } from '@/types';
+import {
+  Story,
+  StoryTurn,
+  ProviderSettings,
+  StoryCharacter,
+  Character,
+  StoryStateValue,
+  StoryRelationship,
+  WorldStateSchema,
+} from '@/types';
 import { getStoryById } from '@/services/supabase/stories';
 import { getStoryTurns } from '@/services/supabase/story-turns';
 import { getProviderSetting } from '@/services/supabase/provider-settings';
 import { executeTurn } from '@/services/gameplay/execute-turn';
+import { getStoryCharacters } from '@/services/supabase/story-characters';
+import { getCharacterById } from '@/services/supabase/characters';
+import { getAllStateValuesForStory } from '@/services/supabase/story-state-values';
+import { getStoryRelationships } from '@/services/supabase/story-relationships';
+import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 
 function StoryPlayPageContent() {
   const { user } = useAuth();
@@ -22,6 +36,14 @@ function StoryPlayPageContent() {
   const [userInput, setUserInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
+
+  // Character states
+  const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
+  const [characters, setCharacters] = useState<Map<string, Character>>(new Map());
+  const [stateValues, setStateValues] = useState<StoryStateValue[]>([]);
+  const [relationships, setRelationships] = useState<StoryRelationship[]>([]);
+  const [worldSchema, setWorldSchema] = useState<WorldStateSchema[]>([]);
+  const [showStatePanel, setShowStatePanel] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -62,11 +84,48 @@ function StoryPlayPageContent() {
       setStory(storyData);
       setTurns(turnsData);
       setProviderSettings(settings);
+
+      // Load character states
+      await loadCharacterStates(storyData.world_id);
     } catch (err: any) {
       console.error('Failed to load story:', err);
       alert(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadCharacterStates = async (worldId: string) => {
+    if (!user) return;
+
+    try {
+      // Load all character-related data in parallel
+      const [storyChars, states, rels, schema] = await Promise.all([
+        getStoryCharacters(storyId, user.user_id),
+        getAllStateValuesForStory(storyId, user.user_id),
+        getStoryRelationships(storyId, user.user_id),
+        getSchemaByWorldId(worldId, user.user_id),
+      ]);
+
+      setStoryCharacters(storyChars);
+      setStateValues(states);
+      setRelationships(rels);
+      setWorldSchema(schema);
+
+      // Load character details
+      const charDetails = await Promise.all(
+        storyChars.map((sc) => getCharacterById(sc.character_id, user.user_id))
+      );
+
+      const charMap = new Map<string, Character>();
+      charDetails.forEach((char, index) => {
+        if (char) {
+          charMap.set(storyChars[index].story_character_id, char);
+        }
+      });
+      setCharacters(charMap);
+    } catch (err: any) {
+      console.error('Failed to load character states:', err);
     }
   };
 
@@ -98,6 +157,9 @@ function StoryPlayPageContent() {
 
       // Update story object with new turn count
       setStory({ ...story, turn_count: result.turn.turn_index });
+
+      // Reload character states to reflect changes
+      await loadCharacterStates(story.world_id);
     } catch (err: any) {
       console.error('Failed to submit:', err);
       alert(`提交失敗: ${err.message || '未知錯誤'}\n\n請檢查 AI 設定是否正確。`);
@@ -127,7 +189,7 @@ function StoryPlayPageContent() {
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               {story.title}
@@ -136,18 +198,28 @@ function StoryPlayPageContent() {
               回合 {turns.length} • {story.story_mode === 'PLAYER_CHARACTER' ? '玩家角色模式' : '導演模式'}
             </p>
           </div>
-          <button
-            onClick={() => router.push(`/stories/${storyId}`)}
-            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-          >
-            ← 返回設定
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowStatePanel(!showStatePanel)}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+            >
+              {showStatePanel ? '隱藏狀態' : '顯示狀態'}
+            </button>
+            <button
+              onClick={() => router.push(`/stories/${storyId}`)}
+              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+            >
+              ← 返回設定
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Chat Area */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="max-w-4xl mx-auto space-y-6">
           {/* Story Premise (Turn 0) */}
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 border border-purple-200 dark:border-purple-700">
             <div className="flex items-start gap-3">
@@ -233,7 +305,177 @@ function StoryPlayPageContent() {
           )}
 
           <div ref={chatEndRef} />
+          </div>
         </div>
+
+        {/* State Panel */}
+        {showStatePanel && (
+          <div className="w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+                角色狀態
+              </h2>
+
+              {/* Characters */}
+              <div className="space-y-4">
+                {storyCharacters.map((sc) => {
+                  const char = characters.get(sc.story_character_id);
+                  if (!char) return null;
+
+                  // Get this character's state values
+                  const charStates = stateValues.filter(
+                    (sv) => sv.story_character_id === sc.story_character_id
+                  );
+
+                  return (
+                    <div
+                      key={sc.story_character_id}
+                      className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4"
+                    >
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-2 h-2 rounded-full bg-purple-600"></div>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">
+                          {sc.display_name_override || char.canonical_name}
+                        </h3>
+                        {sc.is_player && (
+                          <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
+                            玩家
+                          </span>
+                        )}
+                      </div>
+
+                      {/* State Values */}
+                      {charStates.length > 0 ? (
+                        <div className="space-y-2">
+                          {charStates.map((sv) => {
+                            const schema = worldSchema.find(
+                              (s) => s.schema_key === sv.schema_key
+                            );
+                            if (!schema) return null;
+
+                            let displayValue;
+                            try {
+                              const value = JSON.parse(sv.value_json);
+                              if (schema.type === 'list_text') {
+                                displayValue = Array.isArray(value)
+                                  ? value.join(', ')
+                                  : value;
+                              } else if (typeof value === 'boolean') {
+                                displayValue = value ? '是' : '否';
+                              } else {
+                                displayValue = String(value);
+                              }
+                            } catch {
+                              displayValue = sv.value_json;
+                            }
+
+                            return (
+                              <div key={sv.schema_key} className="text-sm">
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {schema.display_name}:
+                                </span>{' '}
+                                <span className="text-gray-900 dark:text-white font-medium">
+                                  {displayValue}
+                                  {schema.type === 'number' &&
+                                    schema.number_constraints_json &&
+                                    (() => {
+                                      const constraints = JSON.parse(
+                                        schema.number_constraints_json
+                                      );
+                                      return constraints.unit
+                                        ? ` ${constraints.unit}`
+                                        : '';
+                                    })()}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          尚無狀態設定
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Relationships */}
+              {relationships.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+                    角色關係
+                  </h3>
+                  <div className="space-y-2">
+                    {relationships.map((rel, index) => {
+                      const fromChar = storyCharacters.find(
+                        (sc) => sc.story_character_id === rel.from_story_character_id
+                      );
+                      const toChar = storyCharacters.find(
+                        (sc) => sc.story_character_id === rel.to_story_character_id
+                      );
+
+                      if (!fromChar || !toChar) return null;
+
+                      const fromCharDetail = characters.get(fromChar.story_character_id);
+                      const toCharDetail = characters.get(toChar.story_character_id);
+
+                      const tags = JSON.parse(rel.tags_json || '[]');
+
+                      return (
+                        <div
+                          key={`${rel.from_story_character_id}-${rel.to_story_character_id}`}
+                          className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-sm"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-gray-900 dark:text-white font-medium">
+                              {fromChar.display_name_override ||
+                                fromCharDetail?.canonical_name}
+                            </span>
+                            <span className="text-gray-500">→</span>
+                            <span className="text-gray-900 dark:text-white font-medium">
+                              {toChar.display_name_override ||
+                                toCharDetail?.canonical_name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600 dark:text-gray-400">
+                              分數:
+                            </span>
+                            <span
+                              className={`font-medium ${
+                                rel.score > 0
+                                  ? 'text-green-600 dark:text-green-400'
+                                  : rel.score < 0
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-gray-600 dark:text-gray-400'
+                              }`}
+                            >
+                              {rel.score}
+                            </span>
+                          </div>
+                          {tags.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {tags.map((tag: string) => (
+                                <span
+                                  key={tag}
+                                  className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Input Area */}
