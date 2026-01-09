@@ -18,7 +18,6 @@ export interface User {
   user_id: string;
   email: string;
   display_name: string;
-  password_hash: string;
   created_at: string;
   updated_at: string;
   status: UserStatus;

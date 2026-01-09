@@ -38,10 +38,6 @@ export function validatePassword(password: string): {
     errors.push('密碼至少需要 8 個字元');
   }
 
-  if (!/[A-Z]/.test(password)) {
-    errors.push('密碼需要包含至少一個大寫字母');
-  }
-
   if (!/[a-z]/.test(password)) {
     errors.push('密碼需要包含至少一個小寫字母');
   }

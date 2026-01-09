@@ -2,20 +2,20 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '@/types';
-import { getSession, saveSession, clearSession } from '@/lib/auth/session';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { supabase } from '@/lib/supabase/client';
 import {
-  getUserByEmail,
-  createUser as createUserInDb,
-  updateLastLogin,
-} from '@/services/sheets/users';
+  login as loginWithSupabase,
+  register as registerWithSupabase,
+  logout as logoutWithSupabase,
+  getCurrentUser,
+} from '@/services/supabase/auth';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, displayName: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -25,42 +25,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load session on mount
+  // Load session on mount and listen for auth changes
   useEffect(() => {
-    const session = getSession();
-    if (session) {
-      setUser(session.user);
-    }
-    setLoading(false);
+    // Get initial session
+    const initAuth = async () => {
+      try {
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error('Failed to load user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const currentUser = await getCurrentUser();
+          setUser(currentUser);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        } else if (event === 'USER_UPDATED' && session?.user) {
+          const currentUser = await getCurrentUser();
+          setUser(currentUser);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      // Get user from database
-      const dbUser = await getUserByEmail(email);
+      const result = await loginWithSupabase(email, password);
 
-      if (!dbUser) {
-        throw new Error('帳號或密碼錯誤');
+      if (!result.success || !result.user) {
+        throw new Error(result.error || '登入失敗');
       }
 
-      // Verify password
-      const isValid = await verifyPassword(password, dbUser.password_hash);
-      if (!isValid) {
-        throw new Error('帳號或密碼錯誤');
-      }
-
-      // Check if user is active
-      if (dbUser.status !== 'active') {
-        throw new Error('此帳號已被停用');
-      }
-
-      // Update last login
-      await updateLastLogin(dbUser.user_id);
-
-      // Save session
-      saveSession(dbUser);
-      setUser(dbUser);
-    } catch (error) {
+      setUser(result.user);
+    } catch (error: any) {
       console.error('Login failed:', error);
       throw error;
     }
@@ -68,34 +78,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, displayName: string, password: string) => {
     try {
-      // Check if email already exists
-      const existingUser = await getUserByEmail(email);
-      if (existingUser) {
-        throw new Error('此電子郵件已被註冊');
+      const result = await registerWithSupabase(email, password, displayName);
+
+      if (!result.success || !result.user) {
+        throw new Error(result.error || '註冊失敗');
       }
 
-      // Hash password
-      const passwordHash = await hashPassword(password);
-
-      // Create user
-      const newUser = await createUserInDb({
-        email,
-        display_name: displayName,
-        password_hash: passwordHash,
-      });
-
-      // Save session
-      saveSession(newUser);
-      setUser(newUser);
-    } catch (error) {
+      setUser(result.user);
+    } catch (error: any) {
       console.error('Registration failed:', error);
       throw error;
     }
   };
 
-  const logout = () => {
-    clearSession();
-    setUser(null);
+  const logout = async () => {
+    try {
+      await logoutWithSupabase();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   const value: AuthContextType = {
