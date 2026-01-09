@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
+import { withRetry } from '@/lib/supabase/retry';
 import type { StoryTurn } from '@/types';
 
 /**

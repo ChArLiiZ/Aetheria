@@ -4,31 +4,26 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
+import { withRetry } from '@/lib/supabase/retry';
 import type { Story, StoryMode, StoryStatus } from '@/types';
 
 /**
  * Get all stories for a user
  */
 export async function getStories(userId: string): Promise<Story[]> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('stories')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      throw new Error('Failed to fetch stories: ' + error.message);
+    }
+
+    return (data || []) as Story[];
   });
-
-  const fetchPromise = supabase
-    .from('stories')
-    .select('*')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false });
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to fetch stories: ' + error.message);
-  }
-
-  return (data || []) as Story[];
 }
 
 /**
@@ -38,29 +33,23 @@ export async function getStoryById(
   storyId: string,
   userId: string
 ): Promise<Story | null> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
-  });
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('stories')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('user_id', userId)
+      .single();
 
-  const fetchPromise = supabase
-    .from('stories')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('user_id', userId)
-    .single();
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error('Failed to fetch story: ' + error.message);
     }
-    throw new Error('Failed to fetch story: ' + error.message);
-  }
 
-  return data as Story;
+    return data as Story;
+  });
 }
 
 /**

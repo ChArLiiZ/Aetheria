@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/supabase/client';
+import { withRetry } from '@/lib/supabase/retry';
 import type { ProviderSettings, AIParams } from '@/types';
 
 export type Provider = 'openrouter' | 'gemini' | 'openai';
