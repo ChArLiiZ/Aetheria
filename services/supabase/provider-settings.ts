@@ -59,12 +59,6 @@ export async function upsertProviderSettings(
     default_params?: AIParams;
   }
 ): Promise<ProviderSettings> {
-  console.log('[upsertProviderSettings] Starting...', {
-    provider,
-    apiKeyLength: data.api_key.length,
-    model: data.default_model,
-  });
-
   const payload = {
     user_id: userId,
     provider,
@@ -73,47 +67,25 @@ export async function upsertProviderSettings(
     default_params_json: data.default_params ? JSON.stringify(data.default_params) : '{}',
   };
 
-  console.log('[upsertProviderSettings] Payload:', {
-    ...payload,
-    api_key: `${data.api_key.substring(0, 10)}...` // 只显示前10个字符
+  // Use Promise.race to prevent hanging issues with Supabase client
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
   });
 
-  console.log('[upsertProviderSettings] Calling supabase.from().upsert()...');
+  const upsertPromise = supabase
+    .from('provider_settings')
+    .upsert(payload, { onConflict: 'user_id,provider' })
+    .select()
+    .single();
 
-  try {
-    // 添加超时保护
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
-    });
+  const result = await Promise.race([upsertPromise, timeoutPromise]);
+  const { data: upsertedSettings, error } = result as any;
 
-    const upsertPromise = supabase
-      .from('provider_settings')
-      .upsert(payload, { onConflict: 'user_id,provider' })
-      .select()
-      .single();
-
-    const result = await Promise.race([upsertPromise, timeoutPromise]);
-
-    console.log('[upsertProviderSettings] Promise.race completed');
-
-    const { data: upsertedSettings, error } = result as any;
-
-    console.log('[upsertProviderSettings] Database response:', {
-      hasData: !!upsertedSettings,
-      error: error?.message,
-    });
-
-    if (error || !upsertedSettings) {
-      console.error('[upsertProviderSettings] Error details:', error);
-      throw new Error('Failed to upsert provider settings: ' + error?.message);
-    }
-
-    console.log('[upsertProviderSettings] Success!');
-    return upsertedSettings as ProviderSettings;
-  } catch (err: any) {
-    console.error('[upsertProviderSettings] Caught exception:', err);
-    throw err;
+  if (error || !upsertedSettings) {
+    throw new Error('Failed to upsert provider settings: ' + error?.message);
   }
+
+  return upsertedSettings as ProviderSettings;
 }
 
 /**
