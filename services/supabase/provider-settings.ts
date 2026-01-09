@@ -59,25 +59,44 @@ export async function upsertProviderSettings(
     default_params?: AIParams;
   }
 ): Promise<ProviderSettings> {
+  console.log('[upsertProviderSettings] Starting...', {
+    provider,
+    apiKeyLength: data.api_key.length,
+    model: data.default_model,
+  });
+
+  const payload = {
+    user_id: userId,
+    provider,
+    api_key: data.api_key,
+    default_model: data.default_model,
+    default_params_json: data.default_params ? JSON.stringify(data.default_params) : '{}',
+  };
+
+  console.log('[upsertProviderSettings] Payload:', {
+    ...payload,
+    api_key: `${data.api_key.substring(0, 10)}...` // 只显示前10个字符
+  });
+
+  console.log('[upsertProviderSettings] Calling supabase.from().upsert()...');
+
   const { data: upsertedSettings, error } = await supabase
     .from('provider_settings')
-    .upsert(
-      {
-        user_id: userId,
-        provider,
-        api_key: data.api_key,
-        default_model: data.default_model,
-        default_params_json: data.default_params ? JSON.stringify(data.default_params) : '{}',
-      },
-      { onConflict: 'user_id,provider' }
-    )
+    .upsert(payload, { onConflict: 'user_id,provider' })
     .select()
     .single();
 
+  console.log('[upsertProviderSettings] Database response:', {
+    hasData: !!upsertedSettings,
+    error: error?.message,
+  });
+
   if (error || !upsertedSettings) {
+    console.error('[upsertProviderSettings] Error details:', error);
     throw new Error('Failed to upsert provider settings: ' + error?.message);
   }
 
+  console.log('[upsertProviderSettings] Success!');
   return upsertedSettings as ProviderSettings;
 }
 
