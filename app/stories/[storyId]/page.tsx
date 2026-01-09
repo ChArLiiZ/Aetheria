@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { Story, World, Character, StoryMode, StoryCharacter } from '@/types';
+import { Story, World, Character, StoryMode, StoryCharacter, WorldStateSchema, StoryStateValue } from '@/types';
 import { getStoryById, createStory, updateStory, storyTitleExists } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
 import { getCharacters } from '@/services/supabase/characters';
@@ -14,6 +14,11 @@ import {
   removeStoryCharacter,
   isCharacterInStory
 } from '@/services/supabase/story-characters';
+import { getSchemaByWorldId } from '@/services/supabase/world-schema';
+import {
+  getStateValues,
+  setMultipleStateValues
+} from '@/services/supabase/story-state-values';
 
 // Pagination helper
 const ITEMS_PER_PAGE = 6;
@@ -31,6 +36,12 @@ function StoryDetailPageContent() {
   const [worlds, setWorlds] = useState<World[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
+
+  // State editing
+  const [editingStoryCharacter, setEditingStoryCharacter] = useState<StoryCharacter | null>(null);
+  const [worldSchema, setWorldSchema] = useState<WorldStateSchema[]>([]);
+  const [stateValues, setStateValues] = useState<Record<string, any>>({});
+  const [savingStates, setSavingStates] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -293,6 +304,80 @@ function StoryDetailPageContent() {
       console.error('Failed to remove character:', err);
       alert(`移除角色失敗: ${err.message || '未知錯誤'}`);
     }
+  };
+
+  // State editing functions
+  const handleEditStates = async (storyChar: StoryCharacter) => {
+    if (!user || !story) return;
+
+    try {
+      // Load world schema and current state values
+      const [schemaData, stateData] = await Promise.all([
+        getSchemaByWorldId(story.world_id, user.user_id),
+        getStateValues(storyId, storyChar.story_character_id, user.user_id),
+      ]);
+
+      setWorldSchema(schemaData);
+      setEditingStoryCharacter(storyChar);
+
+      // Initialize state values
+      const initialValues: Record<string, any> = {};
+
+      // First, set default values from schema
+      schemaData.forEach((schema) => {
+        try {
+          initialValues[schema.schema_key] = JSON.parse(schema.default_value_json);
+        } catch {
+          initialValues[schema.schema_key] = '';
+        }
+      });
+
+      // Then, override with existing state values
+      stateData.forEach((state) => {
+        try {
+          initialValues[state.schema_key] = JSON.parse(state.value_json);
+        } catch {
+          initialValues[state.schema_key] = state.value_json;
+        }
+      });
+
+      setStateValues(initialValues);
+    } catch (err: any) {
+      console.error('Failed to load states:', err);
+      alert(`載入狀態失敗: ${err.message || '未知錯誤'}`);
+    }
+  };
+
+  const handleSaveStates = async () => {
+    if (!user || !editingStoryCharacter) return;
+
+    try {
+      setSavingStates(true);
+
+      // Prepare state values for saving
+      const valuesToSave = worldSchema.map((schema) => ({
+        story_id: storyId,
+        story_character_id: editingStoryCharacter.story_character_id,
+        schema_key: schema.schema_key,
+        value_json: JSON.stringify(stateValues[schema.schema_key] ?? JSON.parse(schema.default_value_json)),
+      }));
+
+      await setMultipleStateValues(user.user_id, valuesToSave);
+
+      alert('✅ 狀態已儲存！');
+      setEditingStoryCharacter(null);
+    } catch (err: any) {
+      console.error('Failed to save states:', err);
+      alert(`儲存狀態失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setSavingStates(false);
+    }
+  };
+
+  const handleCloseStateEditor = () => {
+    setEditingStoryCharacter(null);
+    setStateValues({});
+    setWorldSchema([]);
   };
 
   if (loading) {
@@ -778,7 +863,7 @@ function StoryDetailPageContent() {
                       key={storyChar.story_character_id}
                       className="border border-gray-300 dark:border-gray-600 rounded-lg p-4"
                     >
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
                           <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
                             {storyChar.display_name_override || char.canonical_name}
@@ -792,6 +877,14 @@ function StoryDetailPageContent() {
                             {char.core_profile_text}
                           </p>
                         </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditStates(storyChar)}
+                          className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                        >
+                          編輯狀態
+                        </button>
                         <button
                           onClick={() =>
                             handleRemoveCharacter(
@@ -799,7 +892,7 @@ function StoryDetailPageContent() {
                               storyChar.display_name_override || char.canonical_name
                             )
                           }
-                          className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition border border-red-300 dark:border-red-600"
                           title="移除角色"
                         >
                           移除
@@ -876,6 +969,165 @@ function StoryDetailPageContent() {
             >
               🎮 進入遊戲
             </button>
+          </div>
+        )}
+
+        {/* State Editor Modal */}
+        {editingStoryCharacter && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  編輯角色狀態
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  {editingStoryCharacter.display_name_override ||
+                    characters.find((c) => c.character_id === editingStoryCharacter.character_id)?.canonical_name}
+                </p>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {worldSchema.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 dark:text-gray-400">
+                      此世界觀尚未定義任何狀態欄位
+                    </p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+                      請先在世界觀設定中新增狀態 Schema
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {worldSchema.map((schema) => (
+                      <div key={schema.schema_id} className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {schema.display_name}
+                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                            ({schema.type})
+                          </span>
+                        </label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                          {schema.ai_description}
+                        </p>
+
+                        {/* Number input */}
+                        {schema.type === 'number' && (
+                          <input
+                            type="number"
+                            value={stateValues[schema.schema_key] ?? ''}
+                            onChange={(e) =>
+                              setStateValues({
+                                ...stateValues,
+                                [schema.schema_key]: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                          />
+                        )}
+
+                        {/* Text input */}
+                        {schema.type === 'text' && (
+                          <input
+                            type="text"
+                            value={stateValues[schema.schema_key] ?? ''}
+                            onChange={(e) =>
+                              setStateValues({
+                                ...stateValues,
+                                [schema.schema_key]: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                          />
+                        )}
+
+                        {/* Boolean input */}
+                        {schema.type === 'bool' && (
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={stateValues[schema.schema_key] ?? false}
+                              onChange={(e) =>
+                                setStateValues({
+                                  ...stateValues,
+                                  [schema.schema_key]: e.target.checked,
+                                })
+                              }
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                              {stateValues[schema.schema_key] ? '是' : '否'}
+                            </span>
+                          </label>
+                        )}
+
+                        {/* Enum select */}
+                        {schema.type === 'enum' && schema.enum_options_json && (
+                          <select
+                            value={stateValues[schema.schema_key] ?? ''}
+                            onChange={(e) =>
+                              setStateValues({
+                                ...stateValues,
+                                [schema.schema_key]: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                          >
+                            <option value="">選擇...</option>
+                            {JSON.parse(schema.enum_options_json).map((option: string) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        {/* List of text */}
+                        {schema.type === 'list_text' && (
+                          <textarea
+                            value={
+                              Array.isArray(stateValues[schema.schema_key])
+                                ? stateValues[schema.schema_key].join('\n')
+                                : ''
+                            }
+                            onChange={(e) =>
+                              setStateValues({
+                                ...stateValues,
+                                [schema.schema_key]: e.target.value
+                                  .split('\n')
+                                  .filter((line) => line.trim()),
+                              })
+                            }
+                            rows={4}
+                            placeholder="每行一個項目"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+                <button
+                  onClick={handleSaveStates}
+                  disabled={savingStates || worldSchema.length === 0}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
+                >
+                  {savingStates ? '儲存中...' : '💾 儲存狀態'}
+                </button>
+                <button
+                  onClick={handleCloseStateEditor}
+                  disabled={savingStates}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition disabled:opacity-50"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
