@@ -26,7 +26,7 @@ export interface User {
 
 export interface ProviderSettings {
   user_id: string;
-  provider: 'openrouter';
+  provider: 'openrouter' | 'openai';
   api_key: string;
   default_model: string;
   default_params_json: string; // JSON string

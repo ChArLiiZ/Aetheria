@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -196,11 +196,11 @@ export default function RegisterPage() {
 
         <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
           <p className="text-blue-800 dark:text-blue-200 text-xs">
-            ℹ️ 資料儲存在 Google Sheets 中。<br />
-            如無法註冊，請確認已完成 Apps Script 設定（參考 APPS_SCRIPT_SETUP.md）。
+            ℹ️ 資料儲存在 Supabase 中。
           </p>
         </div>
       </div>
     </main>
   );
 }
+

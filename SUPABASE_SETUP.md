@@ -1,4 +1,4 @@
-# Supabase 設置指南
+﻿# Supabase 設置指南
 
 ## 1. 創建 Supabase 專案
 
@@ -47,11 +47,8 @@ SUPABASE_SERVICE_ROLE_KEY=你的 service_role key
 
 ## 4. 安裝相依套件
 
-確保已安裝必要的套件：
-
 ```bash
-npm install @supabase/supabase-js bcryptjs
-npm install --save-dev @types/bcryptjs
+npm install
 ```
 
 ## 5. 執行資料庫 Migration
@@ -86,18 +83,29 @@ RLS 確保：
 - 新使用者可以註冊帳號
 - 所有資料操作都經過權限驗證
 
-### 第三步：暫時禁用 RLS（重要！）
-
-⚠️ **重要**：由於我們使用自定義認證系統（而非 Supabase Auth），需要暫時禁用 RLS。
+### 第三步：啟用 Supabase Auth 遷移
 
 1. 同樣在 SQL Editor 中，點擊 **New query**
-2. 複製 `supabase/migrations/003_disable_rls_temp.sql` 的內容
+2. 複製 `supabase/migrations/004_migrate_to_supabase_auth.sql` 的內容
 3. 貼上並點擊 **Run**
 
-這個遷移會：
-- 暫時禁用主要資料表的 RLS
-- 保留 users 表的 RLS（保護用戶資料）
-- 應用層仍會檢查 user_id 確保資料安全
+接著執行修正 trigger 的遷移：
+
+1. 點擊 **New query**
+2. 複製 `supabase/migrations/005_fix_user_creation_trigger.sql` 的內容
+3. 貼上並點擊 **Run**
+
+最後執行使用者 insert policy 修正：
+
+1. 點擊 **New query**
+2. 複製 `supabase/migrations/006_fix_user_insert_policy.sql` 的內容
+3. 貼上並點擊 **Run**
+
+接著移除已棄用 provider 限制：
+
+1. 點擊 **New query**
+2. 複製 `supabase/migrations/007_remove_gemini_provider.sql` 的內容
+3. 貼上並點擊 **Run**
 
 ## 6. 完成！
 
@@ -121,9 +129,4 @@ npm run dev
 - RLS policies 是否已正確執行
 - 用戶是否已登入
 
-## 資料遷移（從 Google Sheets）
 
-如果你有現有資料需要遷移：
-1. 從 Google Sheets 匯出資料為 CSV
-2. 在 Supabase Dashboard 中使用 Table Editor 匯入
-3. 或使用提供的遷移腳本（待開發）

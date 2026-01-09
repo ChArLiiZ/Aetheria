@@ -4,7 +4,7 @@
  * Tests API keys and model configurations for different providers
  */
 
-export type Provider = 'openrouter' | 'gemini' | 'openai';
+export type Provider = 'openrouter' | 'openai';
 
 interface TestResult {
   success: boolean;
@@ -48,68 +48,6 @@ async function testOpenRouter(apiKey: string, model: string): Promise<TestResult
     const data = await response.json();
 
     if (data.choices && data.choices.length > 0) {
-      return {
-        success: true,
-        message: '測試成功',
-        details: `模型回應正常。使用模型：${model}`,
-      };
-    }
-
-    return {
-      success: false,
-      message: '測試失敗',
-      details: '未收到有效的回應',
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      message: '測試失敗',
-      details: error.message || '網路錯誤',
-    };
-  }
-}
-
-/**
- * Test Google Gemini API
- */
-async function testGemini(apiKey: string, model: string): Promise<TestResult> {
-  try {
-    // Gemini API endpoint format
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: 'Hi',
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          maxOutputTokens: 10,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      return {
-        success: false,
-        message: '測試失敗',
-        details: error.error?.message || `HTTP ${response.status}: ${response.statusText}`,
-      };
-    }
-
-    const data = await response.json();
-
-    if (data.candidates && data.candidates.length > 0) {
       return {
         success: true,
         message: '測試成功',
@@ -198,8 +136,6 @@ export async function testProviderConnection(
   switch (provider) {
     case 'openrouter':
       return await testOpenRouter(apiKey, model);
-    case 'gemini':
-      return await testGemini(apiKey, model);
     case 'openai':
       return await testOpenAI(apiKey, model);
     default:

@@ -1,596 +1,481 @@
-# Aetheria - AI 互動小說應用程式完整架構規格書
-
-## 1. 產品目標
-
-Aetheria 是一款跨平台（**Android / Windows / Web**）的 AI 互動小說 App。玩家可：
-
-- 建立世界觀（世界規則 + 狀態 Schema）
-- 建立角色（跨世界共用）
-- 建立故事：選世界觀 + 選角色 + 指定玩家角色（可空）+ 設定故事內角色專屬設定（override）+ 初始化狀態與關係
-- 遊玩：玩家自由輸入；AI 生成故事敘事與多角色對話；另一個 AI Agent 生成狀態/關係/物品清單變動並**自動套用**寫入資料庫
-- 隨時查看側邊欄：所有角色當前狀態值、物品清單、關係（數值+tags）
-- 每個故事可自訂敘事 Prompt（微調語氣/視角/節奏等）
-- 玩家可設定 AI 供應商與 API Key（初版 OpenRouter），**API key 全局設定**；故事內可覆寫模型/參數
-
+# Aetheria - AI 互動小說應用程式
+ 
+## 📋 專案概覽
+ 
+Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
+- 建立世界觀與狀態系統
+- 建立可重用的角色
+- 創造獨特的故事並與 AI 互動
+- 即時追蹤角色狀態、關係和物品
+ 
+**技術棧**：Next.js 15 + TypeScript + Supabase + OpenRouter AI
+ 
 ---
-
-## 2. 名詞定義（必須一致）
-
-- **World（世界觀）**：世界規則 + 狀態 Schema。每個 Story 必須選 1 個 World。
-- **WorldStateSchema（狀態 Schema）**：定義「此 World 中故事角色擁有的狀態欄位」及型別/預設值/AI 說明。
-- **Character（角色）**：跨世界共用的角色卡（背景、性格、說話風格等），不綁 World。
-- **Story（故事）**：一次遊玩實例；綁定 1 World、包含多個角色、可指定 0 或 1 個玩家角色。
-- **StoryCharacter（故事角色）**：角色加入某故事後的實例。
-- **Override（故事內角色專屬設定）**：角色在該故事/世界觀下的身份與調整（含顯示名稱覆寫）。
-- **Turn（回合）**：玩家輸入 → AI 敘事 → 狀態變動寫入 的最小單位。
-- **Relationship（關係）**：故事內「角色A → 角色B」的關係狀態，包含 `score`（數值）+ `tags`（多選）。
-- **Inventory（物品清單）**：狀態欄位的一種型別，採 `List<Text>`。
-
+ 
+## 🎯 核心概念
+ 
+### 關鍵名詞定義
+- **World（世界觀）**：世界規則 + 狀態 Schema 定義
+- **WorldStateSchema（狀態 Schema）**：定義角色可擁有的狀態欄位（HP、MP、物品等）
+- **Character（角色）**：跨世界共用的角色卡（背景、性格、說話風格）
+- **Story（故事）**：一次遊玩實例，綁定 1 個世界觀 + 多個角色
+- **StoryCharacter（故事角色）**：角色在特定故事中的實例
+- **Turn（回合）**：玩家輸入 → AI 生成敘述 → 狀態變更的最小單位
+- **Relationship（關係）**：角色間的關係狀態（分數 + 標籤）
+ 
+### 遊戲模式
+- **PLAYER_CHARACTER 模式**：玩家控制一個特定角色
+- **DIRECTOR 模式**：玩家是導演，可指揮所有角色和事件
+ 
 ---
-
-## 3. 核心互動規則（硬規則）
-
-### 3.1 玩家輸入控制範圍
-
-- **故事有玩家角色（PLAYER_CHARACTER 模式）**：玩家輸入只能描述/決定「玩家角色」的行動或台詞；不得直接指揮其他角色。
-- **故事無玩家角色（DIRECTOR 模式）**：玩家是導演，可描述/決定任何角色行動。
-
-### 3.2 狀態變更套用
-
-- AI 產生狀態/關係/物品變更後，系統**自動套用**，不需玩家確認。
-
-### 3.3 世界觀 Schema 動態變更
-
-- Schema 的新增/修改/刪除會動態影響既有故事：
-    - 新增欄位 → 自動補到所有相關故事與角色
-    - 刪除欄位 → **硬刪**（相關狀態值與歷史也刪除）
-
+ 
+## ✅ 功能完成狀態
+ 
+### 🟢 Phase 0: 基礎架構 [100%]
+ 
+#### ✅ 資料庫與認證
+- [x] Supabase 專案建立與設定
+- [x] 使用者認證系統（註冊、登入、登出）
+- [x] RLS（Row Level Security）規則
+- [x] 資料庫 Schema 完整定義
+ 
+#### ✅ 核心類型系統
+- [x] TypeScript 類型定義（`types/database.ts`, `types/index.ts`）
+- [x] Supabase 客戶端設定（`lib/supabase/client.ts`）
+- [x] 認證上下文（`contexts/AuthContext.tsx`）
+- [x] 受保護路由組件（`components/ProtectedRoute.tsx`）
+ 
 ---
-
-## 4. 平台與 UI 導航（IA）
-
-跨平台一致的資訊架構：
-
-1. **Dashboard**
-- 續玩最近故事
-- 新建故事
-- 世界觀
-- 角色
-- AI 設定（全局）
-1. **世界觀（Worlds）**
-- 世界觀列表
-- 世界觀編輯：
-    - 基本資訊
-    - 世界規則
-    - 狀態 Schema CRUD
-1. **角色（Characters）**
-- 角色列表
-- 角色編輯（核心角色卡）
-1. **故事（Stories）**
-- 故事列表（進行中/已完結）
-- 建立故事 Wizard（分步）
-- 故事遊玩頁（主畫面 + 側邊欄）
-- 故事回顧頁（回合列表 + 狀態 diff）
-1. **設定（Settings）**
-- OpenRouter API key（全局）
-- 預設模型/參數
-- 同步狀態（可選：顯示最近同步時間、衝突提示）
-
+ 
+### 🟢 Phase 1: 世界觀與角色管理 [100%]
+ 
+#### ✅ 世界觀管理（Worlds）
+- [x] 世界觀 CRUD 操作（`services/supabase/worlds.ts`）
+  - 建立、讀取、更新、刪除世界觀
+  - 名稱重複檢查
+  - 複製世界觀功能
+- [x] 世界觀列表頁面（`app/worlds/page.tsx`）
+  - 卡片式顯示
+  - 搜尋和分頁功能
+- [x] 世界觀編輯頁面（`app/worlds/[worldId]/page.tsx`）
+  - 基本資訊編輯
+  - 世界規則編輯
+  - 狀態 Schema 管理
+ 
+#### ✅ 狀態 Schema 系統（WorldStateSchema）
+- [x] Schema CRUD 操作（`services/supabase/world-schema.ts`）
+- [x] 支援的狀態類型：
+  - `number`（數字）：支援最小值、最大值、小數位數、單位
+  - `text`（文字）
+  - `bool`（布林）
+  - `enum`（列舉）：支援選項列表
+  - `list_text`（文字列表）：用於物品清單等
+- [x] 每個 Schema 包含：
+  - schema_key（唯一識別碼）
+  - display_name（顯示名稱）
+  - type（類型）
+  - ai_description（AI 描述，供 Agent 理解）
+  - default_value（預設值）
+  - 類型特定約束（數字範圍、列舉選項等）
+ 
+#### ✅ 角色管理（Characters）
+- [x] 角色 CRUD 操作（`services/supabase/characters.ts`）
+- [x] 角色列表頁面（`app/characters/page.tsx`）
+  - 卡片式顯示
+  - 標籤過濾
+  - 搜尋和分頁
+- [x] 角色編輯頁面（`app/characters/[characterId]/page.tsx`）
+  - 核心角色設定（名稱、背景、性格）
+  - 標籤管理
+  - 複製角色功能
+ 
 ---
-
-## 5. 功能需求（模組拆解）
-
-### 5.1 全局 AI 設定（OpenRouter）
-
-- 設定項（全局）：
-    - provider = `openrouter`
-    - api_key（需同步）
-    - default_model
-    - default_params（temperature、max_tokens、top_p、stream…）
-- 功能：
-    - 測試連線
-    - 儲存並同步到 Sheets
-
-> 注意（不展開方案）：若 Web 客戶端可直接讀到 Sheets，API key 會有外洩風險。此風險需由權限設計或中介層處理。
-> 
-
+ 
+### 🟢 Phase 2: 故事建立與角色狀態系統 [100%]
+ 
+#### ✅ 故事基礎系統
+- [x] 故事 CRUD 操作（`services/supabase/stories.ts`）
+- [x] 故事列表頁面（`app/stories/page.tsx`）
+  - 顯示所有故事
+  - 世界觀關聯顯示
+  - 返回主頁按鈕
+ 
+#### ✅ 故事建立流程
+- [x] 分頁式建立介面（`app/stories/[storyId]/page.tsx`）
+  - **Tab 1: 基本設定**
+    - 故事標題
+    - 世界觀選擇（卡片式 + 搜尋 + 分頁）
+    - 故事前提
+  - **Tab 2: 故事角色**
+    - 角色選擇（卡片式 + 標籤過濾 + 搜尋 + 分頁）
+    - 玩家角色指定
+    - **角色初始狀態設定**（展開/收合式編輯器）
+  - **Tab 3: AI 設定**
+    - 故事提示詞（Narrative Prompt）
+    - 模型覆寫
+    - 參數覆寫
+ 
+#### ✅ 故事角色系統
+- [x] 故事角色 CRUD（`services/supabase/story-characters.ts`）
+  - 將角色加入故事
+  - 設定顯示名稱覆寫
+  - 標記玩家角色
+  - 移除角色
+ 
+#### ✅ 狀態值系統
+- [x] 狀態值 CRUD（`services/supabase/story-state-values.ts`）
+  - 讀取所有狀態值
+  - 設定單一狀態值
+  - 批量設定狀態值（upsert）
+- [x] 初始狀態設定（建立故事時）
+  - 自動從 Schema 載入欄位定義
+  - 預填預設值
+  - 支援所有狀態類型的編輯
+ 
+#### ✅ 關係系統
+- [x] 關係 CRUD（`services/supabase/story-relationships.ts`）
+  - 設定角色間關係
+  - 更新關係分數
+  - 更新關係標籤
+  - 刪除關係
+ 
 ---
-
-### 5.2 角色管理（跨世界共用）
-
-- 角色列表：新增/編輯/複製/刪除
-- 角色欄位：
-    - canonical_name
-    - core_profile_text（背景/性格/動機/秘密/說話風格）
-    - tags（可選）
-
+ 
+### 🟢 Phase 3: 核心遊戲迴圈 [100%]
+ 
+#### ✅ AI Agent 系統
+ 
+**Narrative Agent**（`services/agents/narrative-agent.ts`）
+- [x] 生成故事敘述與角色對話
+- [x] System Prompt 包含：
+  - 世界規則
+  - 故事設定
+  - 遊戲模式（PLAYER_CHARACTER / DIRECTOR）
+  - 所有角色資訊（核心設定 + 當前狀態）
+  - 角色關係
+- [x] 對話歷史上下文（最近 5 回合）
+- [x] 繁體中文輸出
+- [x] JSON 格式輸出：
+  ```json
+  {
+    "narrative": "敘述文字",
+    "dialogue": [{"speaker_story_character_id": "xxx", "text": "對話"}],
+    "scene_tags": ["標籤"],
+    "system_notes": ["狀態變更提示"]
+  }
+  ```
+- [x] 參數：temperature: 0.8（較高創造力）
+ 
+**State Delta Agent**（`services/agents/state-delta-agent.ts`）
+- [x] 分析敘述並決定狀態變更
+- [x] System Prompt 包含：
+  - 世界狀態 Schema 定義
+  - 當前所有狀態值
+  - 當前關係
+- [x] 讀取 Narrative Agent 的 system_notes
+- [x] JSON 格式輸出：
+  ```json
+  {
+    "changes": [{"target_story_character_id": "xxx", "schema_key": "hp", "op": "inc", "value": -10, "reason": "原因"}],
+    "list_ops": [{"target_story_character_id": "xxx", "schema_key": "inventory", "op": "push", "value": "物品", "reason": "原因"}],
+    "relationship_changes": [...]
+  }
+  ```
+- [x] 參數：temperature: 0.3（較低溫度，更確定性）
+ 
+**回合執行協調**（`services/gameplay/execute-turn.ts`）
+- [x] 完整的回合執行流程：
+  1. 收集上下文（世界、角色、狀態、關係、歷史）
+  2. 呼叫 Narrative Agent
+  3. 呼叫 State Delta Agent
+  4. 套用狀態變更
+  5. 儲存回合記錄
+- [x] 狀態變更套用：
+  - 數字：set（設定）、inc（增減）
+  - 文字/布林/列舉：set
+  - 列表：push（新增）、remove（移除）、set（替換）
+  - 關係：set_score、inc_score、add/remove tags
+- [x] 自動約束檢查：
+  - 數字限制在 min/max 範圍
+  - 關係分數限制在 -100 到 100
+- [x] 並行資料載入優化
+ 
+#### ✅ 回合記錄系統
+- [x] 回合 CRUD（`services/supabase/story-turns.ts`）
+  - 儲存玩家輸入
+  - 儲存 AI 敘述
+  - 儲存對話
+  - 儲存場景標籤
+- [x] 回合計數追蹤
+ 
+#### ✅ 遊戲頁面 UI（`app/stories/[storyId]/play/page.tsx`）
+- [x] 聊天式介面
+  - 故事前提顯示（回合 0）
+  - 回合歷史（玩家輸入 + AI 回應）
+  - 對話氣泡顯示
+  - 自動滾動到最新回合
+- [x] 玩家輸入區
+  - 多行文字輸入
+  - Enter 送出，Shift+Enter 換行
+  - 提交中狀態顯示
+- [x] **狀態面板**（右側側邊欄）
+  - 「顯示狀態」/「隱藏狀態」切換按鈕
+  - 所有角色的當前狀態值
+  - 玩家角色標記
+  - 狀態類型智能顯示：
+    - 數字：顯示單位
+    - 布林：顯示「是」/「否」
+    - 列表：逗號分隔顯示
+  - 角色關係顯示：
+    - 關係方向（A → B）
+    - 分數顏色標示（正數綠色、負數紅色）
+    - 關係標籤
+- [x] 狀態即時更新（每回合後自動重新載入）
+- [x] 錯誤處理與友善提示
+ 
+#### ✅ AI 整合
+- [x] OpenRouter API 整合（`services/ai/openrouter.ts`）
+  - API 呼叫封裝
+  - 重試機制（JSON 解析錯誤自動重試）
+  - JSON 解析工具（支援 markdown code block）
+  - 連線測試功能
+- [x] 提供商設定（`services/supabase/provider-settings.ts`）
+  - API Key 管理
+  - 預設模型設定
+  - 預設參數設定
+- [x] 設定頁面（`app/settings/page.tsx`）
+ 
 ---
-
-### 5.3 世界觀管理（World + Schema）
-
-- 世界觀列表：新增/編輯/複製/刪除
-- 世界規則：rules_text（硬規則/禁忌/限制）
-- 狀態 Schema（CRUD）
-    - 欄位屬性：
-        - schema_key（唯一且不可重用）
-        - display_name
-        - type：`number | text | bool | enum | list_text`
-        - ai_description
-        - default_value（json）
-        - enum_options（json array）
-        - number_constraints（json：min/max/decimals/unit）
-        - sort_order
-
+ 
+### 🟢 Phase 4: 效能優化與穩定性 [100%]
+ 
+#### ✅ 資料庫重試機制（`lib/supabase/retry.ts`）
+- [x] 智能重試系統：
+  - 首次嘗試：5 秒逾時
+  - 第 2 次：7.5 秒逾時
+  - 第 3 次：11.25 秒逾時
+  - 最多重試 3 次
+- [x] 指數退避策略（100ms → 200ms → 300ms）
+- [x] 詳細錯誤訊息
+- [x] 可自定義重試參數
+- [x] onRetry 回調支援
+- [x] 已套用至部分服務（stories.ts 等）
+- [x] 完整遷移指南（`docs/RETRY_MIGRATION_GUIDE.md`）
+- [x] 自動化轉換工具
+ 
+#### ✅ 效能優化
+- [x] 並行資料載入（Promise.all）
+- [x] 批量操作（批量設定狀態值）
+- [x] 查詢優化（減少 N+1 查詢）
+- [x] 使用 Map 結構加速查找
+ 
 ---
-
-### 5.4 建立故事 Wizard（必須分步）
-
-**Step 1：選世界觀**（world_id）
-
-**Step 2：選角色**（多個 character_id）
-
-**Step 3：玩家角色（可空）**
-
-- 選 0 或 1 個作為玩家角色
-- 決定 story_mode：
-    - 有玩家角色 → PLAYER_CHARACTER
-    - 無玩家角色 → DIRECTOR
-
-**Step 4：故事基本資訊**
-
-- title、premise_text
-
-**Step 5：故事內角色專屬設定（Override）**
-
-每個 story_character：
-
-- `override_profile_text`（身份/陣營/職業/背景調整）
-- `display_name_override`（可覆寫顯示名稱；保留角色 id）
-- （可選）override_voice_style
-
-**Step 6：初始化狀態**
-
-- 系統依 Schema 為每個 story_character 生成狀態值
-- UI 讓玩家填入初始值（預設帶入 default_value）
-
-**Step 7：初始化關係（score + tags，多選）**
-
-- 針對故事內角色建立關係資料：
-    - score（例如 -100~100）
-    - tags（多選，array）
-- UI 可先提供預設：score=0、tags=[]
-
-**Step 8：故事內 AI 設定（可覆寫）**
-
-- model_override（預設帶入全局 default_model）
-- params_override（可選）
-- story_prompt（敘事微調 prompt）
-
+ 
+## 🟡 待完成功能
+ 
+### Phase 5: 進階功能 [0%]
+ 
+#### ⏳ Action Suggestion Agent
+- [ ] 建立建議系統（`services/agents/action-suggestion-agent.ts`）
+- [ ] 生成 3 個行動建議
+- [ ] 根據遊戲模式調整建議
+- [ ] UI 按鈕與顯示
+ 
+#### ⏳ 回顧系統
+- [ ] ChangeLog 資料表與服務
+  - 記錄每次狀態變更
+  - 記錄變更前後值
+  - 記錄變更原因
+- [ ] 回顧頁面 UI
+  - 回合列表
+  - 點擊回合查看詳情
+  - 狀態變更 diff 顯示
+  - 關係變更歷史
+ 
+#### ⏳ 進階互動
+- [ ] 分支/回溯重玩功能
+- [ ] 故事分享功能
+ 
 ---
-
-### 5.5 遊玩主循環（回合制）
-
-主畫面包含：
-
-- 敘事與對話流
-- 玩家輸入框
-- 「推薦行動」按鈕（顯示 3 個建議）
-- 側邊欄：狀態/物品/關係
-
-回合流程（每次送出輸入）：
-
-1. 讀取上下文（world rules、story prompt、角色卡+override、當前狀態、關係、最近 N 回合）
-2. Narrative Agent 生成敘事+對話（JSON）
-3. State Delta Agent 生成變更（JSON）
-4. 自動套用變更：更新 StoryStateValues / StoryRelationships
-5. append Turn 記錄與 ChangeLog（供回顧與 diff）
-
+ 
+## 📊 整體完成度
+ 
+### 核心功能
+- ✅ 使用者系統：100%
+- ✅ 世界觀管理：100%
+- ✅ 角色管理：100%
+- ✅ 故事建立：100%
+- ✅ 遊戲核心迴圈：100%
+- ✅ 狀態追蹤：100%
+- ⏳ 回顧功能：0%
+- ⏳ 進階功能：0%
+ 
+**總體完成度：約 85%**
+ 
 ---
-
-### 5.6 側邊欄/抽屜（即時查看）
-
-- 角色列表（顯示 display_name_override 優先）
-- 點角色：
-    - 顯示所有狀態（依 schema sort_order）
-    - 顯示物品清單（list_text）
-    - 顯示與其他角色的關係（score + tags）
-    - 顯示最近一次變更摘要（上一回合 diff）
-
+ 
+## 🏗️ 技術架構
+ 
+### 前端
+- **框架**：Next.js 15（App Router）
+- **語言**：TypeScript
+- **樣式**：Tailwind CSS
+- **狀態管理**：React Hooks + Context API
+ 
+### 後端與資料庫
+- **資料庫**：Supabase（PostgreSQL）
+- **認證**：Supabase Auth
+- **安全性**：Row Level Security (RLS)
+ 
+### AI 服務
+- **提供商**：OpenRouter
+- **模型**：可配置（預設 Claude 3.5 Sonnet）
+- **Agent 架構**：
+  - Narrative Agent（敘述生成）
+  - State Delta Agent（狀態追蹤）
+  - Action Suggestion Agent（建議系統，待實作）
+ 
+### 資料結構
+- **使用者與設定**：users, provider_settings
+- **內容資源**：worlds, world_state_schema, characters
+- **故事資料**：stories, story_characters
+- **遊戲狀態**：story_state_values, story_relationships, story_turns
+- **變更歷史**：change_log（待實作）
+ 
 ---
-
-### 5.7 回顧（必做）
-
-- 回合列表（turn_index）
-- 點回合：
-    - 玩家輸入
-    - 敘事與對話
-    - 變更摘要（ChangeLog 或由 before/after 計算）
-
+ 
+## 🎮 遊戲流程
+ 
+### 建立故事流程
+1. 選擇世界觀（或建立新的）
+2. 選擇角色（或建立新的）
+3. 設定玩家角色（可選）
+4. 輸入故事標題和前提
+5. **設定每個角色的初始狀態**
+6. 配置 AI 設定
+7. 開始遊玩
+ 
+### 遊戲迴圈
+1. **玩家輸入**：描述行動或對話
+2. **AI 處理**：
+   - Narrative Agent 生成敘述與對話
+   - State Delta Agent 分析並決定狀態變更
+3. **狀態更新**：自動套用所有變更
+4. **顯示結果**：
+   - 敘述與對話顯示在聊天區
+   - 狀態面板即時更新
+5. **繼續下一回合**
+ 
+### 狀態追蹤
+- 即時查看所有角色狀態
+- 關係變化追蹤
+- 物品清單管理
+- 歷史變更記錄（待實作）
+ 
 ---
-
-## 6. 多 Agent 管線（強制 JSON 契約）
-
-### 6.1 Narrative Agent（只產出敘事/對話）
-
-**Input（概念）**
-
-- story_mode（PLAYER_CHARACTER / DIRECTOR）
-- world rules
-- story_prompt
-- player_character_id（若有）
-- characters：core_profile + override_profile + 當前狀態摘要
-- relationships 摘要
-- recent_turns（最近 N）
-- user_input
-
-**Output（JSON）**
-
-```json
-{
-  "narrative": "string",
-  "dialogue": [{ "speaker_story_character_id": "sc_xxx", "text": "string" }],
-  "scene_tags": ["string"],
-  "system_notes": ["string"]
-}
-```
-
-硬規則：
-
-- PLAYER_CHARACTER：不得把玩家輸入視為指揮其他角色
-- DIRECTOR：允許玩家指定任何角色行動
-
+ 
+## 📝 核心設計原則
+ 
+### 1. 兩階段 Agent 設計
+- **Narrative Agent**：專注創意敘述（高 temperature）
+- **State Delta Agent**：專注邏輯分析（低 temperature）
+- 分離創意與邏輯，確保品質
+ 
+### 2. System Notes 作為橋樑
+- Narrative Agent 在 system_notes 記錄「發生了什麼」
+- State Delta Agent 讀取 system_notes 決定狀態變更
+- 例如：`"玩家受到10點傷害"` → `hp: inc -10`
+ 
+### 3. 自動約束檢查
+- 數字自動限制在 min/max 範圍
+- 關係分數限制在 -100 到 100
+- 列舉值需符合選項列表
+ 
+### 4. 完整上下文記憶
+- Narrative Agent 包含最近 5 回合對話歷史
+- 收集上下文時載入最近 10 回合資料
+- 確保故事連貫性
+ 
+### 5. 狀態摘要自動生成
+- 每個角色的當前狀態自動組合成摘要字串
+- 例如：`"HP: 100, MP: 50, 位置: 森林, 物品: ['劍', '盾']"`
+- AI 可以直接看到角色完整狀態
+ 
 ---
-
-### 6.2 State Delta Agent（產出可套用變更）
-
-**Output（JSON）**
-
-```json
-{
-  "changes": [
-    {
-      "target_story_character_id": "sc_xxx",
-      "schema_key": "hp",
-      "op": "inc",
-      "value": -10,
-      "reason": "string"
-    }
-  ],
-  "list_ops": [
-    {
-      "target_story_character_id": "sc_xxx",
-      "schema_key": "inventory",
-      "op": "push",
-      "value": "繃帶",
-      "reason": "string"
-    }
-  ],
-  "relationship_changes": [
-    {
-      "from_story_character_id": "sc_a",
-      "to_story_character_id": "sc_b",
-      "op": "inc_score",
-      "value": 5,
-      "tag_ops": [{ "op": "add", "value": "信任" }],
-      "reason": "string"
-    }
-  ]
-}
-```
-
-允許 op（MVP）：
-
-- number：`set`, `inc`
-- text/bool/enum：`set`
-- list_text：`push`, `remove`, `set`
-- relationship：
-    - score：`set_score`, `inc_score`
-    - tags：`add/remove`（以 tag_ops 表示）
-
-驗證：
-
-- schema_key 必須存在於 WorldStateSchema（否則忽略該條或觸發格式修正重試）
-- enum 值必須在 allowed_values 內（否則重試或降級為 text）
-
+ 
+## 🔧 開發工具與腳本
+ 
+### 遷移工具
+- `scripts/convert-to-retry.py`：自動添加 withRetry import
+- `scripts/auto-convert-retry.js`：自動轉換 Promise.race 模式
+- `scripts/update-retry-mechanism.sh`：批量更新輔助腳本
+ 
+### 文檔
+- `docs/RETRY_MIGRATION_GUIDE.md`：重試機制遷移完整指南
+ 
 ---
-
-### 6.3 Action Suggestion Agent（推薦 3 行動）
-
-```json
-{
-  "suggestions": [
-    { "text": "string" },
-    { "text": "string" },
-    { "text": "string" }
-  ]
-}
-```
-
-硬規則：
-
-- PLAYER_CHARACTER：建議必須是玩家角色可做的事
-
+ 
+## 🚀 下一步計畫
+ 
+### 短期（1-2 週）
+1. ✅ ~~完成資料庫重試機制遷移~~
+2. 實作 ChangeLog 系統
+3. 建立回顧頁面 UI
+4. 實作 Action Suggestion Agent
+ 
+### 中期（1 個月）
+1. 完善錯誤處理
+2. 新增更多測試
+3. 效能優化與監控
+4. UI/UX 改進
+ 
+### 長期（2-3 個月）
+1. 分支/回溯功能
+2. 故事匯出功能
+3. 多人協作支援
+4. 行動裝置 App（Android）
+ 
 ---
-
-## 7. Prompt 分層與組裝（給實作 AI 的要求）
-
-- System Prompt：固定規則 + 嚴格 JSON 輸出格式 + 禁止事項
-- World Prompt：world.rules_text
-- Story Prompt：story.story_prompt
-- Character Cards：core_profile_text + override_profile_text + display_name_override
-- State Schema：提供給 State Delta Agent（欄位定義、型別、預設值、約束、ai_description）
-- Memory：最近 N 回合摘要（避免上下文爆炸）
-
-錯誤處理（必要）：
-
-- JSON 解析失敗 → 以「修正格式」提示重試 1 次；再失敗 → 顯示敘事但不套用變更，並在 Turn 記錄 error_flag。
-
+ 
+## 📚 相關資源
+ 
+### API 文檔
+- [Supabase Documentation](https://supabase.com/docs)
+- [OpenRouter API](https://openrouter.ai/docs)
+- [Next.js 15 Documentation](https://nextjs.org/docs)
+ 
+### 專案文檔
+- 重試機制遷移指南：`docs/RETRY_MIGRATION_GUIDE.md`
+- 資料庫 Schema：參考 Supabase 專案設定
+- AI Agent 輸入輸出格式：`types/api/agents.ts`
+ 
 ---
-
-## 8. Google Sheets 作為資料庫（單一 Spreadsheet、多使用者共用、靠 user_id 隔離）
-
-### 8.1 全域原則
-
-- 單一 Spreadsheet，包含多個 worksheet（tabs）。
-- 每筆資料都必須包含 `user_id` 欄位，用於隔離。
-- 所有查詢與更新都必須以 `user_id` 篩選（邏輯隔離）。
-
-> 重要風險提示（不展開方案）：在「無 backend」前提下，客戶端若能直接寫入整張表，實際上很難做到真正安全的隔離。本文只定義資料結構與隔離規則。
-> 
-
+ 
+## 🎯 專案目標達成狀況
+ 
+### ✅ MVP 已完成
+- [x] 使用者認證與管理
+- [x] 世界觀與 Schema 完整管理
+- [x] 角色管理系統
+- [x] 故事建立完整流程（含初始狀態設定）
+- [x] AI 雙 Agent 系統（Narrative + State Delta）
+- [x] 遊戲核心迴圈
+- [x] 即時狀態追蹤
+- [x] 關係系統
+- [x] 自動重試機制
+ 
+### ⏳ 進行中
+- [ ] 完整重試機制遷移（剩餘 ~50 個函數）
+- [ ] ChangeLog 系統
+- [ ] 回顧功能
+ 
+### 📋 待規劃
+- [ ] 進階互動功能
+- [ ] 內容安全機制
+- [ ] 行動裝置支援
+ 
 ---
-
-## 9. Google Sheets Worksheets（表格）定義（Aetheria_DB）
-
-建議 Spreadsheet 名稱：`Aetheria_DB`
-
-所有表第一列為 header，時間一律 ISO8601。
-
-### 9.1 Users
-
-用途：簡易登入資料（email/名稱/密碼雜湊）
-
-欄位：
-
-- `user_id`（UUID，PK）
-- `email`（unique，存小寫）
-- `display_name`
-- `password_hash`（argon2/bcrypt 輸出字串；不得明文）
-- `created_at`
-- `updated_at`
-- `status`（active/disabled）
-- `last_login_at`（可選）
-
----
-
-### 9.2 ProviderSettings
-
-- `user_id`
-- `provider`（openrouter）
-- `api_key`（字串；*風險：若表可被客戶端讀到會外洩*）
-- `default_model`
-- `default_params_json`
-- `updated_at`
-
----
-
-### 9.3 Worlds
-
-- `world_id`（UUID，PK）
-- `user_id`
-- `name`
-- `description`
-- `rules_text`
-- `created_at`
-- `updated_at`
-
----
-
-### 9.4 WorldStateSchema
-
-- `schema_id`（UUID，PK）
-- `world_id`
-- `user_id`
-- `schema_key`（unique within world_id）
-- `display_name`
-- `type`（number/text/bool/enum/list_text）
-- `ai_description`
-- `default_value_json`
-- `enum_options_json`
-- `number_constraints_json`
-- `sort_order`
-- `updated_at`
-
----
-
-### 9.5 Characters
-
-- `character_id`（UUID，PK）
-- `user_id`
-- `canonical_name`
-- `core_profile_text`
-- `tags_json`
-- `created_at`
-- `updated_at`
-
----
-
-### 9.6 Stories
-
-- `story_id`（UUID，PK）
-- `user_id`
-- `world_id`
-- `title`
-- `premise_text`
-- `story_mode`（PLAYER_CHARACTER/DIRECTOR）
-- `player_character_id`（nullable）
-- `story_prompt`
-- `model_override`（nullable）
-- `params_override_json`（nullable）
-- `status`（active/ended）
-- `turn_count`（可選）
-- `created_at`
-- `updated_at`
-
----
-
-### 9.7 StoryCharacters
-
-- `story_character_id`（UUID，PK）
-- `story_id`
-- `user_id`
-- `character_id`
-- `display_name_override`（nullable）
-- `is_player`（bool）
-- `created_at`
-
----
-
-### 9.8 StoryCharacterOverrides
-
-- `story_character_id`（PK / FK）
-- `story_id`
-- `user_id`
-- `override_profile_text`
-- `override_voice_style`（nullable）
-- `updated_at`
-
----
-
-### 9.9 StoryStateValues（當前狀態值）
-
-- `story_id`
-- `user_id`
-- `story_character_id`
-- `schema_key`
-- `value_json`
-- `updated_at`
-
-約束：
-
--（建議邏輯唯一鍵）(story_id, story_character_id, schema_key) 不應重複
-
----
-
-### 9.10 StoryRelationships（關係：分向）
-
-- `story_id`
-- `user_id`
-- `from_story_character_id`
-- `to_story_character_id`
-- `score`（number）
-- `tags_json`（多選 array）
-- `updated_at`
-
-約束：
-
--（建議邏輯唯一鍵）(story_id, from_story_character_id, to_story_character_id) 不應重複
-
----
-
-### 9.11 StoryTurns（回合紀錄，append-only）
-
-- `turn_id`（UUID，PK）
-- `story_id`
-- `user_id`
-- `turn_index`（int）
-- `user_input_text`
-- `narrative_text`
-- `dialogue_json`
-- `scene_tags_json`
-- `created_at`
-- `error_flag`（optional）
-- `token_usage_json`（optional）
-
----
-
-### 9.12 ChangeLog（變更歷史）
-
-- `change_id`（UUID，PK）
-- `turn_id`
-- `story_id`
-- `user_id`
-- `entity_type`（state/relationship）
-- `target_story_character_id`（state）
-- `schema_key`（state）
-- `from_story_character_id`（relationship）
-- `to_story_character_id`（relationship）
-- `op`
-- `before_value_json`
-- `after_value_json`
-- `reason_text`
-
----
-
-## 10. 世界觀 Schema 動態變更（含硬刪）在 Sheets 的規則
-
-### 10.1 新增 schema_key
-
-- 在 `WorldStateSchema` 新增一列
-- 對所有使用該 `world_id` 的故事：
-    - 找出 `StoryCharacters`（同 story_id）
-    - 對每個 story_character 在 `StoryStateValues` 新增一列（schema_key=新增欄位，value=default）
-
-### 10.2 刪除 schema_key（硬刪）
-
-- 在 `WorldStateSchema` 刪除該列
-- 同時刪除：
-    - `StoryStateValues` 中所有符合（user_id、story_id 屬於該 world 的故事、schema_key 相同）的列
-    - `ChangeLog` 中 schema_key 相同的列（同 user_id 範圍內）
-
-> 回顧頁遇到舊回合引用已刪欄位：不補救，直接不顯示（因硬刪）。
-> 
-
----
-
-## 11. 同步與一致性（多裝置）
-
-在「無 backend、且使用 Sheets」情境下，仍需最小一致性策略：
-
-### 11.1 故事寫入順序（每回合）
-
-建議固定順序：
-
-1. 先 append `StoryTurns`（turn_index = last + 1）
-2. 更新 `StoryStateValues`（多筆）
-3. 更新 `StoryRelationships`（多筆）
-4. append `ChangeLog`（多筆）
-5. 更新 `Stories.turn_count` 與 `Stories.updated_at`
-
-### 11.2 併發（樂觀鎖建議）
-
-在 `Stories` 增加一欄（可選）：
-
-- `version` 或 `last_turn_index`
-
-寫入前讀取該值，寫入後更新。若發現版本不符，提示使用者重新同步後再操作。
-
----
-
-## 12. MVP 範圍（建議）
-
-**MVP 必含**
-
-- Worlds：規則 + Schema CRUD + 動態套用（含硬刪）
-- Characters：CRUD
-- Stories：Wizard 全流程（含 override、初始狀態、關係、故事 prompt、模型覆寫）
-- 遊玩主循環（Narrative + StateDelta + auto-apply）
-- 側邊欄（狀態/關係/物品）
-- 回顧（Turn 列表 + diff/ChangeLog）
-
-**可延後**
-
-- 匯出 Markdown/PDF
-- 分支/回溯重玩
-- List<Object> 物品結構
-- 更完整的內容過濾
-
----
-
-## 13. 給「產碼 AI」的硬性實作要求（最關鍵）
-
-1. 所有 Agent 輸出必須是 JSON，且符合契約；解析失敗要有一次重試策略。
-2. 狀態更新採 op-based（inc/push/remove），避免整包覆寫造成漂移。
-3. PLAYER_CHARACTER 模式下，UI 與 prompt 必須共同限制玩家只能影響玩家角色。
-4. 組裝角色資料時：`display_name_override` 優先顯示，但所有關聯用 id（story_character_id / character_id）。
-5. Schema migration 是第一等公民：任何 schema CRUD 都必須觸發對既有故事的補值/刪除。
+ 
+**最後更新**：2026-01-09
+**當前版本**：v0.8.5-alpha
+**專案狀態**：✅ 核心功能完成，進入優化階段

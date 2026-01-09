@@ -1,4 +1,4 @@
-# Aetheria - AI 互動小說應用程式
+﻿# Aetheria - AI 互動小說應用程式
 
 基於 Next.js (TypeScript) 的跨平台 AI 互動小說應用程式。
 
@@ -7,7 +7,7 @@
 - **前端框架**: Next.js 15 + React 19 + TypeScript
 - **樣式**: Tailwind CSS
 - **資料庫**: Supabase (PostgreSQL)
-- **AI**: OpenRouter / Google Gemini / OpenAI
+- **AI**: OpenRouter / OpenAI
 - **桌面端**: Tauri (Windows)
 - **移動端**: PWA (Android)
 
@@ -16,9 +16,9 @@
 ```
 Aetheria/
 ├── app/                    # Next.js App Router 頁面
-│   ├── api/               # API Routes
-│   │   └── auth/         # 認證 API
 │   ├── dashboard/         # 儀表板
+│   ├── login/             # 登入
+│   ├── register/          # 註冊
 │   ├── worlds/            # 世界觀管理
 │   ├── characters/        # 角色管理
 │   ├── stories/           # 故事管理與遊玩
@@ -26,19 +26,21 @@ Aetheria/
 │   ├── layout.tsx         # 根佈局
 │   └── page.tsx           # 首頁
 ├── components/            # React 元件
-│   ├── ui/               # 通用 UI 元件
 │   ├── auth/             # 認證元件
-│   └── layout/           # 佈局元件
+├── contexts/              # React Contexts
 ├── lib/                   # 工具函式
 │   ├── supabase/         # Supabase 客戶端
 │   ├── auth/             # 認證工具
 │   └── ai/               # AI 相關工具
 ├── services/              # 業務邏輯服務
-│   └── supabase/         # Supabase CRUD 服務
+│   ├── supabase/         # Supabase CRUD 服務
+│   ├── agents/           # AI Agent
+│   ├── ai/               # AI API 封裝
+│   └── gameplay/         # 回合執行/回溯
 ├── types/                 # TypeScript 類型定義
 │   ├── database/         # 資料庫 Schema 類型
-│   ├── supabase.ts       # Supabase 類型
-│   └── api/              # API 相關類型
+│   ├── api/              # API 相關類型
+│   └── supabase.ts       # Supabase 類型
 ├── supabase/              # 資料庫遷移
 │   └── migrations/       # SQL 遷移檔案
 └── public/               # 靜態資源
@@ -103,11 +105,9 @@ npm run dev
 - [x] ProviderSettings 表 CRUD
 
 ### ✅ 認證系統
-- [x] 使用者註冊
-- [x] 使用者登入
-- [x] 密碼加密 (bcrypt)
+- [x] Supabase Auth 註冊/登入
 - [x] Session 管理
-- [x] 更新個人資料
+- [x] 更新顯示名稱
 - [x] 密碼變更
 
 ### ✅ UI 頁面
@@ -119,34 +119,33 @@ npm run dev
 
 ### ✅ AI 整合
 - [x] OpenRouter API 客戶端
-- [x] Google Gemini API 支援
 - [x] OpenAI API 支援
 - [x] API 連線測試功能
 - [x] 供應商設定管理
 
+### ? 故事系統
+- [x] 故事建立與編輯
+- [x] 故事角色設定與狀態初始化
+- [x] 故事遊玩頁面（回合制）
+- [x] 角色狀態與關係面板
+
+### ? AI Agent 系統
+- [x] Narrative Agent（敘事與對話生成）
+- [x] State Delta Agent（狀態變更生成）
+
 ## 待完成功能
 
-### 🔲 資料層
-- [ ] Stories 表 CRUD
-- [ ] StoryCharacters 表 CRUD
-- [ ] StoryStateValues 表 CRUD
-- [ ] StoryRelationships 表 CRUD
-- [ ] StoryTurns 表 CRUD
-- [ ] ChangeLog 表 CRUD
+### ?? 資料層
+- [ ] ChangeLog 前端查詢/顯示
 
-### 🔲 AI Agent 系統
-- [ ] Narrative Agent (敘事與對話生成)
-- [ ] State Delta Agent (狀態變更生成)
+### ?? AI Agent 系統
 - [ ] Action Suggestion Agent (行動建議)
-- [ ] Prompt 組裝系統
 
-### 🔲 故事系統
-- [ ] 故事建立 Wizard
-- [ ] 故事遊玩頁面
+### ?? 故事系統
 - [ ] 故事回顧頁面
 - [ ] 狀態變更可視化
 
-### 🔲 跨平台支援
+### ?? 跨平台支援
 - [ ] PWA 配置 (Android)
 - [ ] Tauri 配置 (Windows)
 - [ ] 離線支援
@@ -193,16 +192,16 @@ npm run lint
 ### 回合制遊玩
 - 每個回合記錄玩家輸入、AI 敘事、狀態變更
 - ChangeLog 記錄所有狀態變化
-- 支援回顧與 diff 查看
 
 ## 安全性
 
-- ✅ 密碼使用 bcrypt 加密存儲
+- ✅ 密碼由 Supabase Auth 管理
 - ✅ Row Level Security 確保資料隔離
-- ✅ API Routes 保護敏感操作
 - ✅ Service Role Key 只在伺服器端使用
 - ✅ 環境變數不提交到版本控制
 
 ## 授權
 
 Private Project
+
+

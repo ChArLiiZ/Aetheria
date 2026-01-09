@@ -167,3 +167,30 @@ export async function deleteStoryTurn(
     throw new Error('Failed to delete story turn: ' + error.message);
   }
 }
+
+/**
+ * Delete turns from a specific index onward
+ */
+export async function deleteStoryTurnsFromIndex(
+  storyId: string,
+  fromTurnIndex: number,
+  userId: string
+): Promise<void> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  });
+
+  const deletePromise = supabase
+    .from('story_turns')
+    .delete()
+    .eq('story_id', storyId)
+    .eq('user_id', userId)
+    .gte('turn_index', fromTurnIndex);
+
+  const result = await Promise.race([deletePromise, timeoutPromise]);
+  const { error } = result as any;
+
+  if (error) {
+    throw new Error('Failed to delete story turns: ' + error.message);
+  }
+}

@@ -22,7 +22,7 @@ CREATE INDEX idx_users_email ON users(email);
 -- ==================== Provider Settings Table ====================
 CREATE TABLE provider_settings (
   user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-  provider TEXT NOT NULL CHECK (provider IN ('openrouter', 'gemini', 'openai')),
+  provider TEXT NOT NULL CHECK (provider IN ('openrouter', 'openai')),
   api_key TEXT NOT NULL,
   default_model TEXT NOT NULL,
   default_params_json TEXT NOT NULL DEFAULT '{}',

@@ -36,7 +36,7 @@ import type {
 
 import { callNarrativeAgent } from '@/services/agents/narrative-agent';
 import { callStateDeltaAgent } from '@/services/agents/state-delta-agent';
-import { getStoryTurns, createStoryTurn } from '@/services/supabase/story-turns';
+import { getStoryTurns, createStoryTurn, markTurnAsError } from '@/services/supabase/story-turns';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
 import { getAllStateValuesForStory, setStateValue } from '@/services/supabase/story-state-values';
@@ -44,6 +44,7 @@ import { getStoryRelationships, setRelationship } from '@/services/supabase/stor
 import { getWorldById } from '@/services/supabase/worlds';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 import { updateStory } from '@/services/supabase/stories';
+import { createChangeLogs, ChangeLogInsert } from '@/services/supabase/change-log';
 
 export interface ExecuteTurnInput {
   story: Story;
@@ -59,6 +60,8 @@ export interface ExecuteTurnResult {
   narrativeOutput: NarrativeAgentOutput;
   stateChanges: StateDeltaAgentOutput;
 }
+
+type ChangeLogDraft = Omit<ChangeLogInsert, 'turn_id'>;
 
 /**
  * Build narrative agent input from story context
@@ -226,32 +229,55 @@ async function applyStateChanges(
   story: Story,
   stateChanges: StateDeltaAgentOutput,
   userId: string
-): Promise<void> {
-  // Fetch current states and world schema
-  const [currentStates, worldSchema] = await Promise.all([
+): Promise<ChangeLogDraft[]> {
+  const changeLogs: ChangeLogDraft[] = [];
+
+  // Fetch current states, world schema, and relationships
+  const [currentStates, worldSchema, currentRelationships] = await Promise.all([
     getAllStateValuesForStory(story.story_id, userId),
     getSchemaByWorldId(story.world_id, userId),
+    getStoryRelationships(story.story_id, userId),
   ]);
+
+  const stateMap = new Map<string, any>();
+  currentStates.forEach((state) => {
+    const key = `${state.story_character_id}:${state.schema_key}`;
+    try {
+      stateMap.set(key, JSON.parse(state.value_json));
+    } catch {
+      stateMap.set(key, state.value_json);
+    }
+  });
+
+  const relationshipMap = new Map<string, { score: number; tags: string[] }>();
+  currentRelationships.forEach((rel) => {
+    let tags: string[] = [];
+    try {
+      tags = JSON.parse(rel.tags_json || '[]');
+    } catch {
+      tags = [];
+    }
+    relationshipMap.set(`${rel.from_story_character_id}:${rel.to_story_character_id}`, {
+      score: rel.score,
+      tags,
+    });
+  });
+
+  const serializeValue = (value: any) => (value === undefined ? null : JSON.stringify(value));
 
   // Apply state changes
   for (const change of stateChanges.changes) {
-    const currentState = currentStates.find(
-      (s) =>
-        s.story_character_id === change.target_story_character_id &&
-        s.schema_key === change.schema_key
-    );
-
     const schema = worldSchema.find((s) => s.schema_key === change.schema_key);
     if (!schema) continue;
 
+    const stateKey = `${change.target_story_character_id}:${change.schema_key}`;
+    const beforeValue = stateMap.get(stateKey);
     let newValue = change.value;
 
-    // Handle increment operation
     if (change.op === 'inc' && schema.type === 'number') {
-      const currentValue = currentState ? JSON.parse(currentState.value_json) : 0;
+      const currentValue = beforeValue ?? 0;
       newValue = (currentValue as number) + (change.value as number);
 
-      // Apply constraints
       if (schema.number_constraints_json) {
         const constraints = JSON.parse(schema.number_constraints_json);
         if (constraints.min !== undefined) {
@@ -263,35 +289,45 @@ async function applyStateChanges(
       }
     }
 
-    // Save state value
     await setStateValue(userId, {
       story_id: story.story_id,
       story_character_id: change.target_story_character_id,
       schema_key: change.schema_key,
       value_json: JSON.stringify(newValue),
     });
+
+    stateMap.set(stateKey, newValue);
+    changeLogs.push({
+      story_id: story.story_id,
+      user_id: userId,
+      entity_type: 'state',
+      target_story_character_id: change.target_story_character_id,
+      schema_key: change.schema_key,
+      op: change.op,
+      before_value_json: serializeValue(beforeValue),
+      after_value_json: serializeValue(newValue),
+      reason_text: change.reason || 'state change',
+    });
   }
 
   // Apply list operations
   for (const listOp of stateChanges.list_ops) {
-    const currentState = currentStates.find(
-      (s) =>
-        s.story_character_id === listOp.target_story_character_id &&
-        s.schema_key === listOp.schema_key
-    );
+    const stateKey = `${listOp.target_story_character_id}:${listOp.schema_key}`;
+    const beforeValue = stateMap.get(stateKey);
+    const currentList = Array.isArray(beforeValue) ? beforeValue : [];
 
-    let currentList: string[] = currentState ? JSON.parse(currentState.value_json) : [];
     let newList: string[];
-
     switch (listOp.op) {
-      case 'push':
+      case 'push': {
         const itemsToPush = Array.isArray(listOp.value) ? listOp.value : [listOp.value];
         newList = [...currentList, ...itemsToPush];
         break;
-      case 'remove':
+      }
+      case 'remove': {
         const itemsToRemove = Array.isArray(listOp.value) ? listOp.value : [listOp.value];
         newList = currentList.filter((item) => !itemsToRemove.includes(item));
         break;
+      }
       case 'set':
         newList = Array.isArray(listOp.value) ? listOp.value : [listOp.value];
         break;
@@ -305,28 +341,37 @@ async function applyStateChanges(
       schema_key: listOp.schema_key,
       value_json: JSON.stringify(newList),
     });
+
+    stateMap.set(stateKey, newList);
+    changeLogs.push({
+      story_id: story.story_id,
+      user_id: userId,
+      entity_type: 'state',
+      target_story_character_id: listOp.target_story_character_id,
+      schema_key: listOp.schema_key,
+      op: listOp.op,
+      before_value_json: serializeValue(currentList),
+      after_value_json: serializeValue(newList),
+      reason_text: listOp.reason || 'list change',
+    });
   }
 
   // Apply relationship changes
-  const currentRelationships = await getStoryRelationships(story.story_id, userId);
-
   for (const relChange of stateChanges.relationship_changes) {
-    const currentRel = currentRelationships.find(
-      (r) =>
-        r.from_story_character_id === relChange.from_story_character_id &&
-        r.to_story_character_id === relChange.to_story_character_id
-    );
+    const relKey = `${relChange.from_story_character_id}:${relChange.to_story_character_id}`;
+    const currentRel = relationshipMap.get(relKey);
+    const beforeValue = currentRel
+      ? { score: currentRel.score, tags: currentRel.tags }
+      : null;
 
     let newScore = relChange.value;
     if (relChange.op === 'inc_score' && currentRel) {
       newScore = currentRel.score + relChange.value;
     }
 
-    // Clamp score to -100 to 100
     newScore = Math.max(-100, Math.min(100, newScore));
 
-    // Update tags
-    let currentTags: string[] = currentRel ? JSON.parse(currentRel.tags_json || '[]') : [];
+    let currentTags: string[] = currentRel ? [...currentRel.tags] : [];
     for (const tagOp of relChange.tag_ops) {
       if (tagOp.op === 'add' && !currentTags.includes(tagOp.value)) {
         currentTags.push(tagOp.value);
@@ -342,7 +387,22 @@ async function applyStateChanges(
       score: newScore,
       tags_json: JSON.stringify(currentTags),
     });
+
+    relationshipMap.set(relKey, { score: newScore, tags: currentTags });
+    changeLogs.push({
+      story_id: story.story_id,
+      user_id: userId,
+      entity_type: 'relationship',
+      from_story_character_id: relChange.from_story_character_id,
+      to_story_character_id: relChange.to_story_character_id,
+      op: relChange.op,
+      before_value_json: beforeValue ? JSON.stringify(beforeValue) : null,
+      after_value_json: JSON.stringify({ score: newScore, tags: currentTags }),
+      reason_text: relChange.reason || 'relationship change',
+    });
   }
+
+  return changeLogs;
 }
 
 /**
@@ -356,7 +416,10 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
 
   // Get current turn count
   const currentTurns = await getStoryTurns(story.story_id, userId);
-  const nextTurnIndex = currentTurns.length + 1;
+  const nextTurnIndex =
+    currentTurns.length > 0
+      ? Math.max(...currentTurns.map((turn) => turn.turn_index)) + 1
+      : 1;
 
   // Step 1: Call narrative agent
   const narrativeInput = await buildNarrativeInput(story, userInput, userId);
@@ -367,7 +430,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
   const stateChanges = await callStateDeltaAgent(apiKey, selectedModel, stateDeltaInput, params);
 
   // Step 3: Apply state changes
-  await applyStateChanges(story, stateChanges, userId);
+  const changeLogs = await applyStateChanges(story, stateChanges, userId);
 
   // Step 4: Save turn
   const turn = await createStoryTurn(userId, {
@@ -379,7 +442,22 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
     scene_tags_json: JSON.stringify(narrativeOutput.scene_tags),
   });
 
-  // Step 5: Update story turn count
+  // Step 5: Write change logs
+  if (changeLogs.length > 0) {
+    const entries = changeLogs.map((entry) => ({
+      ...entry,
+      turn_id: turn.turn_id,
+    }));
+
+    try {
+      await createChangeLogs(entries);
+    } catch (error) {
+      console.error('Failed to create change logs:', error);
+      await markTurnAsError(turn.turn_id, userId);
+    }
+  }
+
+  // Step 6: Update story turn count
   await updateStory(story.story_id, userId, {
     turn_count: nextTurnIndex,
   });

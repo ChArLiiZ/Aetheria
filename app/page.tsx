@@ -44,7 +44,7 @@ export default function Home() {
             AI 互動小說應用程式
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Next.js + TypeScript + Google Sheets + OpenRouter AI
+            Next.js + TypeScript + Supabase + OpenRouter / OpenAI
           </p>
         </div>
 

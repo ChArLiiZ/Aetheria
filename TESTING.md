@@ -1,4 +1,4 @@
-# 🧪 Aetheria 測試指南
+﻿# 🧪 Aetheria 測試指南
 
 ## 快速開始測試
 
@@ -106,7 +106,7 @@ http://localhost:3000/characters
 ```
 http://localhost:3000/settings
 ```
-- 測試三個供應商（OpenRouter、Gemini、OpenAI）
+- 測試兩個供應商（OpenRouter、OpenAI）
 - 輸入 API Key
 - 選擇預設模型或手動輸入
 - 調整參數（temperature、max_tokens、top_p）
@@ -220,7 +220,7 @@ npm start
 
 **問題**：401 或 403 錯誤
 - 檢查瀏覽器控制台的錯誤訊息
-- 確認 API routes 正常運作
+- 確認 Supabase Auth 設定正常
 - 確認資料庫遷移已完成
 
 ### ❌ 開發伺服器無法啟動
@@ -289,14 +289,11 @@ PORT=3001 npm run dev
 
 ## 下一步
 
-完成基本測試後，可以開始開發故事系統：
+完成基本測試後，可以開始開發剩餘功能：
 
-1. 🔲 Stories 表 CRUD
-2. 🔲 故事建立 Wizard
-3. 🔲 AI Agent 整合
-4. 🔲 遊玩頁面
-5. 🔲 故事回顧
-
+1. Action Suggestion Agent
+2. ChangeLog 回顧/差異 UI
+3. 故事回顧頁面與匯出
 ---
 
 ## 需要協助？
@@ -305,3 +302,5 @@ PORT=3001 npm run dev
 - 查看 [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) 了解資料庫設定
 - 查看 [plan.md](./plan.md) 了解完整規格
 - 檢查程式碼註解
+
+

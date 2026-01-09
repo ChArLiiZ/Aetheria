@@ -18,6 +18,7 @@ import { getStoryById } from '@/services/supabase/stories';
 import { getStoryTurns } from '@/services/supabase/story-turns';
 import { getProviderSetting } from '@/services/supabase/provider-settings';
 import { executeTurn } from '@/services/gameplay/execute-turn';
+import { rollbackStoryToTurn } from '@/services/gameplay/rollback-turns';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
 import { getAllStateValuesForStory } from '@/services/supabase/story-state-values';
@@ -35,6 +36,7 @@ function StoryPlayPageContent() {
   const [turns, setTurns] = useState<StoryTurn[]>([]);
   const [userInput, setUserInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deletingTurnIndex, setDeletingTurnIndex] = useState<number | null>(null);
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
 
   // Character states
@@ -46,6 +48,16 @@ function StoryPlayPageContent() {
   const [showStatePanel, setShowStatePanel] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const resolveSpeakerName = (speakerId?: string, fallback?: string) => {
+    if (!speakerId) return fallback || '未知角色';
+    const storyChar = storyCharacters.find(
+      (sc) => sc.story_character_id === speakerId
+    );
+    if (!storyChar) return fallback || '未知角色';
+    const character = characters.get(storyChar.story_character_id);
+    return storyChar.display_name_override || character?.canonical_name || fallback || '未知角色';
+  };
 
   useEffect(() => {
     loadStory();
@@ -126,6 +138,36 @@ function StoryPlayPageContent() {
       setCharacters(charMap);
     } catch (err: any) {
       console.error('Failed to load character states:', err);
+    }
+  };
+
+  const handleDeleteFromTurn = async (turnIndex: number) => {
+    if (!user || !story || deletingTurnIndex) return;
+
+    if (
+      !confirm(
+        `確定要刪除回合 ${turnIndex} 及其後所有內容嗎？\n\n此操作將回溯角色狀態與關係，且無法復原。`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDeletingTurnIndex(turnIndex);
+      const remainingTurns = await rollbackStoryToTurn(storyId, turnIndex, user.user_id);
+      const newTurnCount =
+        remainingTurns.length > 0
+          ? Math.max(...remainingTurns.map((turn) => turn.turn_index))
+          : 0;
+
+      setTurns(remainingTurns);
+      setStory({ ...story, turn_count: newTurnCount });
+      await loadCharacterStates(story.world_id);
+    } catch (err: any) {
+      console.error('Failed to rollback story:', err);
+      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setDeletingTurnIndex(null);
     }
   };
 
@@ -262,6 +304,14 @@ function StoryPlayPageContent() {
                       <span className="text-xs text-gray-500 dark:text-gray-400">
                         {new Date(turn.created_at).toLocaleString('zh-TW')}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFromTurn(turn.turn_index)}
+                        disabled={deletingTurnIndex !== null}
+                        className="ml-auto text-xs text-red-600 hover:text-red-700 disabled:text-gray-400"
+                      >
+                        {deletingTurnIndex === turn.turn_index ? '刪除中...' : '刪除此回合'}
+                      </button>
                     </div>
                     <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                       {turn.narrative_text}
@@ -270,19 +320,26 @@ function StoryPlayPageContent() {
                     {/* Dialogue */}
                     {turn.dialogue_json && turn.dialogue_json !== '[]' && (
                       <div className="mt-4 space-y-2">
-                        {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="pl-4 border-l-2 border-gray-300 dark:border-gray-600"
-                          >
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">
-                              {dialogue.speaker}
-                            </p>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              {dialogue.text}
-                            </p>
-                          </div>
-                        ))}
+                        {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
+                          const speakerName = resolveSpeakerName(
+                            dialogue.speaker_story_character_id,
+                            dialogue.speaker
+                          );
+
+                          return (
+                            <div
+                              key={idx}
+                              className="pl-4 border-l-2 border-gray-300 dark:border-gray-600"
+                            >
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                {speakerName}
+                              </p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                {dialogue.text}
+                              </p>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

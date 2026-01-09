@@ -3,7 +3,7 @@
  * Analyzes narrative output and determines state changes
  */
 
-import { callOpenRouterWithRetry, parseJsonResponse } from '@/services/ai/openrouter';
+import { callOpenRouterJsonWithRetry } from '@/services/ai/openrouter';
 import type {
   StateDeltaAgentInput,
   StateDeltaAgentOutput,
@@ -200,14 +200,15 @@ export async function callStateDeltaAgent(
   };
 
   try {
-    const response = await callOpenRouterWithRetry(apiKey, messages, model, defaultParams, 2);
+    const response = await callOpenRouterJsonWithRetry<StateDeltaAgentOutput>(
+      apiKey,
+      messages,
+      model,
+      defaultParams,
+      2
+    );
 
-    // Parse JSON response
-    const parsed = parseJsonResponse<StateDeltaAgentOutput>(response.content);
-
-    if (!parsed) {
-      throw new Error('Failed to parse state delta agent response as JSON');
-    }
+    const parsed = response.parsed;
 
     // Ensure arrays exist
     return {
