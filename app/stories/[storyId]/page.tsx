@@ -23,6 +23,29 @@ import {
 // Pagination helper
 const ITEMS_PER_PAGE = 6;
 
+const getSchemaDefaultValue = (schema: WorldStateSchema) => {
+  if (schema.default_value_json) {
+    try {
+      return JSON.parse(schema.default_value_json);
+    } catch {
+      // Fall through to type-based defaults
+    }
+  }
+
+  switch (schema.type) {
+    case 'number':
+      return 0;
+    case 'bool':
+      return false;
+    case 'list_text':
+      return [];
+    case 'enum':
+    case 'text':
+    default:
+      return '';
+  }
+};
+
 function StoryDetailPageContent() {
   const { user } = useAuth();
   const router = useRouter();
@@ -284,7 +307,7 @@ function StoryDetailPageContent() {
           storyCharacterResults.forEach(({ characterId, storyCharacterId }) => {
             const charStates = initialStates[characterId] || {};
             creationWorldSchema.forEach((schema) => {
-              const value = charStates[schema.schema_key] ?? JSON.parse(schema.default_value_json);
+              const value = charStates[schema.schema_key] ?? getSchemaDefaultValue(schema);
               allStateValues.push({
                 story_id: newStory.story_id,
                 story_character_id: storyCharacterId,
@@ -342,7 +365,7 @@ function StoryDetailPageContent() {
           const defaultValues: Record<string, any> = {};
           schemaData.forEach((schema) => {
             try {
-              defaultValues[schema.schema_key] = JSON.parse(schema.default_value_json);
+              defaultValues[schema.schema_key] = getSchemaDefaultValue(schema);
             } catch {
               defaultValues[schema.schema_key] = '';
             }
@@ -419,7 +442,7 @@ function StoryDetailPageContent() {
       // First, set default values from schema
       schemaData.forEach((schema) => {
         try {
-          initialValues[schema.schema_key] = JSON.parse(schema.default_value_json);
+          initialValues[schema.schema_key] = getSchemaDefaultValue(schema);
         } catch {
           initialValues[schema.schema_key] = '';
         }
@@ -452,7 +475,7 @@ function StoryDetailPageContent() {
         story_id: storyId,
         story_character_id: editingStoryCharacter.story_character_id,
         schema_key: schema.schema_key,
-        value_json: JSON.stringify(stateValues[schema.schema_key] ?? JSON.parse(schema.default_value_json)),
+        value_json: JSON.stringify(stateValues[schema.schema_key] ?? getSchemaDefaultValue(schema)),
       }));
 
       await setMultipleStateValues(user.user_id, valuesToSave);
@@ -1160,7 +1183,7 @@ function StoryDetailPageContent() {
                               const defaultValues: Record<string, any> = {};
                               creationWorldSchema.forEach((schema) => {
                                 try {
-                                  defaultValues[schema.schema_key] = JSON.parse(schema.default_value_json);
+                                  defaultValues[schema.schema_key] = getSchemaDefaultValue(schema);
                                 } catch {
                                   defaultValues[schema.schema_key] = '';
                                 }

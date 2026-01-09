@@ -76,6 +76,53 @@ export async function callOpenRouterWithRetry(
 }
 
 /**
+ * Call OpenRouter and parse JSON with retry on invalid output
+ */
+export async function callOpenRouterJsonWithRetry<T>(
+  apiKey: string,
+  messages: OpenRouterMessage[],
+  model: string,
+  params?: Record<string, any>,
+  maxRetries = 1
+): Promise<{ parsed: T; usage?: any; raw: string }> {
+  let lastError: Error | null = null;
+  const workingMessages = [...messages];
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const request: OpenRouterRequest = {
+        model,
+        messages: workingMessages,
+        ...params,
+      };
+
+      const response = await callOpenRouter(apiKey, request);
+      const content = response.choices[0]?.message?.content || '';
+      const parsed = parseJsonResponse<T>(content);
+
+      if (!parsed) {
+        throw new SyntaxError('Failed to parse JSON response');
+      }
+
+      return { parsed, usage: response.usage, raw: content };
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt < maxRetries) {
+        workingMessages.push({
+          role: 'user',
+          content:
+            'The previous response had a JSON parsing error. Please provide a valid JSON response following the exact schema specified.',
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError || new Error('Failed after retries');
+}
+
+/**
  * Parse JSON response with error handling
  */
 export function parseJsonResponse<T>(content: string): T | null {

@@ -8,6 +8,7 @@
 import { supabase } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { User } from '@/types';
+import { validatePassword } from '@/lib/auth/password';
 
 /**
  * Register a new user
@@ -18,9 +19,9 @@ export async function register(
   displayName: string
 ): Promise<{ success: boolean; user?: User; error?: string }> {
   try {
-    // Validate password (at least 6 characters)
-    if (password.length < 6) {
-      return { success: false, error: '密碼長度至少需要 6 個字符' };
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      return { success: false, error: passwordValidation.errors[0] || '密碼格式不符' };
     }
 
     // Sign up with Supabase Auth
@@ -180,9 +181,9 @@ export async function updatePassword(
   newPassword: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Validate new password
-    if (newPassword.length < 6) {
-      return { success: false, error: '新密碼長度至少需要 6 個字符' };
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.valid) {
+      return { success: false, error: passwordValidation.errors[0] || '新密碼格式不符' };
     }
 
     // Get current user's email to verify old password

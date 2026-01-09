@@ -3,7 +3,7 @@
  * Generates narrative text and dialogue based on story context
  */
 
-import { callOpenRouterWithRetry, parseJsonResponse } from '@/services/ai/openrouter';
+import { callOpenRouterJsonWithRetry } from '@/services/ai/openrouter';
 import type {
   NarrativeAgentInput,
   NarrativeAgentOutput,
@@ -150,14 +150,15 @@ export async function callNarrativeAgent(
   };
 
   try {
-    const response = await callOpenRouterWithRetry(apiKey, messages, model, defaultParams, 2);
+    const response = await callOpenRouterJsonWithRetry<NarrativeAgentOutput>(
+      apiKey,
+      messages,
+      model,
+      defaultParams,
+      2
+    );
 
-    // Parse JSON response
-    const parsed = parseJsonResponse<NarrativeAgentOutput>(response.content);
-
-    if (!parsed) {
-      throw new Error('Failed to parse narrative agent response as JSON');
-    }
+    const parsed = response.parsed;
 
     // Validate required fields
     if (!parsed.narrative) {

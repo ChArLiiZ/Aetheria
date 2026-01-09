@@ -27,4 +27,4 @@ export async function getUserById(userId: string): Promise<User | null> {
 }
 
 // Note: updateDisplayName and updatePassword are now in auth.ts
-// and use API routes for secure password handling
+// and use Supabase Auth for account updates

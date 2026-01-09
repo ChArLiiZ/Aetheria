@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -25,9 +25,7 @@ const MODEL_PRESETS: Record<Provider, string[]> = {
     'anthropic/claude-3-opus',
     'anthropic/claude-3-haiku',
     'openai/gpt-4-turbo',
-    'google/gemini-pro-1.5',
   ],
-  gemini: ['gemini-2.0-flash-exp', 'gemini-1.5-pro', 'gemini-1.5-flash'],
   openai: ['gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo'],
 };
 
@@ -37,17 +35,12 @@ const PROVIDER_INFO: Record<
 > = {
   openrouter: {
     name: 'OpenRouter',
-    icon: '🔀',
+    icon: '??',
     description: '統一多個 AI 模型的接入平台',
-  },
-  gemini: {
-    name: 'Google Gemini',
-    icon: '✨',
-    description: 'Google 的多模態 AI 模型',
   },
   openai: {
     name: 'OpenAI',
-    icon: '🤖',
+    icon: '??',
     description: 'GPT 系列模型提供商',
   },
 };
@@ -68,7 +61,6 @@ function SettingsPageContent() {
     Record<Provider, ProviderSettings | null>
   >({
     openrouter: null,
-    gemini: null,
     openai: null,
   });
 
@@ -145,12 +137,13 @@ function SettingsPageContent() {
       const settings = await getProviderSettings(user.user_id);
       const settingsMap: Record<Provider, ProviderSettings | null> = {
         openrouter: null,
-        gemini: null,
         openai: null,
       };
 
       settings.forEach((s) => {
-        settingsMap[s.provider as Provider] = s;
+        if (s.provider in settingsMap) {
+          settingsMap[s.provider as Provider] = s;
+        }
       });
 
       setProviderSettings(settingsMap);
@@ -788,3 +781,4 @@ export default function SettingsPage() {
     </ProtectedRoute>
   );
 }
+

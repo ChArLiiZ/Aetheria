@@ -2,7 +2,7 @@
  * Password hashing utilities using Web Crypto API
  *
  * Note: In a production app with a backend, password hashing should be done server-side.
- * This is a simplified client-side implementation for the Google Sheets architecture.
+ * This is a simplified client-side implementation for basic validation.
  */
 
 /**
