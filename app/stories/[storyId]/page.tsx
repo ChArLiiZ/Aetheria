@@ -40,6 +40,9 @@ function StoryDetailPageContent() {
   // Creation tabs (only for new story)
   const [currentTab, setCurrentTab] = useState<'basic' | 'characters' | 'ai'>('basic');
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+  const [initialStates, setInitialStates] = useState<Record<string, Record<string, any>>>({});
+  const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
+  const [creationWorldSchema, setCreationWorldSchema] = useState<WorldStateSchema[]>([]);
 
   // State editing
   const [editingStoryCharacter, setEditingStoryCharacter] = useState<StoryCharacter | null>(null);
@@ -88,6 +91,12 @@ function StoryDetailPageContent() {
 
       setWorlds(worldsData);
       setCharacters(charactersData);
+
+      // Load schema if creating new story and world is selected
+      if (isNewStory && formData.world_id) {
+        const schemaData = await getSchemaByWorldId(formData.world_id, user.user_id);
+        setCreationWorldSchema(schemaData);
+      }
 
       // Load story if editing
       if (!isNewStory) {
@@ -240,9 +249,11 @@ function StoryDetailPageContent() {
           story_prompt: formData.story_prompt.trim(),
         });
 
-        // Add selected characters to the story
+        // Add selected characters to the story and get story_character_ids
+        const storyCharacterResults: { characterId: string; storyCharacterId: string }[] = [];
+
         if (selectedCharacterIds.length > 0) {
-          await Promise.all(
+          const storyChars = await Promise.all(
             selectedCharacterIds.map((characterId) =>
               addStoryCharacter(user.user_id, {
                 story_id: newStory.story_id,
@@ -251,6 +262,41 @@ function StoryDetailPageContent() {
               })
             )
           );
+
+          // Map character_id to story_character_id
+          storyChars.forEach((sc, index) => {
+            storyCharacterResults.push({
+              characterId: selectedCharacterIds[index],
+              storyCharacterId: sc.story_character_id,
+            });
+          });
+        }
+
+        // Set initial states for all characters
+        if (storyCharacterResults.length > 0 && creationWorldSchema.length > 0) {
+          const allStateValues: Array<{
+            story_id: string;
+            story_character_id: string;
+            schema_key: string;
+            value_json: string;
+          }> = [];
+
+          storyCharacterResults.forEach(({ characterId, storyCharacterId }) => {
+            const charStates = initialStates[characterId] || {};
+            creationWorldSchema.forEach((schema) => {
+              const value = charStates[schema.schema_key] ?? JSON.parse(schema.default_value_json);
+              allStateValues.push({
+                story_id: newStory.story_id,
+                story_character_id: storyCharacterId,
+                schema_key: schema.schema_key,
+                value_json: JSON.stringify(value),
+              });
+            });
+          });
+
+          if (allStateValues.length > 0) {
+            await setMultipleStateValues(user.user_id, allStateValues);
+          }
         }
 
         alert('✅ 故事創建成功！');
@@ -278,6 +324,36 @@ function StoryDetailPageContent() {
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
     setCharacterPage(1); // Reset to first page when filter changes
+  };
+
+  // Load schema when world is selected (for new story)
+  const handleWorldSelect = async (worldId: string) => {
+    setFormData({ ...formData, world_id: worldId });
+    setShowWorldSelector(false);
+
+    if (isNewStory && user) {
+      try {
+        const schemaData = await getSchemaByWorldId(worldId, user.user_id);
+        setCreationWorldSchema(schemaData);
+
+        // Initialize default values for all selected characters
+        const newInitialStates: Record<string, Record<string, any>> = {};
+        selectedCharacterIds.forEach((charId) => {
+          const defaultValues: Record<string, any> = {};
+          schemaData.forEach((schema) => {
+            try {
+              defaultValues[schema.schema_key] = JSON.parse(schema.default_value_json);
+            } catch {
+              defaultValues[schema.schema_key] = '';
+            }
+          });
+          newInitialStates[charId] = defaultValues;
+        });
+        setInitialStates(newInitialStates);
+      } catch (err) {
+        console.error('Failed to load schema:', err);
+      }
+    }
   };
 
   // Story character management
@@ -539,10 +615,7 @@ function StoryDetailPageContent() {
                           {paginatedWorlds.map((world) => (
                             <button
                               key={world.world_id}
-                              onClick={() => {
-                                setFormData({ ...formData, world_id: world.world_id });
-                                setShowWorldSelector(false);
-                              }}
+                              onClick={() => handleWorldSelect(world.world_id)}
                               className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
                             >
                               <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
@@ -872,51 +945,198 @@ function StoryDetailPageContent() {
                   <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                     已選擇 ({selectedCharacterIds.length} 個角色)
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-3">
                     {selectedCharacterIds.map((charId) => {
                       const char = characters.find((c) => c.character_id === charId);
                       if (!char) return null;
                       const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+                      const isEditing = editingCharacterId === charId;
+                      const charStates = initialStates[charId] || {};
 
                       return (
                         <div
                           key={charId}
-                          className="flex items-start justify-between p-3 border border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg"
+                          className="border border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg"
                         >
-                          <div className="flex-1">
-                            <h5 className="font-medium text-gray-900 dark:text-white text-sm">
-                              {char.canonical_name}
-                            </h5>
-                            <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
-                              {char.core_profile_text}
-                            </p>
-                            {charTags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {charTags.slice(0, 2).map((tag: string) => (
-                                  <span
-                                    key={tag}
-                                    className="px-1.5 py-0.5 text-xs bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200 rounded"
-                                  >
-                                    {tag}
-                                  </span>
+                          <div className="flex items-start justify-between p-3">
+                            <div className="flex-1">
+                              <h5 className="font-medium text-gray-900 dark:text-white text-sm">
+                                {char.canonical_name}
+                              </h5>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
+                                {char.core_profile_text}
+                              </p>
+                              {charTags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {charTags.slice(0, 2).map((tag: string) => (
+                                    <span
+                                      key={tag}
+                                      className="px-1.5 py-0.5 text-xs bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200 rounded"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-2 ml-3">
+                              {formData.world_id && creationWorldSchema.length > 0 && (
+                                <button
+                                  onClick={() =>
+                                    setEditingCharacterId(isEditing ? null : charId)
+                                  }
+                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                                >
+                                  {isEditing ? '收起' : '設定狀態'}
+                                </button>
+                              )}
+                              <button
+                                onClick={() =>
+                                  setSelectedCharacterIds((prev) =>
+                                    prev.filter((id) => id !== charId)
+                                  )
+                                }
+                                className="px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition border border-red-300 dark:border-red-600"
+                              >
+                                移除
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Initial State Editor */}
+                          {isEditing && formData.world_id && (
+                            <div className="border-t border-blue-300 dark:border-blue-600 p-3 bg-white dark:bg-gray-800">
+                              <h6 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-3">
+                                初始狀態設定
+                              </h6>
+                              <div className="space-y-3">
+                                {creationWorldSchema.map((schema) => (
+                                  <div key={schema.schema_id} className="space-y-1">
+                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                                      {schema.display_name}
+                                      <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                        ({schema.type})
+                                      </span>
+                                    </label>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                      {schema.ai_description}
+                                    </p>
+
+                                    {/* Number input */}
+                                    {schema.type === 'number' && (
+                                      <input
+                                        type="number"
+                                        value={charStates[schema.schema_key] ?? ''}
+                                        onChange={(e) => {
+                                          const newStates = { ...initialStates };
+                                          if (!newStates[charId]) newStates[charId] = {};
+                                          newStates[charId][schema.schema_key] =
+                                            parseFloat(e.target.value) || 0;
+                                          setInitialStates(newStates);
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                      />
+                                    )}
+
+                                    {/* Text input */}
+                                    {schema.type === 'text' && (
+                                      <input
+                                        type="text"
+                                        value={charStates[schema.schema_key] ?? ''}
+                                        onChange={(e) => {
+                                          const newStates = { ...initialStates };
+                                          if (!newStates[charId]) newStates[charId] = {};
+                                          newStates[charId][schema.schema_key] = e.target.value;
+                                          setInitialStates(newStates);
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                      />
+                                    )}
+
+                                    {/* Boolean input */}
+                                    {schema.type === 'bool' && (
+                                      <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={charStates[schema.schema_key] ?? false}
+                                          onChange={(e) => {
+                                            const newStates = { ...initialStates };
+                                            if (!newStates[charId]) newStates[charId] = {};
+                                            newStates[charId][schema.schema_key] =
+                                              e.target.checked;
+                                            setInitialStates(newStates);
+                                          }}
+                                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                        />
+                                        <span className="text-xs text-gray-700 dark:text-gray-300">
+                                          {charStates[schema.schema_key] ? '是' : '否'}
+                                        </span>
+                                      </label>
+                                    )}
+
+                                    {/* Enum select */}
+                                    {schema.type === 'enum' && schema.enum_options_json && (
+                                      <select
+                                        value={charStates[schema.schema_key] ?? ''}
+                                        onChange={(e) => {
+                                          const newStates = { ...initialStates };
+                                          if (!newStates[charId]) newStates[charId] = {};
+                                          newStates[charId][schema.schema_key] = e.target.value;
+                                          setInitialStates(newStates);
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                      >
+                                        <option value="">選擇...</option>
+                                        {JSON.parse(schema.enum_options_json).map(
+                                          (option: string) => (
+                                            <option key={option} value={option}>
+                                              {option}
+                                            </option>
+                                          )
+                                        )}
+                                      </select>
+                                    )}
+
+                                    {/* List of text */}
+                                    {schema.type === 'list_text' && (
+                                      <textarea
+                                        value={
+                                          Array.isArray(charStates[schema.schema_key])
+                                            ? charStates[schema.schema_key].join('\n')
+                                            : ''
+                                        }
+                                        onChange={(e) => {
+                                          const newStates = { ...initialStates };
+                                          if (!newStates[charId]) newStates[charId] = {};
+                                          newStates[charId][schema.schema_key] = e.target.value
+                                            .split('\n')
+                                            .filter((line) => line.trim());
+                                          setInitialStates(newStates);
+                                        }}
+                                        rows={3}
+                                        placeholder="每行一個項目"
+                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                      />
+                                    )}
+                                  </div>
                                 ))}
                               </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() =>
-                              setSelectedCharacterIds((prev) =>
-                                prev.filter((id) => id !== charId)
-                              )
-                            }
-                            className="ml-3 px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                          >
-                            移除
-                          </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
+                  {formData.world_id && creationWorldSchema.length === 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      此世界觀尚未定義狀態 Schema，創建後角色將使用預設狀態
+                    </p>
+                  )}
+                  {!formData.world_id && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      請先在「基本設定」中選擇世界觀，才能設定角色初始狀態
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -932,9 +1152,23 @@ function StoryDetailPageContent() {
                       return (
                         <button
                           key={char.character_id}
-                          onClick={() =>
-                            setSelectedCharacterIds((prev) => [...prev, char.character_id])
-                          }
+                          onClick={() => {
+                            setSelectedCharacterIds((prev) => [...prev, char.character_id]);
+                            // Initialize default states for this character
+                            if (creationWorldSchema.length > 0) {
+                              const newStates = { ...initialStates };
+                              const defaultValues: Record<string, any> = {};
+                              creationWorldSchema.forEach((schema) => {
+                                try {
+                                  defaultValues[schema.schema_key] = JSON.parse(schema.default_value_json);
+                                } catch {
+                                  defaultValues[schema.schema_key] = '';
+                                }
+                              });
+                              newStates[char.character_id] = defaultValues;
+                              setInitialStates(newStates);
+                            }
+                          }}
                           className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
                         >
                           <h5 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
