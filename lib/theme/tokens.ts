@@ -201,4 +201,4 @@ export const tokens = {
     popover: 1060,
     tooltip: 1070,
   },
-} as const;
+};
