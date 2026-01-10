@@ -8,7 +8,7 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - 創造獨特的故事並與 AI 互動
 - 即時追蹤角色狀態、關係和物品
  
-**技術棧**：Next.js 15 + TypeScript + Supabase + OpenRouter AI
+**技術棧**：Next.js 15 + TypeScript + Supabase + OpenRouter AI + Sonner
  
 ---
  
@@ -259,7 +259,7 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - [x] 詳細錯誤訊息
 - [x] 可自定義重試參數
 - [x] onRetry 回調支援
-- [x] 已套用至部分服務（stories.ts 等）
+- [x] 已套用至所有 Supabase 服務（9 個檔案、50+ 函數）
 - [x] 完整遷移指南（`docs/RETRY_MIGRATION_GUIDE.md`）
 - [x] 自動化轉換工具
  
@@ -268,6 +268,63 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - [x] 批量操作（批量設定狀態值）
 - [x] 查詢優化（減少 N+1 查詢）
 - [x] 使用 Map 結構加速查找
+ 
+#### ✅ React useEffect 最佳實踐（防止競爭條件）
+
+**重要**：所有頁面的 `useEffect` 資料載入必須遵循以下模式：
+
+```tsx
+useEffect(() => {
+  let cancelled = false;  // 1. 宣告取消標記
+
+  const fetchData = async () => {
+    // 2. 使用 user?.user_id 而非 user，且必須設定 loading = false
+    if (!user?.user_id) {
+      setLoading(false);  // ⚠️ 重要：避免頁面永遠卡在載入狀態
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      const data = await getData(user.user_id);
+      
+      if (cancelled) return;  // 3. 每次 setState 前檢查
+      
+      setData(data);
+    } catch (err) {
+      if (cancelled) return;  // 4. 錯誤處理時也要檢查
+      // handle error
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }
+  };
+
+  fetchData();
+
+  return () => {
+    cancelled = true;  // 5. cleanup 時標記取消
+  };
+}, [user?.user_id, ...otherDeps]);  // 6. 依賴用 user?.user_id
+```
+
+**已套用的頁面**：
+- `app/worlds/page.tsx`
+- `app/worlds/[worldId]/page.tsx`
+- `app/stories/page.tsx`
+- `app/stories/[storyId]/page.tsx`
+- `app/characters/page.tsx`
+- `app/characters/[characterId]/page.tsx`
+
+#### ✅ Toast 通知系統（Sonner）
+- [x] 安裝 Sonner 套件
+- [x] 在 `layout.tsx` 加入 `<Toaster />` 元件
+- [x] 深色主題設定（右上角、自動消失、關閉按鈕）
+- [x] 替換所有 `alert()` 為 Toast 通知（約 50 處）
+  - `toast.success()` - 成功通知（綠色）
+  - `toast.error()` - 錯誤通知（紅色）
+  - `toast.warning()` - 警告通知（黃色）
  
 ---
  
@@ -321,6 +378,7 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - **語言**：TypeScript
 - **樣式**：Tailwind CSS
 - **狀態管理**：React Hooks + Context API
+- **通知系統**：Sonner（Toast）
  
 ### 後端與資料庫
 - **資料庫**：Supabase（PostgreSQL）
@@ -465,7 +523,7 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - [x] 自動重試機制
  
 ### ⏳ 進行中
-- [ ] 完整重試機制遷移（剩餘 ~50 個函數）
+- [x] 完整重試機制遷移（已完成 9 個服務檔案）
 - [ ] ChangeLog 系統
 - [ ] 回顧功能
  
@@ -476,6 +534,6 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
  
 ---
  
-**最後更新**：2026-01-09
-**當前版本**：v0.8.5-alpha
+**最後更新**：2026-01-10
+**當前版本**：v0.8.7-alpha
 **專案狀態**：✅ 核心功能完成，進入優化階段

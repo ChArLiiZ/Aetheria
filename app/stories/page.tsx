@@ -7,6 +7,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import { Story } from '@/types';
 import { getStories, deleteStory } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
+import { toast } from 'sonner';
 
 interface StoryWithWorld extends Story {
   world_name?: string;
@@ -19,12 +20,61 @@ function StoriesPageContent() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'ended'>('all');
 
+  // Load stories with cancellation support to prevent race conditions
   useEffect(() => {
-    loadStories();
-  }, [user]);
+    let cancelled = false;
 
+    const fetchStories = async () => {
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // Fetch stories and worlds in parallel
+        const [storiesData, worldsData] = await Promise.all([
+          getStories(user.user_id),
+          getWorldsByUserId(user.user_id),
+        ]);
+
+        if (cancelled) return;
+
+        // Create a map of world_id to world_name for quick lookup
+        const worldMap = new Map(
+          worldsData.map((world) => [world.world_id, world.name])
+        );
+
+        // Match world names to stories
+        const storiesWithWorlds = storiesData.map((story) => ({
+          ...story,
+          world_name: worldMap.get(story.world_id) || '未知世界觀',
+        }));
+
+        setStories(storiesWithWorlds);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load stories:', err);
+        toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchStories();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.user_id]);
+
+  // Reload stories function for use after updates
   const loadStories = async () => {
-    if (!user) return;
+    if (!user?.user_id) return;
 
     try {
       setLoading(true);
@@ -49,7 +99,7 @@ function StoriesPageContent() {
       setStories(storiesWithWorlds);
     } catch (err: any) {
       console.error('Failed to load stories:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -64,11 +114,11 @@ function StoriesPageContent() {
 
     try {
       await deleteStory(storyId, user.user_id);
-      alert('✅ 刪除成功！');
+      toast.success('刪除成功！');
       loadStories();
     } catch (err: any) {
       console.error('Failed to delete story:', err);
-      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
@@ -149,31 +199,28 @@ function StoriesPageContent() {
           <div className="mb-6 flex gap-2">
             <button
               onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg transition ${
-                filter === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
+              className={`px-4 py-2 rounded-lg transition ${filter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
             >
               全部 ({stories.length})
             </button>
             <button
               onClick={() => setFilter('active')}
-              className={`px-4 py-2 rounded-lg transition ${
-                filter === 'active'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
+              className={`px-4 py-2 rounded-lg transition ${filter === 'active'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
             >
               進行中 ({stories.filter((s) => s.status === 'active').length})
             </button>
             <button
               onClick={() => setFilter('ended')}
-              className={`px-4 py-2 rounded-lg transition ${
-                filter === 'ended'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-              }`}
+              className={`px-4 py-2 rounded-lg transition ${filter === 'ended'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
             >
               已結束 ({stories.filter((s) => s.status === 'ended').length})
             </button>

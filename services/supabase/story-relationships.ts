@@ -14,25 +14,19 @@ export async function getStoryRelationships(
   storyId: string,
   userId: string
 ): Promise<StoryRelationship[]> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_relationships')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to fetch story relationships: ' + error.message);
+    }
+
+    return (data || []) as StoryRelationship[];
   });
-
-  const fetchPromise = supabase
-    .from('story_relationships')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to fetch story relationships: ' + error.message);
-  }
-
-  return (data || []) as StoryRelationship[];
 }
 
 /**
@@ -44,31 +38,25 @@ export async function getRelationship(
   toCharacterId: string,
   userId: string
 ): Promise<StoryRelationship | null> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
-  });
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_relationships')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('from_story_character_id', fromCharacterId)
+      .eq('to_story_character_id', toCharacterId)
+      .eq('user_id', userId)
+      .single();
 
-  const fetchPromise = supabase
-    .from('story_relationships')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('from_story_character_id', fromCharacterId)
-    .eq('to_story_character_id', toCharacterId)
-    .eq('user_id', userId)
-    .single();
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error('Failed to fetch relationship: ' + error.message);
     }
-    throw new Error('Failed to fetch relationship: ' + error.message);
-  }
 
-  return data as StoryRelationship;
+    return data as StoryRelationship;
+  });
 }
 
 /**
@@ -89,27 +77,21 @@ export async function setRelationship(
     ...data,
   };
 
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data: relationship, error } = await supabase
+      .from('story_relationships')
+      .upsert(payload, {
+        onConflict: 'story_id,from_story_character_id,to_story_character_id',
+      })
+      .select()
+      .single();
+
+    if (error || !relationship) {
+      throw new Error('Failed to set relationship: ' + error?.message);
+    }
+
+    return relationship as StoryRelationship;
   });
-
-  const upsertPromise = supabase
-    .from('story_relationships')
-    .upsert(payload, {
-      onConflict: 'story_id,from_story_character_id,to_story_character_id',
-    })
-    .select()
-    .single();
-
-  const result = await Promise.race([upsertPromise, timeoutPromise]);
-  const { data: relationship, error } = result as any;
-
-  if (error || !relationship) {
-    throw new Error('Failed to set relationship: ' + error?.message);
-  }
-
-  return relationship as StoryRelationship;
 }
 
 /**
@@ -122,29 +104,23 @@ export async function updateRelationshipScore(
   score: number,
   userId: string
 ): Promise<StoryRelationship> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data: relationship, error } = await supabase
+      .from('story_relationships')
+      .update({ score })
+      .eq('story_id', storyId)
+      .eq('from_story_character_id', fromCharacterId)
+      .eq('to_story_character_id', toCharacterId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error || !relationship) {
+      throw new Error('Failed to update relationship score: ' + error?.message);
+    }
+
+    return relationship as StoryRelationship;
   });
-
-  const updatePromise = supabase
-    .from('story_relationships')
-    .update({ score })
-    .eq('story_id', storyId)
-    .eq('from_story_character_id', fromCharacterId)
-    .eq('to_story_character_id', toCharacterId)
-    .eq('user_id', userId)
-    .select()
-    .single();
-
-  const result = await Promise.race([updatePromise, timeoutPromise]);
-  const { data: relationship, error } = result as any;
-
-  if (error || !relationship) {
-    throw new Error('Failed to update relationship score: ' + error?.message);
-  }
-
-  return relationship as StoryRelationship;
 }
 
 /**
@@ -157,29 +133,23 @@ export async function updateRelationshipTags(
   tagsJson: string,
   userId: string
 ): Promise<StoryRelationship> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data: relationship, error } = await supabase
+      .from('story_relationships')
+      .update({ tags_json: tagsJson })
+      .eq('story_id', storyId)
+      .eq('from_story_character_id', fromCharacterId)
+      .eq('to_story_character_id', toCharacterId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error || !relationship) {
+      throw new Error('Failed to update relationship tags: ' + error?.message);
+    }
+
+    return relationship as StoryRelationship;
   });
-
-  const updatePromise = supabase
-    .from('story_relationships')
-    .update({ tags_json: tagsJson })
-    .eq('story_id', storyId)
-    .eq('from_story_character_id', fromCharacterId)
-    .eq('to_story_character_id', toCharacterId)
-    .eq('user_id', userId)
-    .select()
-    .single();
-
-  const result = await Promise.race([updatePromise, timeoutPromise]);
-  const { data: relationship, error } = result as any;
-
-  if (error || !relationship) {
-    throw new Error('Failed to update relationship tags: ' + error?.message);
-  }
-
-  return relationship as StoryRelationship;
 }
 
 /**
@@ -191,23 +161,17 @@ export async function deleteRelationship(
   toCharacterId: string,
   userId: string
 ): Promise<void> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('story_relationships')
+      .delete()
+      .eq('story_id', storyId)
+      .eq('from_story_character_id', fromCharacterId)
+      .eq('to_story_character_id', toCharacterId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to delete relationship: ' + error.message);
+    }
   });
-
-  const deletePromise = supabase
-    .from('story_relationships')
-    .delete()
-    .eq('story_id', storyId)
-    .eq('from_story_character_id', fromCharacterId)
-    .eq('to_story_character_id', toCharacterId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([deletePromise, timeoutPromise]);
-  const { error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to delete relationship: ' + error.message);
-  }
 }

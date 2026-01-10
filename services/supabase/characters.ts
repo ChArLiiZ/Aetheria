@@ -11,17 +11,19 @@ import type { Character } from '@/types';
  * Get all characters for a user
  */
 export async function getCharacters(userId: string): Promise<Character[]> {
-  const { data, error } = await supabase
-    .from('characters')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('characters')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    throw new Error('Failed to fetch characters: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to fetch characters: ' + error.message);
+    }
 
-  return (data || []) as Character[];
+    return (data || []) as Character[];
+  });
 }
 
 /**
@@ -31,21 +33,23 @@ export async function getCharacterById(
   characterId: string,
   userId: string
 ): Promise<Character | null> {
-  const { data, error } = await supabase
-    .from('characters')
-    .select('*')
-    .eq('character_id', characterId)
-    .eq('user_id', userId)
-    .single();
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('characters')
+      .select('*')
+      .eq('character_id', characterId)
+      .eq('user_id', userId)
+      .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error('Failed to fetch character: ' + error.message);
     }
-    throw new Error('Failed to fetch character: ' + error.message);
-  }
 
-  return data as Character;
+    return data as Character;
+  });
 }
 
 /**
@@ -59,22 +63,24 @@ export async function createCharacter(
     tags?: string[];
   }
 ): Promise<Character> {
-  const { data: newCharacter, error } = await supabase
-    .from('characters')
-    .insert({
-      user_id: userId,
-      canonical_name: data.canonical_name,
-      core_profile_text: data.core_profile_text,
-      tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
-    })
-    .select()
-    .single();
+  return withRetry(async () => {
+    const { data: newCharacter, error } = await supabase
+      .from('characters')
+      .insert({
+        user_id: userId,
+        canonical_name: data.canonical_name,
+        core_profile_text: data.core_profile_text,
+        tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
+      })
+      .select()
+      .single();
 
-  if (error || !newCharacter) {
-    throw new Error('Failed to create character: ' + error?.message);
-  }
+    if (error || !newCharacter) {
+      throw new Error('Failed to create character: ' + error?.message);
+    }
 
-  return newCharacter as Character;
+    return newCharacter as Character;
+  });
 }
 
 /**
@@ -89,23 +95,25 @@ export async function updateCharacter(
     tags?: string[];
   }
 ): Promise<Character> {
-  const { data: updatedCharacter, error } = await supabase
-    .from('characters')
-    .update({
-      canonical_name: data.canonical_name,
-      core_profile_text: data.core_profile_text,
-      tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
-    })
-    .eq('character_id', characterId)
-    .eq('user_id', userId)
-    .select()
-    .single();
+  return withRetry(async () => {
+    const { data: updatedCharacter, error } = await supabase
+      .from('characters')
+      .update({
+        canonical_name: data.canonical_name,
+        core_profile_text: data.core_profile_text,
+        tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
+      })
+      .eq('character_id', characterId)
+      .eq('user_id', userId)
+      .select()
+      .single();
 
-  if (error || !updatedCharacter) {
-    throw new Error('Failed to update character: ' + error?.message);
-  }
+    if (error || !updatedCharacter) {
+      throw new Error('Failed to update character: ' + error?.message);
+    }
 
-  return updatedCharacter as Character;
+    return updatedCharacter as Character;
+  });
 }
 
 /**
@@ -115,15 +123,17 @@ export async function deleteCharacter(
   characterId: string,
   userId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('characters')
-    .delete()
-    .eq('character_id', characterId)
-    .eq('user_id', userId);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('characters')
+      .delete()
+      .eq('character_id', characterId)
+      .eq('user_id', userId);
 
-  if (error) {
-    throw new Error('Failed to delete character: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to delete character: ' + error.message);
+    }
+  });
 }
 
 /**
@@ -134,17 +144,19 @@ export async function characterNameExists(
   name: string,
   excludeCharacterId?: string
 ): Promise<boolean> {
-  let query = supabase
-    .from('characters')
-    .select('character_id')
-    .eq('user_id', userId)
-    .ilike('canonical_name', name);
+  return withRetry(async () => {
+    let query = supabase
+      .from('characters')
+      .select('character_id')
+      .eq('user_id', userId)
+      .ilike('canonical_name', name);
 
-  if (excludeCharacterId) {
-    query = query.neq('character_id', excludeCharacterId);
-  }
+    if (excludeCharacterId) {
+      query = query.neq('character_id', excludeCharacterId);
+    }
 
-  const { data } = await query;
+    const { data } = await query;
 
-  return (data?.length || 0) > 0;
+    return (data?.length || 0) > 0;
+  });
 }

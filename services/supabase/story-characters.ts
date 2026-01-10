@@ -14,26 +14,20 @@ export async function getStoryCharacters(
   storyId: string,
   userId: string
 ): Promise<StoryCharacter[]> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_characters')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new Error('Failed to fetch story characters: ' + error.message);
+    }
+
+    return (data || []) as StoryCharacter[];
   });
-
-  const fetchPromise = supabase
-    .from('story_characters')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to fetch story characters: ' + error.message);
-  }
-
-  return (data || []) as StoryCharacter[];
 }
 
 /**
@@ -43,29 +37,23 @@ export async function getStoryCharacterById(
   storyCharacterId: string,
   userId: string
 ): Promise<StoryCharacter | null> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
-  });
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_characters')
+      .select('*')
+      .eq('story_character_id', storyCharacterId)
+      .eq('user_id', userId)
+      .single();
 
-  const fetchPromise = supabase
-    .from('story_characters')
-    .select('*')
-    .eq('story_character_id', storyCharacterId)
-    .eq('user_id', userId)
-    .single();
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error('Failed to fetch story character: ' + error.message);
     }
-    throw new Error('Failed to fetch story character: ' + error.message);
-  }
 
-  return data as StoryCharacter;
+    return data as StoryCharacter;
+  });
 }
 
 /**
@@ -88,25 +76,19 @@ export async function addStoryCharacter(
     is_player: data.is_player || false,
   };
 
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data: newStoryCharacter, error } = await supabase
+      .from('story_characters')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error || !newStoryCharacter) {
+      throw new Error('Failed to add story character: ' + error?.message);
+    }
+
+    return newStoryCharacter as StoryCharacter;
   });
-
-  const insertPromise = supabase
-    .from('story_characters')
-    .insert(payload)
-    .select()
-    .single();
-
-  const result = await Promise.race([insertPromise, timeoutPromise]);
-  const { data: newStoryCharacter, error } = result as any;
-
-  if (error || !newStoryCharacter) {
-    throw new Error('Failed to add story character: ' + error?.message);
-  }
-
-  return newStoryCharacter as StoryCharacter;
 }
 
 /**
@@ -119,23 +101,17 @@ export async function updateStoryCharacter(
     display_name_override?: string;
   }
 ): Promise<void> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('story_characters')
+      .update(updates)
+      .eq('story_character_id', storyCharacterId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to update story character: ' + error.message);
+    }
   });
-
-  const updatePromise = supabase
-    .from('story_characters')
-    .update(updates)
-    .eq('story_character_id', storyCharacterId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([updatePromise, timeoutPromise]);
-  const { error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to update story character: ' + error.message);
-  }
 }
 
 /**
@@ -145,23 +121,17 @@ export async function removeStoryCharacter(
   storyCharacterId: string,
   userId: string
 ): Promise<void> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('story_characters')
+      .delete()
+      .eq('story_character_id', storyCharacterId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to remove story character: ' + error.message);
+    }
   });
-
-  const deletePromise = supabase
-    .from('story_characters')
-    .delete()
-    .eq('story_character_id', storyCharacterId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([deletePromise, timeoutPromise]);
-  const { error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to remove story character: ' + error.message);
-  }
 }
 
 /**
@@ -172,12 +142,14 @@ export async function isCharacterInStory(
   characterId: string,
   userId: string
 ): Promise<boolean> {
-  const { data } = await supabase
-    .from('story_characters')
-    .select('story_character_id')
-    .eq('story_id', storyId)
-    .eq('character_id', characterId)
-    .eq('user_id', userId);
+  return withRetry(async () => {
+    const { data } = await supabase
+      .from('story_characters')
+      .select('story_character_id')
+      .eq('story_id', storyId)
+      .eq('character_id', characterId)
+      .eq('user_id', userId);
 
-  return (data?.length || 0) > 0;
+    return (data?.length || 0) > 0;
+  });
 }

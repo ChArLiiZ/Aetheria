@@ -10,6 +10,49 @@ import { withRetry } from '@/lib/supabase/retry';
 import type { User } from '@/types';
 import { validatePassword } from '@/lib/auth/password';
 
+function buildFallbackUser(sessionUser: any): User {
+  const now = new Date().toISOString();
+  const email = sessionUser?.email || '';
+  const displayName =
+    sessionUser?.user_metadata?.display_name || email.split('@')[0] || 'User';
+
+  return {
+    user_id: sessionUser?.id || '',
+    email,
+    display_name: displayName,
+    status: 'active',
+    created_at: sessionUser?.created_at || now,
+    updated_at: now,
+    last_login_at: sessionUser?.last_sign_in_at || undefined,
+  };
+}
+
+async function tryCreateUserProfile(sessionUser: any): Promise<User | null> {
+  if (!sessionUser?.id) return null;
+
+  const email = sessionUser.email || '';
+  if (!email) return null;
+  const displayName =
+    sessionUser?.user_metadata?.display_name || email.split('@')[0] || 'User';
+
+  const { data, error } = await supabase
+    .from('users')
+    .insert({
+      user_id: sessionUser.id,
+      email,
+      display_name: displayName,
+      status: 'active',
+    })
+    .select()
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as User;
+}
+
 /**
  * Register a new user
  */
@@ -139,13 +182,27 @@ export async function getCurrentUser(): Promise<User | null> {
   const session = await getCurrentSession();
   if (!session?.user) return null;
 
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from('users')
     .select('*')
     .eq('user_id', session.user.id)
     .single();
 
-  return profile as User | null;
+  if (profile) {
+    return profile as User;
+  }
+
+  if (error && error.code !== 'PGRST116') {
+    console.warn('Failed to load user profile, using session fallback:', error);
+    return buildFallbackUser(session.user);
+  }
+
+  const createdProfile = await tryCreateUserProfile(session.user);
+  if (createdProfile) {
+    return createdProfile;
+  }
+
+  return buildFallbackUser(session.user);
 }
 
 /**

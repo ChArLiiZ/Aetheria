@@ -17,18 +17,20 @@ export async function getSchemaByWorldId(
   worldId: string,
   userId: string
 ): Promise<WorldStateSchemaItem[]> {
-  const { data, error } = await supabase
-    .from('world_state_schema')
-    .select('*')
-    .eq('world_id', worldId)
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true });
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('world_state_schema')
+      .select('*')
+      .eq('world_id', worldId)
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true });
 
-  if (error) {
-    throw new Error('Failed to fetch schema: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to fetch schema: ' + error.message);
+    }
 
-  return (data || []) as WorldStateSchemaItem[];
+    return (data || []) as WorldStateSchemaItem[];
+  });
 }
 
 /**
@@ -38,21 +40,23 @@ export async function getSchemaItemById(
   schemaId: string,
   userId: string
 ): Promise<WorldStateSchemaItem | null> {
-  const { data, error } = await supabase
-    .from('world_state_schema')
-    .select('*')
-    .eq('schema_id', schemaId)
-    .eq('user_id', userId)
-    .single();
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('world_state_schema')
+      .select('*')
+      .eq('schema_id', schemaId)
+      .eq('user_id', userId)
+      .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error('Failed to fetch schema item: ' + error.message);
     }
-    throw new Error('Failed to fetch schema item: ' + error.message);
-  }
 
-  return data as WorldStateSchemaItem;
+    return data as WorldStateSchemaItem;
+  });
 }
 
 /**
@@ -77,28 +81,30 @@ export async function createSchemaItem(
     ? Math.max(...existingSchemas.map(s => s.sort_order))
     : 0;
 
-  const { data: newSchema, error } = await supabase
-    .from('world_state_schema')
-    .insert({
-      world_id: worldId,
-      user_id: userId,
-      schema_key: data.schema_key,
-      display_name: data.display_name,
-      type: data.type,
-      ai_description: data.ai_description,
-      default_value_json: data.default_value_json || '',
-      enum_options_json: data.enum_options_json || '',
-      number_constraints_json: data.number_constraints_json || '',
-      sort_order: maxSortOrder + 1,
-    })
-    .select()
-    .single();
+  return withRetry(async () => {
+    const { data: newSchema, error } = await supabase
+      .from('world_state_schema')
+      .insert({
+        world_id: worldId,
+        user_id: userId,
+        schema_key: data.schema_key,
+        display_name: data.display_name,
+        type: data.type,
+        ai_description: data.ai_description,
+        default_value_json: data.default_value_json || '',
+        enum_options_json: data.enum_options_json || '',
+        number_constraints_json: data.number_constraints_json || '',
+        sort_order: maxSortOrder + 1,
+      })
+      .select()
+      .single();
 
-  if (error || !newSchema) {
-    throw new Error('Failed to create schema item: ' + error?.message);
-  }
+    if (error || !newSchema) {
+      throw new Error('Failed to create schema item: ' + error?.message);
+    }
 
-  return newSchema as WorldStateSchemaItem;
+    return newSchema as WorldStateSchemaItem;
+  });
 }
 
 /**
@@ -121,15 +127,17 @@ export async function updateSchemaItem(
     >
   >
 ): Promise<void> {
-  const { error } = await supabase
-    .from('world_state_schema')
-    .update(updates)
-    .eq('schema_id', schemaId)
-    .eq('user_id', userId);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('world_state_schema')
+      .update(updates)
+      .eq('schema_id', schemaId)
+      .eq('user_id', userId);
 
-  if (error) {
-    throw new Error('Failed to update schema item: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to update schema item: ' + error.message);
+    }
+  });
 }
 
 /**
@@ -139,15 +147,17 @@ export async function deleteSchemaItem(
   schemaId: string,
   userId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('world_state_schema')
-    .delete()
-    .eq('schema_id', schemaId)
-    .eq('user_id', userId);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('world_state_schema')
+      .delete()
+      .eq('schema_id', schemaId)
+      .eq('user_id', userId);
 
-  if (error) {
-    throw new Error('Failed to delete schema item: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to delete schema item: ' + error.message);
+    }
+  });
 }
 
 /**
@@ -173,18 +183,20 @@ export async function schemaKeyExists(
   schemaKey: string,
   excludeSchemaId?: string
 ): Promise<boolean> {
-  let query = supabase
-    .from('world_state_schema')
-    .select('schema_id')
-    .eq('world_id', worldId)
-    .eq('user_id', userId)
-    .eq('schema_key', schemaKey);
+  return withRetry(async () => {
+    let query = supabase
+      .from('world_state_schema')
+      .select('schema_id')
+      .eq('world_id', worldId)
+      .eq('user_id', userId)
+      .eq('schema_key', schemaKey);
 
-  if (excludeSchemaId) {
-    query = query.neq('schema_id', excludeSchemaId);
-  }
+    if (excludeSchemaId) {
+      query = query.neq('schema_id', excludeSchemaId);
+    }
 
-  const { data } = await query;
+    const { data } = await query;
 
-  return (data?.length || 0) > 0;
+    return (data?.length || 0) > 0;
+  });
 }

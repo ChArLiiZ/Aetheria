@@ -24,6 +24,7 @@ import { getCharacterById } from '@/services/supabase/characters';
 import { getAllStateValuesForStory } from '@/services/supabase/story-state-values';
 import { getStoryRelationships } from '@/services/supabase/story-relationships';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
+import { toast } from 'sonner';
 
 function StoryPlayPageContent() {
   const { user } = useAuth();
@@ -82,13 +83,13 @@ function StoryPlayPageContent() {
       ]);
 
       if (!storyData) {
-        alert('故事不存在');
+        toast.error('故事不存在');
         router.push('/stories');
         return;
       }
 
       if (!settings) {
-        alert('請先到設定頁面設定 AI 提供商');
+        toast.warning('請先到設定頁面設定 AI 提供商');
         router.push('/settings');
         return;
       }
@@ -101,7 +102,7 @@ function StoryPlayPageContent() {
       await loadCharacterStates(storyData.world_id);
     } catch (err: any) {
       console.error('Failed to load story:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -165,7 +166,7 @@ function StoryPlayPageContent() {
       await loadCharacterStates(story.world_id);
     } catch (err: any) {
       console.error('Failed to rollback story:', err);
-      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setDeletingTurnIndex(null);
     }
@@ -204,7 +205,9 @@ function StoryPlayPageContent() {
       await loadCharacterStates(story.world_id);
     } catch (err: any) {
       console.error('Failed to submit:', err);
-      alert(`提交失敗: ${err.message || '未知錯誤'}\n\n請檢查 AI 設定是否正確。`);
+      toast.error(`提交失敗: ${err.message || '未知錯誤'}`, {
+        description: '請檢查 AI 設定是否正確。',
+      });
       // Restore user input on error
       setUserInput(input);
     } finally {
@@ -262,106 +265,106 @@ function StoryPlayPageContent() {
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-4xl mx-auto space-y-6">
-          {/* Story Premise (Turn 0) */}
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 border border-purple-200 dark:border-purple-700">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
-                📖
+            {/* Story Premise (Turn 0) */}
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 border border-purple-200 dark:border-purple-700">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                  📖
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                    故事開始
+                  </h3>
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                    {story.premise_text}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
-                  故事開始
+            </div>
+
+            {/* Turn History */}
+            {turns.map((turn, index) => (
+              <div key={turn.turn_id} className="space-y-4">
+                {/* User Input */}
+                <div className="flex justify-end">
+                  <div className="max-w-[80%] bg-blue-600 text-white rounded-lg p-4">
+                    <p className="text-sm font-medium mb-1">你的行動</p>
+                    <p className="whitespace-pre-wrap">{turn.user_input_text}</p>
+                  </div>
+                </div>
+
+                {/* AI Response */}
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                      AI
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          回合 {turn.turn_index}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {new Date(turn.created_at).toLocaleString('zh-TW')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFromTurn(turn.turn_index)}
+                          disabled={deletingTurnIndex !== null}
+                          className="ml-auto text-xs text-red-600 hover:text-red-700 disabled:text-gray-400"
+                        >
+                          {deletingTurnIndex === turn.turn_index ? '刪除中...' : '刪除此回合'}
+                        </button>
+                      </div>
+                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        {turn.narrative_text}
+                      </p>
+
+                      {/* Dialogue */}
+                      {turn.dialogue_json && turn.dialogue_json !== '[]' && (
+                        <div className="mt-4 space-y-2">
+                          {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
+                            const speakerName = resolveSpeakerName(
+                              dialogue.speaker_story_character_id,
+                              dialogue.speaker
+                            );
+
+                            return (
+                              <div
+                                key={idx}
+                                className="pl-4 border-l-2 border-gray-300 dark:border-gray-600"
+                              >
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                  {speakerName}
+                                </p>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  {dialogue.text}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Empty state */}
+            {turns.length === 0 && (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">🎮</div>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  準備開始你的冒險
                 </h3>
-                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                  {story.premise_text}
+                <p className="text-gray-600 dark:text-gray-400">
+                  在下方輸入你的第一個行動
                 </p>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Turn History */}
-          {turns.map((turn, index) => (
-            <div key={turn.turn_id} className="space-y-4">
-              {/* User Input */}
-              <div className="flex justify-end">
-                <div className="max-w-[80%] bg-blue-600 text-white rounded-lg p-4">
-                  <p className="text-sm font-medium mb-1">你的行動</p>
-                  <p className="whitespace-pre-wrap">{turn.user_input_text}</p>
-                </div>
-              </div>
-
-              {/* AI Response */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                    AI
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        回合 {turn.turn_index}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {new Date(turn.created_at).toLocaleString('zh-TW')}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteFromTurn(turn.turn_index)}
-                        disabled={deletingTurnIndex !== null}
-                        className="ml-auto text-xs text-red-600 hover:text-red-700 disabled:text-gray-400"
-                      >
-                        {deletingTurnIndex === turn.turn_index ? '刪除中...' : '刪除此回合'}
-                      </button>
-                    </div>
-                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                      {turn.narrative_text}
-                    </p>
-
-                    {/* Dialogue */}
-                    {turn.dialogue_json && turn.dialogue_json !== '[]' && (
-                      <div className="mt-4 space-y-2">
-                        {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
-                          const speakerName = resolveSpeakerName(
-                            dialogue.speaker_story_character_id,
-                            dialogue.speaker
-                          );
-
-                          return (
-                            <div
-                              key={idx}
-                              className="pl-4 border-l-2 border-gray-300 dark:border-gray-600"
-                            >
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                {speakerName}
-                              </p>
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                {dialogue.text}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Empty state */}
-          {turns.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">🎮</div>
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                準備開始你的冒險
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                在下方輸入你的第一個行動
-              </p>
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
+            <div ref={chatEndRef} />
           </div>
         </div>
 
@@ -501,13 +504,12 @@ function StoryPlayPageContent() {
                               分數:
                             </span>
                             <span
-                              className={`font-medium ${
-                                rel.score > 0
+                              className={`font-medium ${rel.score > 0
                                   ? 'text-green-600 dark:text-green-400'
                                   : rel.score < 0
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-gray-600 dark:text-gray-400'
-                              }`}
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : 'text-gray-600 dark:text-gray-400'
+                                }`}
                             >
                               {rel.score}
                             </span>

@@ -15,26 +15,20 @@ export async function getStateValues(
   storyCharacterId: string,
   userId: string
 ): Promise<StoryStateValue[]> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_state_values')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('story_character_id', storyCharacterId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to fetch state values: ' + error.message);
+    }
+
+    return (data || []) as StoryStateValue[];
   });
-
-  const fetchPromise = supabase
-    .from('story_state_values')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('story_character_id', storyCharacterId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to fetch state values: ' + error.message);
-  }
-
-  return (data || []) as StoryStateValue[];
 }
 
 /**
@@ -44,25 +38,19 @@ export async function getAllStateValuesForStory(
   storyId: string,
   userId: string
 ): Promise<StoryStateValue[]> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_state_values')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to fetch state values: ' + error.message);
+    }
+
+    return (data || []) as StoryStateValue[];
   });
-
-  const fetchPromise = supabase
-    .from('story_state_values')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to fetch state values: ' + error.message);
-  }
-
-  return (data || []) as StoryStateValue[];
 }
 
 /**
@@ -74,31 +62,25 @@ export async function getStateValue(
   schemaKey: string,
   userId: string
 ): Promise<StoryStateValue | null> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
-  });
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_state_values')
+      .select('*')
+      .eq('story_id', storyId)
+      .eq('story_character_id', storyCharacterId)
+      .eq('schema_key', schemaKey)
+      .eq('user_id', userId)
+      .single();
 
-  const fetchPromise = supabase
-    .from('story_state_values')
-    .select('*')
-    .eq('story_id', storyId)
-    .eq('story_character_id', storyCharacterId)
-    .eq('schema_key', schemaKey)
-    .eq('user_id', userId)
-    .single();
-
-  const result = await Promise.race([fetchPromise, timeoutPromise]);
-  const { data, error } = result as any;
-
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw new Error('Failed to fetch state value: ' + error.message);
     }
-    throw new Error('Failed to fetch state value: ' + error.message);
-  }
 
-  return data as StoryStateValue;
+    return data as StoryStateValue;
+  });
 }
 
 /**
@@ -121,28 +103,22 @@ export async function setStateValue(
     value_json: data.value_json,
   };
 
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    // Upsert: insert if not exists, update if exists
+    const { data: stateValue, error } = await supabase
+      .from('story_state_values')
+      .upsert(payload, {
+        onConflict: 'story_id,story_character_id,schema_key',
+      })
+      .select()
+      .single();
+
+    if (error || !stateValue) {
+      throw new Error('Failed to set state value: ' + error?.message);
+    }
+
+    return stateValue as StoryStateValue;
   });
-
-  // Upsert: insert if not exists, update if exists
-  const upsertPromise = supabase
-    .from('story_state_values')
-    .upsert(payload, {
-      onConflict: 'story_id,story_character_id,schema_key',
-    })
-    .select()
-    .single();
-
-  const result = await Promise.race([upsertPromise, timeoutPromise]);
-  const { data: stateValue, error } = result as any;
-
-  if (error || !stateValue) {
-    throw new Error('Failed to set state value: ' + error?.message);
-  }
-
-  return stateValue as StoryStateValue;
 }
 
 /**
@@ -162,26 +138,20 @@ export async function setMultipleStateValues(
     ...v,
   }));
 
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data: stateValues, error } = await supabase
+      .from('story_state_values')
+      .upsert(payload, {
+        onConflict: 'story_id,story_character_id,schema_key',
+      })
+      .select();
+
+    if (error || !stateValues) {
+      throw new Error('Failed to set state values: ' + error?.message);
+    }
+
+    return stateValues as StoryStateValue[];
   });
-
-  const upsertPromise = supabase
-    .from('story_state_values')
-    .upsert(payload, {
-      onConflict: 'story_id,story_character_id,schema_key',
-    })
-    .select();
-
-  const result = await Promise.race([upsertPromise, timeoutPromise]);
-  const { data: stateValues, error } = result as any;
-
-  if (error || !stateValues) {
-    throw new Error('Failed to set state values: ' + error?.message);
-  }
-
-  return stateValues as StoryStateValue[];
 }
 
 /**
@@ -193,25 +163,19 @@ export async function deleteStateValue(
   schemaKey: string,
   userId: string
 ): Promise<void> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('story_state_values')
+      .delete()
+      .eq('story_id', storyId)
+      .eq('story_character_id', storyCharacterId)
+      .eq('schema_key', schemaKey)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to delete state value: ' + error.message);
+    }
   });
-
-  const deletePromise = supabase
-    .from('story_state_values')
-    .delete()
-    .eq('story_id', storyId)
-    .eq('story_character_id', storyCharacterId)
-    .eq('schema_key', schemaKey)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([deletePromise, timeoutPromise]);
-  const { error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to delete state value: ' + error.message);
-  }
 }
 
 /**
@@ -222,22 +186,16 @@ export async function deleteAllStateValues(
   storyCharacterId: string,
   userId: string
 ): Promise<void> {
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('story_state_values')
+      .delete()
+      .eq('story_id', storyId)
+      .eq('story_character_id', storyCharacterId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to delete state values: ' + error.message);
+    }
   });
-
-  const deletePromise = supabase
-    .from('story_state_values')
-    .delete()
-    .eq('story_id', storyId)
-    .eq('story_character_id', storyCharacterId)
-    .eq('user_id', userId);
-
-  const result = await Promise.race([deletePromise, timeoutPromise]);
-  const { error } = result as any;
-
-  if (error) {
-    throw new Error('Failed to delete state values: ' + error.message);
-  }
 }

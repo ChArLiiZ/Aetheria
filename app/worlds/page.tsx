@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { World } from '@/types';
 import { getWorldsByUserId, deleteWorld } from '@/services/supabase/worlds';
+import { toast } from 'sonner';
 
 function WorldsPageContent() {
   const { user } = useAuth();
@@ -15,13 +16,44 @@ function WorldsPageContent() {
   const [error, setError] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Load worlds
+  // Load worlds with cancellation support to prevent race conditions
   useEffect(() => {
-    loadWorlds();
-  }, [user]);
+    let cancelled = false;
 
+    const fetchWorlds = async () => {
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+        const data = await getWorldsByUserId(user.user_id);
+        if (cancelled) return;
+        setWorlds(data);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load worlds:', err);
+        setError(err.message || '載入世界觀失敗');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchWorlds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.user_id]);
+
+  // Reload worlds function for use after updates
   const loadWorlds = async () => {
-    if (!user) return;
+    if (!user?.user_id) return;
 
     try {
       setLoading(true);
@@ -49,7 +81,7 @@ function WorldsPageContent() {
       await loadWorlds();
     } catch (err: any) {
       console.error('Failed to delete world:', err);
-      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setDeletingId(null);
     }

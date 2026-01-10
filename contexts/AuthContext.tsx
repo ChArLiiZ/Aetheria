@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { User } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 import {
@@ -24,18 +24,53 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const initAttempted = useRef(false);
 
   // Load session on mount and listen for auth changes
   useEffect(() => {
+    // 防止 StrictMode 重複執行
+    if (initAttempted.current) return;
+    initAttempted.current = true;
+
+    let cancelled = false;
+
+    const refreshUser = async (): Promise<User | null> => {
+      try {
+        const currentUser = await getCurrentUser();
+        if (!cancelled) {
+          setUser(currentUser);
+        }
+        return currentUser;
+      } catch (error) {
+        console.error('Failed to refresh user:', error);
+        return null;
+      }
+    };
+
     // Get initial session
     const initAuth = async () => {
       try {
-        const currentUser = await getCurrentUser();
-        setUser(currentUser);
+        // 先嘗試從 Supabase 快取取得 session
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (cancelled) return;
+
+        if (session?.user) {
+          // 有 session，嘗試載入完整用戶資料
+          await refreshUser();
+        } else {
+          // 沒有 session，用戶未登入
+          setUser(null);
+        }
       } catch (error) {
+        if (cancelled) return;
         console.error('Failed to load user:', error);
+        // 錯誤時，假設用戶未登入
+        setUser(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
@@ -44,19 +79,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const currentUser = await getCurrentUser();
-          setUser(currentUser);
-        } else if (event === 'SIGNED_OUT') {
+        if (cancelled) return;
+
+        console.log('Auth state changed:', event);
+
+        if (event === 'SIGNED_OUT') {
           setUser(null);
-        } else if (event === 'USER_UPDATED' && session?.user) {
-          const currentUser = await getCurrentUser();
-          setUser(currentUser);
+        } else if (
+          event === 'SIGNED_IN' ||
+          event === 'USER_UPDATED' ||
+          event === 'TOKEN_REFRESHED'
+        ) {
+          if (session?.user) {
+            await refreshUser();
+          }
+        } else if (event === 'INITIAL_SESSION') {
+          // INITIAL_SESSION 事件會在 getSession 之後觸發
+          // 如果我們已經載入過了，就不需要再處理
+          if (!user && session?.user) {
+            await refreshUser();
+          }
         }
       }
     );
 
     return () => {
+      cancelled = true;
       subscription.unsubscribe();
     };
   }, []);

@@ -11,6 +11,7 @@ import {
   updateCharacter,
   characterNameExists,
 } from '@/services/supabase/characters';
+import { toast } from 'sonner';
 
 function CharacterEditorPageContent() {
   const { user } = useAuth();
@@ -31,55 +32,72 @@ function CharacterEditorPageContent() {
 
   const isNewCharacter = characterId === 'new';
 
+  // Load character with cancellation support to prevent race conditions
   useEffect(() => {
-    if (!isNewCharacter) {
-      loadCharacter();
-    } else {
-      setLoading(false);
-    }
-  }, [characterId, user, isNewCharacter]);
+    let cancelled = false;
 
-  const loadCharacter = async () => {
-    if (!user) return;
-
-    try {
-      setLoading(true);
-      const data = await getCharacterById(characterId, user.user_id);
-
-      if (!data) {
-        alert('找不到此角色');
-        router.push('/characters');
+    const fetchCharacter = async () => {
+      if (isNewCharacter) {
+        setLoading(false);
         return;
       }
 
-      setCharacter(data);
-
-      // Parse tags
-      let tags: string[] = [''];
-      if (data.tags_json) {
-        try {
-          tags = JSON.parse(data.tags_json);
-          if (!Array.isArray(tags) || tags.length === 0) {
-            tags = [''];
-          }
-        } catch (e) {
-          tags = [''];
-        }
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
+        return;
       }
 
-      setFormData({
-        canonical_name: data.canonical_name,
-        core_profile_text: data.core_profile_text,
-        tags,
-      });
-    } catch (err: any) {
-      console.error('Failed to load character:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
-      router.push('/characters');
-    } finally {
-      setLoading(false);
-    }
-  };
+      try {
+        setLoading(true);
+        const data = await getCharacterById(characterId, user.user_id);
+
+        if (cancelled) return;
+
+        if (!data) {
+          toast.error('找不到此角色');
+          router.push('/characters');
+          return;
+        }
+
+        setCharacter(data);
+
+        // Parse tags
+        let tags: string[] = [''];
+        if (data.tags_json) {
+          try {
+            tags = JSON.parse(data.tags_json);
+            if (!Array.isArray(tags) || tags.length === 0) {
+              tags = [''];
+            }
+          } catch (e) {
+            tags = [''];
+          }
+        }
+
+        setFormData({
+          canonical_name: data.canonical_name,
+          core_profile_text: data.core_profile_text,
+          tags,
+        });
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load character:', err);
+        toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
+        router.push('/characters');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchCharacter();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [characterId, user?.user_id, isNewCharacter, router]);
 
   const validateForm = async (): Promise<boolean> => {
     const newErrors: Record<string, string> = {};
@@ -123,20 +141,20 @@ function CharacterEditorPageContent() {
           core_profile_text: formData.core_profile_text.trim(),
           tags: validTags.length > 0 ? validTags : undefined,
         });
-        alert('✅ 角色建立成功！');
+        toast.success('角色建立成功！');
       } else {
         await updateCharacter(characterId, user.user_id, {
           canonical_name: formData.canonical_name.trim(),
           core_profile_text: formData.core_profile_text.trim(),
           tags: validTags.length > 0 ? validTags : undefined,
         });
-        alert('✅ 儲存成功！');
+        toast.success('儲存成功！');
       }
 
       router.push('/characters');
     } catch (err: any) {
       console.error('Failed to save character:', err);
-      alert(`儲存失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSaving(false);
     }

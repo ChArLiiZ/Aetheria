@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Character } from '@/types';
 import { getCharacters, deleteCharacter } from '@/services/supabase/characters';
+import { toast } from 'sonner';
 
 function CharactersListPageContent() {
   const { user } = useAuth();
@@ -13,12 +14,43 @@ function CharactersListPageContent() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Load characters with cancellation support to prevent race conditions
   useEffect(() => {
-    loadCharacters();
-  }, [user]);
+    let cancelled = false;
 
+    const fetchCharacters = async () => {
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const data = await getCharacters(user.user_id);
+        if (cancelled) return;
+        setCharacters(data);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load characters:', err);
+        toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchCharacters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.user_id]);
+
+  // Reload characters function for use after updates
   const loadCharacters = async () => {
-    if (!user) return;
+    if (!user?.user_id) return;
 
     try {
       setLoading(true);
@@ -26,7 +58,7 @@ function CharactersListPageContent() {
       setCharacters(data);
     } catch (err: any) {
       console.error('Failed to load characters:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -42,10 +74,10 @@ function CharactersListPageContent() {
     try {
       await deleteCharacter(characterId, user.user_id);
       await loadCharacters();
-      alert('✅ 刪除成功！');
+      toast.success('刪除成功！');
     } catch (err: any) {
       console.error('Failed to delete character:', err);
-      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     }
   };
 

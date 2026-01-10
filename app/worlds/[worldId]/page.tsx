@@ -13,6 +13,7 @@ import {
   deleteSchemaItem,
   schemaKeyExists,
 } from '@/services/supabase/world-schema';
+import { toast } from 'sonner';
 
 type Tab = 'basic' | 'states';
 
@@ -69,17 +70,69 @@ function WorldEditorPageContent() {
 
   const isNewWorld = worldId === 'new';
 
-  // Load data
+  // Load data with cancellation support to prevent race conditions
   useEffect(() => {
-    if (!isNewWorld) {
-      loadData();
-    } else {
-      setLoading(false);
-    }
-  }, [worldId, user, isNewWorld]);
+    let cancelled = false;
 
-  const loadData = async () => {
-    if (!user) return;
+    const fetchData = async () => {
+      if (isNewWorld) {
+        setLoading(false);
+        return;
+      }
+
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const [worldData, schemasData] = await Promise.all([
+          getWorldById(worldId, user.user_id),
+          getSchemaByWorldId(worldId, user.user_id),
+        ]);
+
+        // Check if this request was cancelled (e.g., component unmounted or user changed)
+        if (cancelled) return;
+
+        if (!worldData) {
+          toast.error('找不到此世界觀');
+          router.push('/worlds');
+          return;
+        }
+
+        setWorld(worldData);
+        setBasicFormData({
+          name: worldData.name,
+          description: worldData.description,
+          rules_text: worldData.rules_text,
+        });
+        setSchemas(schemasData);
+      } catch (err: any) {
+        // Don't show error if request was cancelled
+        if (cancelled) return;
+        console.error('Failed to load data:', err);
+        toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
+        router.push('/worlds');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    // Cleanup: mark as cancelled when effect re-runs or component unmounts
+    return () => {
+      cancelled = true;
+    };
+  }, [worldId, user?.user_id, isNewWorld, router]);
+
+  // Reload data function for use after updates
+  const reloadData = async () => {
+    if (!user?.user_id || isNewWorld) return;
 
     try {
       setLoading(true);
@@ -89,7 +142,7 @@ function WorldEditorPageContent() {
       ]);
 
       if (!worldData) {
-        alert('找不到此世界觀');
+        toast.error('找不到此世界觀');
         router.push('/worlds');
         return;
       }
@@ -103,8 +156,7 @@ function WorldEditorPageContent() {
       setSchemas(schemasData);
     } catch (err: any) {
       console.error('Failed to load data:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
-      router.push('/worlds');
+      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -168,11 +220,11 @@ function WorldEditorPageContent() {
       }
 
       // Redirect to worlds list page
-      alert(`✅ 世界觀「${newWorld.name}」建立成功！${schemas.length > 0 ? `已設定 ${schemas.length} 個狀態種類。` : ''}`);
+      toast.success(`世界觀「${newWorld.name}」建立成功！${schemas.length > 0 ? `已設定 ${schemas.length} 個狀態種類。` : ''}`);
       router.push('/worlds');
     } catch (err: any) {
       console.error('Failed to create world:', err);
-      alert(`建立失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`建立失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setCreatingWorld(false);
     }
@@ -194,11 +246,11 @@ function WorldEditorPageContent() {
         rules_text: basicFormData.rules_text.trim(),
       });
 
-      await loadData();
-      alert('✅ 儲存成功！');
+      await reloadData();
+      toast.success('儲存成功！');
     } catch (err: any) {
       console.error('Failed to save world:', err);
-      alert(`更新失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`更新失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingBasic(false);
     }
@@ -252,7 +304,7 @@ function WorldEditorPageContent() {
         numberMin = constraints.min;
         numberMax = constraints.max;
         numberStep = constraints.step || 1;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     setSchemaFormData({
@@ -386,12 +438,12 @@ function WorldEditorPageContent() {
           await createSchemaItem(worldId, user.user_id, data);
         }
 
-        await loadData();
+        await reloadData();
         resetSchemaForm();
       }
     } catch (err: any) {
       console.error('Failed to save schema:', err);
-      alert(`儲存失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
@@ -409,11 +461,11 @@ function WorldEditorPageContent() {
       } else {
         // In edit mode, delete from database
         await deleteSchemaItem(schemaId, user.user_id);
-        await loadData();
+        await reloadData();
       }
     } catch (err: any) {
       console.error('Failed to delete schema:', err);
-      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
@@ -456,21 +508,19 @@ function WorldEditorPageContent() {
           <nav className="flex space-x-8">
             <button
               onClick={() => setActiveTab('basic')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${
-                activeTab === 'basic'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
+              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeTab === 'basic'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
             >
               📝 基本設定
             </button>
             <button
               onClick={() => setActiveTab('states')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${
-                activeTab === 'states'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
+              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeTab === 'states'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
             >
               🎯 狀態種類 ({schemas.length})
             </button>
@@ -539,25 +589,6 @@ function WorldEditorPageContent() {
                 </p>
               )}
             </div>
-
-            {/* Save Button (only in edit mode) */}
-            {!isNewWorld && (
-              <div className="flex justify-end gap-4">
-                <button
-                  onClick={() => router.push('/worlds')}
-                  className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSaveBasic}
-                  disabled={savingBasic}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-                >
-                  {savingBasic ? '儲存中...' : '儲存變更'}
-                </button>
-              </div>
-            )}
           </div>
         ) : (
           <div>
@@ -945,12 +976,12 @@ function WorldEditorPageContent() {
                               {schema.type === 'text'
                                 ? '文字'
                                 : schema.type === 'number'
-                                ? '數字'
-                                : schema.type === 'bool'
-                                ? '布林'
-                                : schema.type === 'enum'
-                                ? '列舉'
-                                : '文字列表'}
+                                  ? '數字'
+                                  : schema.type === 'bool'
+                                    ? '布林'
+                                    : schema.type === 'enum'
+                                      ? '列舉'
+                                      : '文字列表'}
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
@@ -984,6 +1015,25 @@ function WorldEditorPageContent() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Save/Cancel Buttons (only in edit mode) */}
+        {!isNewWorld && (
+          <div className="mt-6 flex justify-end gap-4">
+            <button
+              onClick={() => router.push('/worlds')}
+              className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSaveBasic}
+              disabled={savingBasic}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
+            >
+              {savingBasic ? '儲存中...' : '儲存變更'}
+            </button>
           </div>
         )}
 

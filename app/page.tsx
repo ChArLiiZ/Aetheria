@@ -4,7 +4,19 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Home() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, loading, logout } = useAuth();
+
+  // 載入中時顯示載入畫面
+  if (loading) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center p-8">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-8">
@@ -50,24 +62,14 @@ export default function Home() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto mb-8">
           {isAuthenticated ? (
-            <>
-              <Link
-                href="/dashboard"
-                className="p-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center"
-              >
-                <div className="text-3xl mb-2">📊</div>
-                <div className="font-semibold text-lg">進入 Dashboard</div>
-                <div className="text-sm opacity-90 mt-1">管理世界觀、角色與故事</div>
-              </Link>
-              <Link
-                href="/test"
-                className="p-6 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-center"
-              >
-                <div className="text-3xl mb-2">🧪</div>
-                <div className="font-semibold text-lg">測試頁面</div>
-                <div className="text-sm opacity-90 mt-1">查看系統狀態</div>
-              </Link>
-            </>
+            <Link
+              href="/dashboard"
+              className="p-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center md:col-span-2"
+            >
+              <div className="text-3xl mb-2">📊</div>
+              <div className="font-semibold text-lg">進入 Dashboard</div>
+              <div className="text-sm opacity-90 mt-1">管理世界觀、角色與故事</div>
+            </Link>
           ) : (
             <>
               <Link
@@ -85,14 +87,6 @@ export default function Home() {
                 <div className="text-3xl mb-2">✨</div>
                 <div className="font-semibold text-lg">註冊</div>
                 <div className="text-sm opacity-90 mt-1">建立新帳號</div>
-              </Link>
-              <Link
-                href="/test"
-                className="p-6 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-center md:col-span-2"
-              >
-                <div className="text-3xl mb-2">🧪</div>
-                <div className="font-semibold text-lg">測試頁面</div>
-                <div className="text-sm opacity-90 mt-1">無需登入即可測試</div>
               </Link>
             </>
           )}

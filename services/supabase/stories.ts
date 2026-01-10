@@ -82,25 +82,19 @@ export async function createStory(
     turn_count: 0,
   };
 
-  // Use Promise.race to prevent hanging issues
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('Database operation timed out after 10 seconds')), 10000);
+  return withRetry(async () => {
+    const { data: newStory, error } = await supabase
+      .from('stories')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error || !newStory) {
+      throw new Error('Failed to create story: ' + error?.message);
+    }
+
+    return newStory as Story;
   });
-
-  const createPromise = supabase
-    .from('stories')
-    .insert(payload)
-    .select()
-    .single();
-
-  const result = await Promise.race([createPromise, timeoutPromise]);
-  const { data: newStory, error } = result as any;
-
-  if (error || !newStory) {
-    throw new Error('Failed to create story: ' + error?.message);
-  }
-
-  return newStory as Story;
 }
 
 /**
@@ -111,15 +105,17 @@ export async function updateStory(
   userId: string,
   updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'status' | 'turn_count'>>
 ): Promise<void> {
-  const { error } = await supabase
-    .from('stories')
-    .update(updates)
-    .eq('story_id', storyId)
-    .eq('user_id', userId);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('stories')
+      .update(updates)
+      .eq('story_id', storyId)
+      .eq('user_id', userId);
 
-  if (error) {
-    throw new Error('Failed to update story: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to update story: ' + error.message);
+    }
+  });
 }
 
 /**
@@ -129,15 +125,17 @@ export async function deleteStory(
   storyId: string,
   userId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('stories')
-    .delete()
-    .eq('story_id', storyId)
-    .eq('user_id', userId);
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('stories')
+      .delete()
+      .eq('story_id', storyId)
+      .eq('user_id', userId);
 
-  if (error) {
-    throw new Error('Failed to delete story: ' + error.message);
-  }
+    if (error) {
+      throw new Error('Failed to delete story: ' + error.message);
+    }
+  });
 }
 
 /**
@@ -147,20 +145,22 @@ export async function incrementTurnCount(
   storyId: string,
   userId: string
 ): Promise<void> {
-  const { error } = await supabase.rpc('increment_story_turn_count', {
-    p_story_id: storyId,
-    p_user_id: userId,
-  });
+  return withRetry(async () => {
+    const { error } = await supabase.rpc('increment_story_turn_count', {
+      p_story_id: storyId,
+      p_user_id: userId,
+    });
 
-  if (error) {
-    // Fallback: get current count and increment manually
-    const story = await getStoryById(storyId, userId);
-    if (story) {
-      await updateStory(storyId, userId, {
-        turn_count: (story.turn_count || 0) + 1,
-      });
+    if (error) {
+      // Fallback: get current count and increment manually
+      const story = await getStoryById(storyId, userId);
+      if (story) {
+        await updateStory(storyId, userId, {
+          turn_count: (story.turn_count || 0) + 1,
+        });
+      }
     }
-  }
+  });
 }
 
 /**
@@ -181,17 +181,19 @@ export async function storyTitleExists(
   title: string,
   excludeStoryId?: string
 ): Promise<boolean> {
-  let query = supabase
-    .from('stories')
-    .select('story_id')
-    .eq('user_id', userId)
-    .ilike('title', title);
+  return withRetry(async () => {
+    let query = supabase
+      .from('stories')
+      .select('story_id')
+      .eq('user_id', userId)
+      .ilike('title', title);
 
-  if (excludeStoryId) {
-    query = query.neq('story_id', excludeStoryId);
-  }
+    if (excludeStoryId) {
+      query = query.neq('story_id', excludeStoryId);
+    }
 
-  const { data } = await query;
+    const { data } = await query;
 
-  return (data?.length || 0) > 0;
+    return (data?.length || 0) > 0;
+  });
 }

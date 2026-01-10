@@ -19,6 +19,7 @@ import {
   getStateValues,
   setMultipleStateValues
 } from '@/services/supabase/story-state-values';
+import { toast } from 'sonner';
 
 // Pagination helper
 const ITEMS_PER_PAGE = 6;
@@ -96,12 +97,86 @@ function StoryDetailPageContent() {
   const [characterPage, setCharacterPage] = useState(1);
   const [showCharacterSelector, setShowCharacterSelector] = useState(false);
 
+  // Load data with cancellation support to prevent race conditions
   useEffect(() => {
-    loadData();
-  }, [user, storyId]);
+    let cancelled = false;
 
+    const fetchData = async () => {
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // Load worlds and characters
+        const [worldsData, charactersData] = await Promise.all([
+          getWorldsByUserId(user.user_id),
+          getCharacters(user.user_id),
+        ]);
+
+        // Check if this request was cancelled
+        if (cancelled) return;
+
+        setWorlds(worldsData);
+        setCharacters(charactersData);
+
+        // Load schema if creating new story and world is selected
+        if (isNewStory && formData.world_id) {
+          const schemaData = await getSchemaByWorldId(formData.world_id, user.user_id);
+          if (cancelled) return;
+          setCreationWorldSchema(schemaData);
+        }
+
+        // Load story if editing
+        if (!isNewStory) {
+          const [storyData, storyCharsData] = await Promise.all([
+            getStoryById(storyId, user.user_id),
+            getStoryCharacters(storyId, user.user_id),
+          ]);
+
+          if (cancelled) return;
+
+          if (!storyData) {
+            toast.error('故事不存在');
+            router.push('/stories');
+            return;
+          }
+
+          setStory(storyData);
+          setStoryCharacters(storyCharsData);
+          setFormData({
+            world_id: storyData.world_id,
+            title: storyData.title,
+            premise_text: storyData.premise_text,
+            story_mode: storyData.story_mode,
+            player_character_id: storyData.player_character_id || '',
+            story_prompt: storyData.story_prompt,
+          });
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load data:', err);
+        toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.user_id, storyId]);
+
+  // Reload data function for use after updates
   const loadData = async () => {
-    if (!user) return;
+    if (!user?.user_id) return;
 
     try {
       setLoading(true);
@@ -129,7 +204,7 @@ function StoryDetailPageContent() {
         ]);
 
         if (!storyData) {
-          alert('故事不存在');
+          toast.error('故事不存在');
           router.push('/stories');
           return;
         }
@@ -147,7 +222,7 @@ function StoryDetailPageContent() {
       }
     } catch (err: any) {
       console.error('Failed to load data:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -161,7 +236,7 @@ function StoryDetailPageContent() {
         try {
           const tags = JSON.parse(char.tags_json) as string[];
           tags.forEach((tag) => tagSet.add(tag));
-        } catch {}
+        } catch { }
       }
     });
     return Array.from(tagSet).sort();
@@ -322,7 +397,7 @@ function StoryDetailPageContent() {
           }
         }
 
-        alert('✅ 故事創建成功！');
+        toast.success('故事創建成功！');
         router.push(`/stories/${newStory.story_id}`);
       } else {
         await updateStory(storyId, user.user_id, {
@@ -331,12 +406,12 @@ function StoryDetailPageContent() {
           story_prompt: formData.story_prompt.trim(),
         });
 
-        alert('✅ 更新成功！');
+        toast.success('更新成功！');
         loadData();
       }
     } catch (err: any) {
       console.error('Failed to save story:', err);
-      alert(`儲存失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSaving(false);
     }
@@ -387,7 +462,7 @@ function StoryDetailPageContent() {
       // Check if character is already in story
       const alreadyInStory = await isCharacterInStory(storyId, characterId, user.user_id);
       if (alreadyInStory) {
-        alert('此角色已在故事中');
+        toast.warning('此角色已在故事中');
         return;
       }
 
@@ -397,11 +472,11 @@ function StoryDetailPageContent() {
         is_player: false,
       });
 
-      alert('✅ 角色已加入故事！');
+      toast.success('角色已加入故事！');
       loadData(); // Reload to get updated story characters
     } catch (err: any) {
       console.error('Failed to add character:', err);
-      alert(`新增角色失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`新增角色失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
@@ -414,11 +489,11 @@ function StoryDetailPageContent() {
 
     try {
       await removeStoryCharacter(storyCharacterId, user.user_id);
-      alert('✅ 角色已移除！');
+      toast.success('角色已移除！');
       loadData(); // Reload to get updated story characters
     } catch (err: any) {
       console.error('Failed to remove character:', err);
-      alert(`移除角色失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`移除角色失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
@@ -460,7 +535,7 @@ function StoryDetailPageContent() {
       setStateValues(initialValues);
     } catch (err: any) {
       console.error('Failed to load states:', err);
-      alert(`載入狀態失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`載入狀態失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
@@ -480,11 +555,11 @@ function StoryDetailPageContent() {
 
       await setMultipleStateValues(user.user_id, valuesToSave);
 
-      alert('✅ 狀態已儲存！');
+      toast.success('狀態已儲存！');
       setEditingStoryCharacter(null);
     } catch (err: any) {
       console.error('Failed to save states:', err);
-      alert(`儲存狀態失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`儲存狀態失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingStates(false);
     }
@@ -539,31 +614,28 @@ function StoryDetailPageContent() {
               <div className="flex gap-4">
                 <button
                   onClick={() => setCurrentTab('basic')}
-                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${
-                    currentTab === 'basic'
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
+                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${currentTab === 'basic'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
                 >
                   基本設定
                 </button>
                 <button
                   onClick={() => setCurrentTab('characters')}
-                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${
-                    currentTab === 'characters'
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
+                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${currentTab === 'characters'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
                 >
                   故事角色 {selectedCharacterIds.length > 0 && `(${selectedCharacterIds.length})`}
                 </button>
                 <button
                   onClick={() => setCurrentTab('ai')}
-                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${
-                    currentTab === 'ai'
-                      ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
+                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${currentTab === 'ai'
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
                 >
                   AI 設定
                 </button>
@@ -575,378 +647,377 @@ function StoryDetailPageContent() {
           {(isNewStory && currentTab === 'basic') || !isNewStory ? (
             <>
               {/* World Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              世界觀 *
-            </label>
-            {isNewStory ? (
-              <>
-                {selectedWorld ? (
-                  <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 mb-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                          {selectedWorld.name}
-                        </h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                          {selectedWorld.description}
-                        </p>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  世界觀 *
+                </label>
+                {isNewStory ? (
+                  <>
+                    {selectedWorld ? (
+                      <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 mb-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                              {selectedWorld.name}
+                            </h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                              {selectedWorld.description}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setFormData({ ...formData, world_id: '' });
+                              setWorldSearch('');
+                              setWorldPage(1);
+                            }}
+                            className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                          >
+                            清除
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          setFormData({ ...formData, world_id: '' });
-                          setWorldSearch('');
-                          setWorldPage(1);
-                        }}
-                        className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                      >
-                        清除
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowWorldSelector(!showWorldSelector)}
-                    className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 transition"
-                  >
-                    {showWorldSelector ? '收起選擇器' : '+ 選擇世界觀'}
-                  </button>
-                )}
-
-                {showWorldSelector && !selectedWorld && (
-                  <div className="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                    {/* Search */}
-                    <input
-                      type="text"
-                      value={worldSearch}
-                      onChange={(e) => {
-                        setWorldSearch(e.target.value);
-                        setWorldPage(1);
-                      }}
-                      placeholder="搜尋世界觀..."
-                      className="w-full px-4 py-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                    />
-
-                    {/* World Cards */}
-                    {paginatedWorlds.length === 0 ? (
-                      <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                        {worlds.length === 0 ? '還沒有世界觀，請先創建一個' : '找不到符合條件的世界觀'}
-                      </p>
                     ) : (
-                      <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          {paginatedWorlds.map((world) => (
-                            <button
-                              key={world.world_id}
-                              onClick={() => handleWorldSelect(world.world_id)}
-                              className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
-                            >
-                              <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                                {world.name}
-                              </h4>
-                              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                                {world.description}
-                              </p>
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Pagination */}
-                        {worldTotalPages > 1 && (
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => setWorldPage((p) => Math.max(1, p - 1))}
-                              disabled={worldPage === 1}
-                              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                            >
-                              上一頁
-                            </button>
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                              {worldPage} / {worldTotalPages}
-                            </span>
-                            <button
-                              onClick={() => setWorldPage((p) => Math.min(worldTotalPages, p + 1))}
-                              disabled={worldPage === worldTotalPages}
-                              className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                            >
-                              下一頁
-                            </button>
-                          </div>
-                        )}
-                      </>
+                      <button
+                        onClick={() => setShowWorldSelector(!showWorldSelector)}
+                        className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 transition"
+                      >
+                        {showWorldSelector ? '收起選擇器' : '+ 選擇世界觀'}
+                      </button>
                     )}
-                  </div>
-                )}
 
-                {errors.world_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.world_id}</p>
-                )}
-              </>
-            ) : (
-              <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <p className="text-gray-900 dark:text-white font-medium">
-                  {selectedWorld?.name || '未知世界觀'}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {selectedWorld?.description}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Title */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              故事標題 *
-            </label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-              placeholder="給你的故事起個名字"
-            />
-            {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title}</p>}
-          </div>
-
-          {/* Premise */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              故事前提 *
-            </label>
-            <textarea
-              value={formData.premise_text}
-              onChange={(e) => setFormData({ ...formData, premise_text: e.target.value })}
-              rows={4}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
-              placeholder="描述故事的背景和起始狀況"
-            />
-            {errors.premise_text && <p className="mt-1 text-sm text-red-600">{errors.premise_text}</p>}
-          </div>
-
-          {/* Story Mode */}
-          {isNewStory && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                遊戲模式 *
-              </label>
-              <div className="space-y-3">
-                <label className="flex items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
-                  <input
-                    type="radio"
-                    name="story_mode"
-                    value="PLAYER_CHARACTER"
-                    checked={formData.story_mode === 'PLAYER_CHARACTER'}
-                    onChange={(e) =>
-                      setFormData({ ...formData, story_mode: e.target.value as StoryMode })
-                    }
-                    className="mt-1 mr-3"
-                  />
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">
-                      玩家角色模式
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      你將扮演一個特定角色，從第一人稱視角體驗故事
-                    </p>
-                  </div>
-                </label>
-
-                <label className="flex items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
-                  <input
-                    type="radio"
-                    name="story_mode"
-                    value="DIRECTOR"
-                    checked={formData.story_mode === 'DIRECTOR'}
-                    onChange={(e) =>
-                      setFormData({ ...formData, story_mode: e.target.value as StoryMode })
-                    }
-                    className="mt-1 mr-3"
-                  />
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">導演模式</div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      你將作為導演，從上帝視角控制整個故事的發展
-                    </p>
-                  </div>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Player Character (only in PLAYER_CHARACTER mode) */}
-          {formData.story_mode === 'PLAYER_CHARACTER' && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                玩家角色 *
-              </label>
-              {isNewStory ? (
-                <>
-                  {playerCharacter ? (
-                    <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 mb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                            {playerCharacter.canonical_name}
-                          </h4>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                            {playerCharacter.core_profile_text}
-                          </p>
-                          {playerCharacter.tags_json && JSON.parse(playerCharacter.tags_json).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {JSON.parse(playerCharacter.tags_json).map((tag: string) => (
-                                <span
-                                  key={tag}
-                                  className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setFormData({ ...formData, player_character_id: '' });
-                            setCharacterSearch('');
-                            setSelectedTags([]);
-                            setCharacterPage(1);
+                    {showWorldSelector && !selectedWorld && (
+                      <div className="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+                        {/* Search */}
+                        <input
+                          type="text"
+                          value={worldSearch}
+                          onChange={(e) => {
+                            setWorldSearch(e.target.value);
+                            setWorldPage(1);
                           }}
-                          className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                        >
-                          清除
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowCharacterSelector(!showCharacterSelector)}
-                      className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 transition"
-                    >
-                      {showCharacterSelector ? '收起選擇器' : '+ 選擇玩家角色'}
-                    </button>
-                  )}
+                          placeholder="搜尋世界觀..."
+                          className="w-full px-4 py-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                        />
 
-                  {showCharacterSelector && !playerCharacter && (
-                    <div className="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                      {/* Search */}
-                      <input
-                        type="text"
-                        value={characterSearch}
-                        onChange={(e) => {
-                          setCharacterSearch(e.target.value);
-                          setCharacterPage(1);
-                        }}
-                        placeholder="搜尋角色名稱或描述..."
-                        className="w-full px-4 py-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                      />
-
-                      {/* Tag Filter */}
-                      {allTags.length > 0 && (
-                        <div className="mb-4">
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            篩選標籤:
+                        {/* World Cards */}
+                        {paginatedWorlds.length === 0 ? (
+                          <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                            {worlds.length === 0 ? '還沒有世界觀，請先創建一個' : '找不到符合條件的世界觀'}
                           </p>
-                          <div className="flex flex-wrap gap-2">
-                            {allTags.map((tag) => (
-                              <button
-                                key={tag}
-                                onClick={() => toggleTag(tag)}
-                                className={`px-3 py-1 text-sm rounded transition ${
-                                  selectedTags.includes(tag)
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                }`}
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Character Cards */}
-                      {paginatedCharacters.length === 0 ? (
-                        <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                          {characters.length === 0 ? '還沒有角色，請先創建一個' : '找不到符合條件的角色'}
-                        </p>
-                      ) : (
-                        <>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            {paginatedCharacters.map((char) => {
-                              const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
-                              return (
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                              {paginatedWorlds.map((world) => (
                                 <button
-                                  key={char.character_id}
-                                  onClick={() => {
-                                    setFormData({ ...formData, player_character_id: char.character_id });
-                                    setShowCharacterSelector(false);
-                                  }}
+                                  key={world.world_id}
+                                  onClick={() => handleWorldSelect(world.world_id)}
                                   className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
                                 >
                                   <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                                    {char.canonical_name}
+                                    {world.name}
                                   </h4>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
-                                    {char.core_profile_text}
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                                    {world.description}
                                   </p>
-                                  {charTags.length > 0 && (
-                                    <div className="flex flex-wrap gap-1">
-                                      {charTags.map((tag: string) => (
-                                        <span
-                                          key={tag}
-                                          className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded"
-                                        >
-                                          {tag}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
                                 </button>
-                              );
-                            })}
-                          </div>
-
-                          {/* Pagination */}
-                          {characterTotalPages > 1 && (
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => setCharacterPage((p) => Math.max(1, p - 1))}
-                                disabled={characterPage === 1}
-                                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                              >
-                                上一頁
-                              </button>
-                              <span className="text-sm text-gray-600 dark:text-gray-400">
-                                {characterPage} / {characterTotalPages}
-                              </span>
-                              <button
-                                onClick={() => setCharacterPage((p) => Math.min(characterTotalPages, p + 1))}
-                                disabled={characterPage === characterTotalPages}
-                                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                              >
-                                下一頁
-                              </button>
+                              ))}
                             </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
 
-                  {errors.player_character_id && (
-                    <p className="mt-1 text-sm text-red-600">{errors.player_character_id}</p>
-                  )}
-                </>
-              ) : (
-                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <p className="text-gray-900 dark:text-white font-medium">
-                    {playerCharacter?.canonical_name || '未知角色'}
-                  </p>
+                            {/* Pagination */}
+                            {worldTotalPages > 1 && (
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => setWorldPage((p) => Math.max(1, p - 1))}
+                                  disabled={worldPage === 1}
+                                  className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                  上一頁
+                                </button>
+                                <span className="text-sm text-gray-600 dark:text-gray-400">
+                                  {worldPage} / {worldTotalPages}
+                                </span>
+                                <button
+                                  onClick={() => setWorldPage((p) => Math.min(worldTotalPages, p + 1))}
+                                  disabled={worldPage === worldTotalPages}
+                                  className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                  下一頁
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {errors.world_id && (
+                      <p className="mt-1 text-sm text-red-600">{errors.world_id}</p>
+                    )}
+                  </>
+                ) : (
+                  <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <p className="text-gray-900 dark:text-white font-medium">
+                      {selectedWorld?.name || '未知世界觀'}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      {selectedWorld?.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Title */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  故事標題 *
+                </label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                  placeholder="給你的故事起個名字"
+                />
+                {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title}</p>}
+              </div>
+
+              {/* Premise */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  故事前提 *
+                </label>
+                <textarea
+                  value={formData.premise_text}
+                  onChange={(e) => setFormData({ ...formData, premise_text: e.target.value })}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
+                  placeholder="描述故事的背景和起始狀況"
+                />
+                {errors.premise_text && <p className="mt-1 text-sm text-red-600">{errors.premise_text}</p>}
+              </div>
+
+              {/* Story Mode */}
+              {isNewStory && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    遊戲模式 *
+                  </label>
+                  <div className="space-y-3">
+                    <label className="flex items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                      <input
+                        type="radio"
+                        name="story_mode"
+                        value="PLAYER_CHARACTER"
+                        checked={formData.story_mode === 'PLAYER_CHARACTER'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, story_mode: e.target.value as StoryMode })
+                        }
+                        className="mt-1 mr-3"
+                      />
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">
+                          玩家角色模式
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          你將扮演一個特定角色，從第一人稱視角體驗故事
+                        </p>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                      <input
+                        type="radio"
+                        name="story_mode"
+                        value="DIRECTOR"
+                        checked={formData.story_mode === 'DIRECTOR'}
+                        onChange={(e) =>
+                          setFormData({ ...formData, story_mode: e.target.value as StoryMode })
+                        }
+                        className="mt-1 mr-3"
+                      />
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">導演模式</div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          你將作為導演，從上帝視角控制整個故事的發展
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </div>
               )}
-            </div>
-          )}
+
+              {/* Player Character (only in PLAYER_CHARACTER mode) */}
+              {formData.story_mode === 'PLAYER_CHARACTER' && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    玩家角色 *
+                  </label>
+                  {isNewStory ? (
+                    <>
+                      {playerCharacter ? (
+                        <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 mb-2">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                                {playerCharacter.canonical_name}
+                              </h4>
+                              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                                {playerCharacter.core_profile_text}
+                              </p>
+                              {playerCharacter.tags_json && JSON.parse(playerCharacter.tags_json).length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {JSON.parse(playerCharacter.tags_json).map((tag: string) => (
+                                    <span
+                                      key={tag}
+                                      className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setFormData({ ...formData, player_character_id: '' });
+                                setCharacterSearch('');
+                                setSelectedTags([]);
+                                setCharacterPage(1);
+                              }}
+                              className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                            >
+                              清除
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowCharacterSelector(!showCharacterSelector)}
+                          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 transition"
+                        >
+                          {showCharacterSelector ? '收起選擇器' : '+ 選擇玩家角色'}
+                        </button>
+                      )}
+
+                      {showCharacterSelector && !playerCharacter && (
+                        <div className="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+                          {/* Search */}
+                          <input
+                            type="text"
+                            value={characterSearch}
+                            onChange={(e) => {
+                              setCharacterSearch(e.target.value);
+                              setCharacterPage(1);
+                            }}
+                            placeholder="搜尋角色名稱或描述..."
+                            className="w-full px-4 py-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                          />
+
+                          {/* Tag Filter */}
+                          {allTags.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                篩選標籤:
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {allTags.map((tag) => (
+                                  <button
+                                    key={tag}
+                                    onClick={() => toggleTag(tag)}
+                                    className={`px-3 py-1 text-sm rounded transition ${selectedTags.includes(tag)
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                      }`}
+                                  >
+                                    {tag}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Character Cards */}
+                          {paginatedCharacters.length === 0 ? (
+                            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                              {characters.length === 0 ? '還沒有角色，請先創建一個' : '找不到符合條件的角色'}
+                            </p>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                {paginatedCharacters.map((char) => {
+                                  const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+                                  return (
+                                    <button
+                                      key={char.character_id}
+                                      onClick={() => {
+                                        setFormData({ ...formData, player_character_id: char.character_id });
+                                        setShowCharacterSelector(false);
+                                      }}
+                                      className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
+                                    >
+                                      <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                                        {char.canonical_name}
+                                      </h4>
+                                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
+                                        {char.core_profile_text}
+                                      </p>
+                                      {charTags.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                          {charTags.map((tag: string) => (
+                                            <span
+                                              key={tag}
+                                              className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded"
+                                            >
+                                              {tag}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Pagination */}
+                              {characterTotalPages > 1 && (
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => setCharacterPage((p) => Math.max(1, p - 1))}
+                                    disabled={characterPage === 1}
+                                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  >
+                                    上一頁
+                                  </button>
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                                    {characterPage} / {characterTotalPages}
+                                  </span>
+                                  <button
+                                    onClick={() => setCharacterPage((p) => Math.min(characterTotalPages, p + 1))}
+                                    disabled={characterPage === characterTotalPages}
+                                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  >
+                                    下一頁
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {errors.player_character_id && (
+                        <p className="mt-1 text-sm text-red-600">{errors.player_character_id}</p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      <p className="text-gray-900 dark:text-white font-medium">
+                        {playerCharacter?.canonical_name || '未知角色'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
             </>
           ) : null}
@@ -1218,10 +1289,10 @@ function StoryDetailPageContent() {
                 </div>
                 {characters.filter((char) => !selectedCharacterIds.includes(char.character_id))
                   .length === 0 && (
-                  <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                    所有角色都已選擇
-                  </p>
-                )}
+                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                      所有角色都已選擇
+                    </p>
+                  )}
               </div>
             </div>
           )}
@@ -1382,10 +1453,10 @@ function StoryDetailPageContent() {
               {characters.filter(
                 (char) => !storyCharacters.some((sc) => sc.character_id === char.character_id)
               ).length === 0 && (
-                <p className="text-center text-gray-500 dark:text-gray-400 py-4">
-                  所有角色都已加入故事中
-                </p>
-              )}
+                  <p className="text-center text-gray-500 dark:text-gray-400 py-4">
+                    所有角色都已加入故事中
+                  </p>
+                )}
             </div>
           </div>
         )}

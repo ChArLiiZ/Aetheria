@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
   title: 'Aetheria - AI Interactive Story',
@@ -24,6 +25,15 @@ export default function RootLayout({
     <html lang="zh-TW">
       <body>
         <AuthProvider>{children}</AuthProvider>
+        <Toaster
+          position="top-right"
+          theme="dark"
+          richColors
+          closeButton
+          toastOptions={{
+            duration: 4000,
+          }}
+        />
       </body>
     </html>
   );

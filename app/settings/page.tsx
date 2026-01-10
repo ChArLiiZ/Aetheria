@@ -17,6 +17,7 @@ import {
   updatePassword,
 } from '@/services/supabase/auth';
 import { testProviderConnection } from '@/services/api/provider-test';
+import { toast } from 'sonner';
 
 // Model presets for each provider
 const MODEL_PRESETS: Record<Provider, string[]> = {
@@ -155,7 +156,7 @@ function SettingsPageContent() {
       }
     } catch (err: any) {
       console.error('Failed to load settings:', err);
-      alert(`載入失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
     }
@@ -165,13 +166,13 @@ function SettingsPageContent() {
     if (!user) return;
 
     if (!apiKey.trim()) {
-      alert('請輸入 API Key');
+      toast.warning('請輸入 API Key');
       return;
     }
 
     const model = usePreset ? defaultModel : customModel;
     if (!model.trim()) {
-      alert('請選擇或輸入模型名稱');
+      toast.warning('請選擇或輸入模型名稱');
       return;
     }
 
@@ -192,10 +193,10 @@ function SettingsPageContent() {
         [selectedProvider]: result,
       });
 
-      alert('✅ 儲存成功！');
+      toast.success('儲存成功！');
     } catch (err: any) {
       console.error('Failed to save:', err);
-      alert(`儲存失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingProvider(false);
     }
@@ -215,22 +216,22 @@ function SettingsPageContent() {
         ...providerSettings,
         [selectedProvider]: null,
       });
-      alert('✅ 刪除成功！');
+      toast.success('刪除成功！');
     } catch (err: any) {
       console.error('Failed to delete:', err);
-      alert(`刪除失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
   const handleTestProvider = async () => {
     if (!apiKey.trim()) {
-      alert('請先輸入 API Key');
+      toast.warning('請先輸入 API Key');
       return;
     }
 
     const model = usePreset ? defaultModel : customModel;
     if (!model.trim()) {
-      alert('請先選擇或輸入模型名稱');
+      toast.warning('請先選擇或輸入模型名稱');
       return;
     }
 
@@ -241,17 +242,19 @@ function SettingsPageContent() {
       const result = await testProviderConnection(selectedProvider, apiKey.trim(), model.trim());
 
       if (result.success) {
-        alert(
-          `✅ ${result.message}\n\n${result.details}\n\n注意：這是基本連接測試，實際使用時可能還會遇到其他問題。`
-        );
+        toast.success(result.message, {
+          description: `${result.details}\n\n注意：這是基本連接測試，實際使用時可能還會遇到其他問題。`,
+        });
       } else {
-        alert(
-          `❌ ${result.message}\n\n${result.details}\n\n請檢查：\n1. API Key 是否正確\n2. 模型名稱是否正確\n3. API Key 是否有足夠的額度`
-        );
+        toast.error(result.message, {
+          description: `${result.details}\n\n請檢查：API Key 是否正確、模型名稱是否正確、API Key 是否有足夠的額度`,
+        });
       }
     } catch (err: any) {
       console.error('Test failed:', err);
-      alert(`測試失敗: ${err.message || '未知錯誤'}\n\n請檢查網路連接和 API Key。`);
+      toast.error(`測試失敗: ${err.message || '未知錯誤'}`, {
+        description: '請檢查網路連接和 API Key。',
+      });
     } finally {
       setTestingProvider(false);
     }
@@ -261,7 +264,7 @@ function SettingsPageContent() {
     if (!user) return;
 
     if (!displayName.trim()) {
-      alert('請輸入顯示名稱');
+      toast.warning('請輸入顯示名稱');
       return;
     }
 
@@ -270,14 +273,14 @@ function SettingsPageContent() {
       const result = await updateDisplayName(user.user_id, displayName.trim());
 
       if (!result.success) {
-        alert(`更新失敗: ${result.error || '未知錯誤'}`);
+        toast.error(`更新失敗: ${result.error || '未知錯誤'}`);
         return;
       }
 
-      alert('✅ 顯示名稱更新成功！');
+      toast.success('顯示名稱更新成功！');
     } catch (err: any) {
       console.error('Failed to update display name:', err);
-      alert(`更新失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`更新失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingDisplayName(false);
     }
@@ -287,17 +290,17 @@ function SettingsPageContent() {
     if (!user) return;
 
     if (!oldPassword || !newPassword || !confirmPassword) {
-      alert('請填寫所有密碼欄位');
+      toast.warning('請填寫所有密碼欄位');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      alert('新密碼與確認密碼不一致');
+      toast.warning('新密碼與確認密碼不一致');
       return;
     }
 
     if (newPassword.length < 6) {
-      alert('密碼長度至少 6 個字元');
+      toast.warning('密碼長度至少 6 個字元');
       return;
     }
 
@@ -307,17 +310,17 @@ function SettingsPageContent() {
       const result = await updatePassword(user.user_id, oldPassword, newPassword);
 
       if (!result.success) {
-        alert(`更新失敗: ${result.error || '未知錯誤'}`);
+        toast.error(`更新失敗: ${result.error || '未知錯誤'}`);
         return;
       }
 
-      alert('✅ 密碼更新成功！');
+      toast.success('密碼更新成功！');
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
       console.error('Failed to update password:', err);
-      alert(`更新失敗: ${err.message || '未知錯誤'}`);
+      toast.error(`更新失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingPassword(false);
     }
@@ -366,21 +369,19 @@ function SettingsPageContent() {
           <nav className="flex space-x-8">
             <button
               onClick={() => setActiveMainTab('providers')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${
-                activeMainTab === 'providers'
+              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeMainTab === 'providers'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
+                }`}
             >
               🤖 AI 供應商
             </button>
             <button
               onClick={() => setActiveMainTab('account')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${
-                activeMainTab === 'account'
+              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeMainTab === 'account'
                   ? 'border-blue-600 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
+                }`}
             >
               👤 帳號管理
             </button>
@@ -406,11 +407,10 @@ function SettingsPageContent() {
                       <button
                         key={provider}
                         onClick={() => setSelectedProvider(provider)}
-                        className={`w-full px-4 py-3 text-left transition ${
-                          isActive
+                        className={`w-full px-4 py-3 text-left transition ${isActive
                             ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600'
                             : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 border-l-4 border-transparent'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">{info.icon}</span>
