@@ -338,17 +338,20 @@ function StoryDetailPageContent() {
       setSaving(true);
 
       if (isNewStory) {
+        // Create story first without player_character_id (will update after adding characters)
         const newStory = await createStory(user.user_id, {
           world_id: formData.world_id,
           title: formData.title.trim(),
           premise_text: formData.premise_text.trim(),
           story_mode: formData.story_mode,
-          player_character_id: formData.story_mode === 'PLAYER_CHARACTER' ? formData.player_character_id : undefined,
+          // Don't set player_character_id here - we need the story_character_id which we get after adding characters
+          player_character_id: undefined,
           story_prompt: formData.story_prompt.trim(),
         });
 
         // Add selected characters to the story and get story_character_ids
         const storyCharacterResults: { characterId: string; storyCharacterId: string }[] = [];
+        let playerStoryCharacterId: string | undefined;
 
         if (selectedCharacterIds.length > 0) {
           const storyChars = await Promise.all(
@@ -363,10 +366,23 @@ function StoryDetailPageContent() {
 
           // Map character_id to story_character_id
           storyChars.forEach((sc, index) => {
+            const characterId = selectedCharacterIds[index];
             storyCharacterResults.push({
-              characterId: selectedCharacterIds[index],
+              characterId,
               storyCharacterId: sc.story_character_id,
             });
+
+            // Find the player's story_character_id
+            if (characterId === formData.player_character_id) {
+              playerStoryCharacterId = sc.story_character_id;
+            }
+          });
+        }
+
+        // Update story with the correct player_character_id (which is story_character_id)
+        if (formData.story_mode === 'PLAYER_CHARACTER' && playerStoryCharacterId) {
+          await updateStory(newStory.story_id, user.user_id, {
+            player_character_id: playerStoryCharacterId,
           });
         }
 
@@ -951,6 +967,22 @@ function StoryDetailPageContent() {
                                       key={char.character_id}
                                       onClick={() => {
                                         setFormData({ ...formData, player_character_id: char.character_id });
+                                        // 自動將玩家角色加入故事角色列表
+                                        if (!selectedCharacterIds.includes(char.character_id)) {
+                                          setSelectedCharacterIds([...selectedCharacterIds, char.character_id]);
+                                          // 初始化該角色的狀態值
+                                          if (creationWorldSchema.length > 0) {
+                                            const defaultValues: Record<string, any> = {};
+                                            creationWorldSchema.forEach((schema) => {
+                                              try {
+                                                defaultValues[schema.schema_key] = getSchemaDefaultValue(schema);
+                                              } catch {
+                                                defaultValues[schema.schema_key] = '';
+                                              }
+                                            });
+                                            setInitialStates((prev) => ({ ...prev, [char.character_id]: defaultValues }));
+                                          }
+                                        }
                                         setShowCharacterSelector(false);
                                       }}
                                       className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"

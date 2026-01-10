@@ -6,7 +6,7 @@ export interface NarrativeAgentInput {
   story_mode: StoryMode;
   world_rules: string;
   story_prompt: string;
-  player_character_id?: string;
+  // 不再使用 player_character_id，改用 NarrativeCharacterContext.is_player 欄位
   characters: NarrativeCharacterContext[];
   relationships: NarrativeRelationshipContext[];
   recent_turns: RecentTurnContext[];
@@ -19,6 +19,8 @@ export interface NarrativeCharacterContext {
   core_profile: string;
   override_profile?: string;
   current_state_summary: string;
+  /** 是否為玩家控制的角色 */
+  is_player: boolean;
 }
 
 export interface NarrativeRelationshipContext {

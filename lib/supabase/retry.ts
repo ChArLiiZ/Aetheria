@@ -9,13 +9,15 @@ export interface RetryOptions {
   initialTimeout?: number;
   timeoutMultiplier?: number;
   onRetry?: (attempt: number, error: Error) => void;
+  /** 操作名稱，用於除錯日誌 */
+  operationName?: string;
 }
 
-const DEFAULT_OPTIONS: Required<RetryOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'operationName'>> = {
   maxRetries: 3,
-  initialTimeout: 5000, // 5 seconds
-  timeoutMultiplier: 1.5, // Each retry increases timeout by 1.5x (5s, 7.5s, 11.25s)
-  onRetry: () => {},
+  initialTimeout: 30000, // 30 seconds (increased to handle very slow connections)
+  timeoutMultiplier: 1.5, // Each retry increases timeout by 1.5x (30s, 45s, 67.5s)
+  onRetry: () => { },
 };
 
 /**
@@ -32,6 +34,7 @@ export async function withRetry<T>(
   options: RetryOptions = {}
 ): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  const opName = opts.operationName || 'unknown';
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < opts.maxRetries; attempt++) {
@@ -39,10 +42,12 @@ export async function withRetry<T>(
       // Calculate timeout for this attempt (increases with each retry)
       const timeout = opts.initialTimeout * Math.pow(opts.timeoutMultiplier, attempt);
 
+      console.log(`[withRetry] 開始操作: ${opName}, 嘗試 ${attempt + 1}/${opts.maxRetries}, 超時: ${timeout / 1000}秒`);
+
       // Create timeout promise
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(new Error(`資料庫操作逾時 (${timeout / 1000} 秒)`));
+          reject(new Error(`資料庫操作逾時 (${timeout / 1000} 秒) - 操作: ${opName}`));
         }, timeout);
       });
 

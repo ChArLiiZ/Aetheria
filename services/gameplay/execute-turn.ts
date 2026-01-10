@@ -71,6 +71,7 @@ async function buildNarrativeInput(
   userInput: string,
   userId: string
 ): Promise<NarrativeAgentInput> {
+  console.log('[buildNarrativeInput] 開始取得所有必要資料...');
   // Fetch all required data in parallel
   const [world, storyCharacters, recentTurns, stateValues, relationships, worldSchema] =
     await Promise.all([
@@ -81,15 +82,18 @@ async function buildNarrativeInput(
       getStoryRelationships(story.story_id, userId),
       getSchemaByWorldId(story.world_id, userId),
     ]);
+  console.log('[buildNarrativeInput] 所有平行查詢完成');
 
   if (!world) {
     throw new Error('World not found');
   }
 
   // Fetch character details
+  console.log(`[buildNarrativeInput] 取得 ${storyCharacters.length} 個角色的詳細資料...`);
   const characterDetails = await Promise.all(
     storyCharacters.map((sc) => getCharacterById(sc.character_id, userId))
   );
+  console.log('[buildNarrativeInput] 角色詳細資料取得完成');
 
   // Build character contexts
   const characters: NarrativeCharacterContext[] = storyCharacters.map((sc, index) => {
@@ -123,8 +127,12 @@ async function buildNarrativeInput(
       display_name: sc.display_name_override || char.canonical_name,
       core_profile: char.core_profile_text,
       current_state_summary: stateSummary || 'No state set',
+      is_player: sc.is_player, // 使用 story_characters 表中的 is_player 欄位
     };
   });
+
+  // Find the player character for logging
+  const playerCharacter = characters.find(c => c.is_player);
 
   // Build relationship contexts
   const relationshipContexts: NarrativeRelationshipContext[] = relationships.map((rel) => ({
@@ -142,11 +150,29 @@ async function buildNarrativeInput(
     dialogue: JSON.parse(turn.dialogue_json || '[]'),
   }));
 
+  // Log the built input for debugging
+  console.log('[buildNarrativeInput] 建構完成的輸入資料:');
+  console.log('  - story_mode:', story.story_mode);
+  console.log('  - 玩家角色:', playerCharacter?.display_name || '無（導演模式）');
+  console.log('  - 角色數量:', characters.length);
+  console.log('  - 關係數量:', relationshipContexts.length);
+  console.log('  - 最近回合數:', recentTurnContexts.length);
+  console.log('  - world_rules 長度:', world.rules_text?.length || 0);
+  console.log('  - story_prompt 長度:', story.story_prompt?.length || 0);
+
+  if (characters.length === 0) {
+    console.warn('[buildNarrativeInput] 警告：沒有角色！');
+  }
+
+  if (story.story_mode === 'PLAYER_CHARACTER' && !playerCharacter) {
+    console.warn('[buildNarrativeInput] 警告：玩家角色模式但沒有設定玩家角色！');
+  }
+
   return {
     story_mode: story.story_mode,
     world_rules: world.rules_text,
     story_prompt: story.story_prompt,
-    player_character_id: story.player_character_id,
+    // 不再使用 player_character_id，改用 characters 中的 is_player 欄位
     characters,
     relationships: relationshipContexts,
     recent_turns: recentTurnContexts,
@@ -263,7 +289,7 @@ async function applyStateChanges(
     });
   });
 
-  const serializeValue = (value: any) => (value === undefined ? null : JSON.stringify(value));
+  const serializeValue = (value: any): string | undefined => (value === undefined ? undefined : JSON.stringify(value));
 
   // Apply state changes
   for (const change of stateChanges.changes) {
@@ -396,7 +422,7 @@ async function applyStateChanges(
       from_story_character_id: relChange.from_story_character_id,
       to_story_character_id: relChange.to_story_character_id,
       op: relChange.op,
-      before_value_json: beforeValue ? JSON.stringify(beforeValue) : null,
+      before_value_json: beforeValue ? JSON.stringify(beforeValue) : undefined,
       after_value_json: JSON.stringify({ score: newScore, tags: currentTags }),
       reason_text: relChange.reason || 'relationship change',
     });
@@ -411,25 +437,40 @@ async function applyStateChanges(
 export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnResult> {
   const { story, userInput, userId, apiKey, model, params } = input;
 
+  console.log('[executeTurn] 開始執行回合...');
+
   // Use model from story or input
   const selectedModel = model || story.model_override || 'anthropic/claude-3.5-sonnet';
 
   // Get current turn count
+  console.log('[executeTurn] 步驟 0: 取得目前回合數...');
   const currentTurns = await getStoryTurns(story.story_id, userId);
   const nextTurnIndex =
     currentTurns.length > 0
       ? Math.max(...currentTurns.map((turn) => turn.turn_index)) + 1
       : 1;
+  console.log(`[executeTurn] 步驟 0 完成: 目前有 ${currentTurns.length} 個回合，下一個回合索引: ${nextTurnIndex}`);
 
   // Step 1: Call narrative agent
+  console.log('[executeTurn] 步驟 1: 建構敘事輸入...');
   const narrativeInput = await buildNarrativeInput(story, userInput, userId);
+  console.log('[executeTurn] 步驟 1a 完成: 敘事輸入已建構');
+
+  console.log('[executeTurn] 步驟 1b: 呼叫敘事 AI...');
   const narrativeOutput = await callNarrativeAgent(apiKey, selectedModel, narrativeInput, params);
+  console.log('[executeTurn] 步驟 1 完成: 敘事 AI 回應成功');
 
   // Step 2: Call state delta agent
+  console.log('[executeTurn] 步驟 2: 建構狀態變更輸入...');
   const stateDeltaInput = await buildStateDeltaInput(story, userInput, narrativeOutput, userId);
+  console.log('[executeTurn] 步驟 2a 完成: 狀態變更輸入已建構');
+
+  console.log('[executeTurn] 步驟 2b: 呼叫狀態變更 AI...');
   const stateChanges = await callStateDeltaAgent(apiKey, selectedModel, stateDeltaInput, params);
+  console.log('[executeTurn] 步驟 2 完成: 狀態變更 AI 回應成功');
 
   // Step 3: Apply state changes
+  console.log('[executeTurn] 步驟 3: 套用狀態變更...');
   const changeLogs = await applyStateChanges(story, stateChanges, userId);
 
   // Step 4: Save turn

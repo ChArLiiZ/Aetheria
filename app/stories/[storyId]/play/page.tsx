@@ -40,6 +40,10 @@ function StoryPlayPageContent() {
   const [deletingTurnIndex, setDeletingTurnIndex] = useState<number | null>(null);
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
 
+  // UX 改進：即時反饋狀態
+  const [pendingUserInput, setPendingUserInput] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   // Character states
   const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
   const [characters, setCharacters] = useState<Map<string, Character>>(new Map());
@@ -180,6 +184,9 @@ function StoryPlayPageContent() {
     const input = userInput.trim();
 
     try {
+      // 立即顯示用戶輸入（樂觀 UI）
+      setPendingUserInput(input);
+      setSubmitError(null);
       setSubmitting(true);
       setUserInput('');
 
@@ -195,7 +202,8 @@ function StoryPlayPageContent() {
           : JSON.parse(providerSettings.default_params_json || '{}'),
       });
 
-      // Add new turn to the list
+      // 成功：清除 pending 狀態，加入回合
+      setPendingUserInput(null);
       setTurns([...turns, result.turn]);
 
       // Update story object with new turn count
@@ -205,11 +213,13 @@ function StoryPlayPageContent() {
       await loadCharacterStates(story.world_id);
     } catch (err: any) {
       console.error('Failed to submit:', err);
+      // 顯示錯誤訊息在 UI 中
+      setSubmitError(err.message || '提交失敗，請稍後再試');
       toast.error(`提交失敗: ${err.message || '未知錯誤'}`, {
         description: '請檢查 AI 設定是否正確。',
       });
-      // Restore user input on error
-      setUserInput(input);
+      // 保留 pending 狀態讓用戶可以看到他們的輸入
+      // 不清除 pendingUserInput，讓用戶可以重試
     } finally {
       setSubmitting(false);
     }
@@ -352,7 +362,7 @@ function StoryPlayPageContent() {
             ))}
 
             {/* Empty state */}
-            {turns.length === 0 && (
+            {turns.length === 0 && !pendingUserInput && (
               <div className="text-center py-12">
                 <div className="text-6xl mb-4">🎮</div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
@@ -361,6 +371,106 @@ function StoryPlayPageContent() {
                 <p className="text-gray-600 dark:text-gray-400">
                   在下方輸入你的第一個行動
                 </p>
+              </div>
+            )}
+
+            {/* Pending User Input (即時顯示用戶輸入) */}
+            {pendingUserInput && (
+              <div className="space-y-4">
+                {/* 用戶輸入 */}
+                <div className="flex justify-end">
+                  <div className="max-w-[80%] bg-blue-600 text-white rounded-lg p-4">
+                    <p className="text-sm font-medium mb-1">你的行動</p>
+                    <p className="whitespace-pre-wrap">{pendingUserInput}</p>
+                  </div>
+                </div>
+
+                {/* AI 思考中狀態 */}
+                {submitting && !submitError && (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                        AI
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            AI 正在思考...
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="animate-pulse flex gap-1">
+                            <span className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                            <span className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                          </div>
+                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                            正在生成故事內容...
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 錯誤訊息 */}
+                {submitError && (
+                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-6 border border-red-200 dark:border-red-700">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">
+                        ⚠
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-red-800 dark:text-red-200">
+                            AI 回應失敗
+                          </span>
+                        </div>
+                        <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+                          {submitError}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              // 重試：將 pending 輸入放回輸入框
+                              setUserInput(pendingUserInput);
+                              setPendingUserInput(null);
+                              setSubmitError(null);
+                            }}
+                            className="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-700 transition"
+                          >
+                            編輯後重試
+                          </button>
+                          <button
+                            onClick={() => {
+                              // 直接重新提交
+                              setSubmitError(null);
+                              const form = document.querySelector('form');
+                              if (form) {
+                                setUserInput(pendingUserInput);
+                                setPendingUserInput(null);
+                                setTimeout(() => form.requestSubmit(), 100);
+                              }
+                            }}
+                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                          >
+                            立即重試
+                          </button>
+                          <button
+                            onClick={() => {
+                              // 取消
+                              setPendingUserInput(null);
+                              setSubmitError(null);
+                            }}
+                            className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -505,10 +615,10 @@ function StoryPlayPageContent() {
                             </span>
                             <span
                               className={`font-medium ${rel.score > 0
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : rel.score < 0
-                                    ? 'text-red-600 dark:text-red-400'
-                                    : 'text-gray-600 dark:text-gray-400'
+                                ? 'text-green-600 dark:text-green-400'
+                                : rel.score < 0
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-gray-600 dark:text-gray-400'
                                 }`}
                             >
                               {rel.score}

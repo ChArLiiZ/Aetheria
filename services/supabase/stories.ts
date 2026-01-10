@@ -103,7 +103,7 @@ export async function createStory(
 export async function updateStory(
   storyId: string,
   userId: string,
-  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'status' | 'turn_count'>>
+  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'status' | 'turn_count' | 'player_character_id'>>
 ): Promise<void> {
   return withRetry(async () => {
     const { error } = await supabase

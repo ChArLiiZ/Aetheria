@@ -27,7 +27,7 @@ export async function getStoryTurns(
     }
 
     return (data || []) as StoryTurn[];
-  });
+  }, { operationName: 'getStoryTurns' });
 }
 
 /**

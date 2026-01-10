@@ -126,17 +126,50 @@ export async function callOpenRouterJsonWithRetry<T>(
  * Parse JSON response with error handling
  */
 export function parseJsonResponse<T>(content: string): T | null {
+  // Log the first 500 characters for debugging
+  console.log('[parseJsonResponse] 嘗試解析回應，長度:', content.length);
+  if (content.length < 500) {
+    console.log('[parseJsonResponse] 原始內容:', content);
+  } else {
+    console.log('[parseJsonResponse] 原始內容（前 500 字）:', content.substring(0, 500));
+  }
+
   try {
-    // Try to extract JSON from markdown code blocks
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1]);
+    // Strategy 1: Try to extract JSON from markdown code blocks (```json ... ```)
+    const jsonCodeBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonCodeBlockMatch) {
+      console.log('[parseJsonResponse] 使用策略 1: Markdown JSON 區塊');
+      return JSON.parse(jsonCodeBlockMatch[1]);
     }
 
-    // Try to parse directly
+    // Strategy 2: Try to extract JSON from generic code blocks (``` ... ```)
+    const codeBlockMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      try {
+        console.log('[parseJsonResponse] 使用策略 2: 一般程式碼區塊');
+        return JSON.parse(codeBlockMatch[1]);
+      } catch {
+        // Not valid JSON, continue to next strategy
+      }
+    }
+
+    // Strategy 3: Try to find JSON object boundaries { ... }
+    const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonObjectMatch) {
+      try {
+        console.log('[parseJsonResponse] 使用策略 3: JSON 物件邊界');
+        return JSON.parse(jsonObjectMatch[0]);
+      } catch {
+        // Not valid JSON, continue to next strategy
+      }
+    }
+
+    // Strategy 4: Try to parse the whole content directly
+    console.log('[parseJsonResponse] 使用策略 4: 直接解析');
     return JSON.parse(content);
   } catch (error) {
-    console.error('Failed to parse JSON response:', error);
+    console.error('[parseJsonResponse] 所有策略都失敗。原始回應:', content);
+    console.error('[parseJsonResponse] 解析錯誤:', error);
     return null;
   }
 }
