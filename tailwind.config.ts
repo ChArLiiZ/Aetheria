@@ -28,7 +28,10 @@ const config: Config = {
       spacing: tokens.spacing,
       borderRadius: tokens.borderRadius,
       boxShadow: tokens.boxShadow,
-      fontFamily: tokens.typography.fontFamily,
+      fontFamily: {
+        sans: [...tokens.typography.fontFamily.sans],
+        mono: [...tokens.typography.fontFamily.mono],
+      },
       fontSize: tokens.typography.fontSize,
       fontWeight: tokens.typography.fontWeight,
       zIndex: tokens.zIndex,
