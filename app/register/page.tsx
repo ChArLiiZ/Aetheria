@@ -1,10 +1,14 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { validatePassword, validateEmail } from '@/lib/auth/password';
+import { Button, Input, Alert, Card, CardContent } from '@/components/ui';
+import { Container, Stack } from '@/components/layout';
+import { FormField, FormGroup } from '@/components/forms';
+import { ArrowLeft, UserPlus } from '@/components/icons';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -63,143 +67,124 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 py-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Aetheria
-          </h1>
-          <h2 className="text-xl text-gray-600 dark:text-gray-400">建立新帳號</h2>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 space-y-6">
-            {errors.length > 0 && (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                <ul className="list-disc list-inside space-y-1">
-                  {errors.map((error, index) => (
-                    <li key={index} className="text-red-800 dark:text-red-200 text-sm">
-                      {error}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-              >
-                電子郵件 *
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="your@email.com"
-                disabled={loading}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="displayName"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-              >
-                顯示名稱 *
-              </label>
-              <input
-                id="displayName"
-                type="text"
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="你的名字"
-                disabled={loading}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-              >
-                密碼 *
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="••••••••"
-                disabled={loading}
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                至少 8 個字元，包含大小寫字母和數字
-              </p>
-            </div>
-
-            <div>
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-              >
-                確認密碼 *
-              </label>
-              <input
-                id="confirmPassword"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                placeholder="••••••••"
-                disabled={loading}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition duration-200 focus:ring-4 focus:ring-blue-300"
-            >
-              {loading ? '註冊中...' : '註冊'}
-            </button>
+      <Container size="sm">
+        <Stack spacing="lg" className="w-full">
+          {/* Header */}
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+              Aetheria
+            </h1>
+            <h2 className="text-xl text-gray-600 dark:text-gray-400">建立新帳號</h2>
           </div>
 
-          <div className="text-center space-y-2">
+          {/* Form */}
+          <form onSubmit={handleSubmit}>
+            <Card>
+              <CardContent>
+                <FormGroup spacing="md">
+                  {errors.length > 0 && (
+                    <Alert variant="error" title="驗證失敗">
+                      <ul className="list-disc list-inside space-y-1 mt-2">
+                        {errors.map((error, index) => (
+                          <li key={index}>{error}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
+
+                  <FormField label="電子郵件" required>
+                    <Input
+                      id="email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="your@email.com"
+                      disabled={loading}
+                    />
+                  </FormField>
+
+                  <FormField label="顯示名稱" required>
+                    <Input
+                      id="displayName"
+                      type="text"
+                      required
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="你的名字"
+                      disabled={loading}
+                    />
+                  </FormField>
+
+                  <FormField
+                    label="密碼"
+                    required
+                    helperText="至少 8 個字元，包含大小寫字母和數字"
+                  >
+                    <Input
+                      id="password"
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      disabled={loading}
+                    />
+                  </FormField>
+
+                  <FormField label="確認密碼" required>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      disabled={loading}
+                    />
+                  </FormField>
+
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    isLoading={loading}
+                    fullWidth
+                    className="mt-2"
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    註冊
+                  </Button>
+                </FormGroup>
+              </CardContent>
+            </Card>
+          </form>
+
+          {/* Links */}
+          <Stack spacing="sm" className="text-center">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               已經有帳號了？{' '}
               <Link
                 href="/login"
-                className="text-blue-600 hover:text-blue-700 font-medium"
+                className="text-primary-600 hover:text-primary-700 font-medium transition-colors"
               >
                 立即登入
               </Link>
             </p>
-            <p className="text-sm">
-              <Link
-                href="/"
-                className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              >
-                ← 返回首頁
-              </Link>
-            </p>
-          </div>
-        </form>
+            <Link
+              href="/"
+              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              返回首頁
+            </Link>
+          </Stack>
 
-        <div className="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <p className="text-blue-800 dark:text-blue-200 text-xs">
-            ℹ️ 資料儲存在 Supabase 中。
-          </p>
-        </div>
-      </div>
+          {/* Info */}
+          <Alert variant="info" className="text-xs">
+            資料儲存在 Supabase 中。
+          </Alert>
+        </Stack>
+      </Container>
     </main>
   );
 }

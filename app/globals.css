@@ -3,25 +3,57 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 淺色主題預設值 */
+  --background: #f9fafb;
+  --foreground: #111827;
+  --surface: #ffffff;
+  --surface-elevated: #ffffff;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+  --border-default: #e5e7eb;
+  --border-muted: #f3f4f6;
+  --border-focus: #2563eb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    /* 深色主題 */
+    --background: #111827;
     --foreground: #ededed;
+    --surface: #1f2937;
+    --surface-elevated: #374151;
+    --text-primary: #ededed;
+    --text-secondary: #9ca3af;
+    --text-tertiary: #6b7280;
+    --border-default: #374151;
+    --border-muted: #1f2937;
+    --border-focus: #60a5fa;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  
+  /* 觸控友好的最小尺寸 */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* 平滑滾動 */
+  .smooth-scroll {
+    scroll-behavior: smooth;
   }
 }

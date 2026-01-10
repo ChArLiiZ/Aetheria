@@ -334,9 +334,133 @@ useEffect(() => {
  
 ---
  
+### 🟢 Phase 5: 前端設計系統重構 [100%]
+ 
+#### ✅ 設計系統基礎
+- [x] 建立設計 Token 系統（`lib/theme/tokens.ts`）
+  - 統一的顏色系統（主色、輔助色、語義色）
+  - 間距系統（基於 4px 倍數）
+  - 字體系統（字體大小、行高、字重）
+  - 圓角系統
+  - 陰影系統（Elevation levels）
+  - 動畫系統（過渡時間、緩動函數）
+  - 斷點系統
+  - Z-index 層級
+- [x] 建立主題配置系統（`lib/theme/config.ts`）
+  - 支援淺色/深色主題
+  - 可擴展的主題配置
+  - 基於系統偏好的自動切換
+- [x] 更新 Tailwind 配置
+  - 整合設計 token
+  - 支援 CSS 變數
+  - 擴展主題配置
+ 
+#### ✅ UI 組件庫（`components/ui/`）
+- [x] **Button**：多種變體（primary, secondary, danger, ghost, outline）
+  - 支援不同尺寸（sm, md, lg）
+  - 載入狀態顯示
+  - 全寬選項
+- [x] **Card**：卡片容器組件
+  - CardHeader, CardTitle, CardContent, CardFooter 子組件
+  - 多種變體（default, elevated, outlined）
+  - 可配置內距
+- [x] **Input**：文字輸入框
+  - 支援 label、error、helperText
+  - 深色模式支援
+  - 無障礙標準
+- [x] **Textarea**：多行輸入框
+  - 與 Input 相同的功能
+  - 自動調整大小
+- [x] **Select**：下拉選單
+  - 自定義樣式
+  - 支援選項禁用
+- [x] **Badge**：標籤/徽章組件
+  - 多種變體（default, primary, success, error, warning, info）
+  - 不同尺寸
+- [x] **Alert**：提示訊息框
+  - 多種變體（success, error, warning, info）
+  - 支援標題和圖示
+- [x] **Loading**：載入動畫
+  - 不同尺寸
+  - 全屏模式
+  - 自定義文字
+- [x] **Modal**：對話框
+  - 多種尺寸（sm, md, lg, xl, full）
+  - 支援 ESC 關閉
+  - 點擊背景關閉
+  - 自動管理 body overflow
+- [x] **Tabs**：標籤頁組件
+  - TabsList, TabsTrigger, TabsContent 子組件
+  - Context API 管理狀態
+  - 無障礙支援
+ 
+#### ✅ 布局組件（`components/layout/`）
+- [x] **Container**：響應式容器
+  - 多種尺寸（sm, md, lg, xl, full）
+  - 可配置內距
+- [x] **Grid**：響應式網格系統
+  - 可配置欄數（1-12）
+  - 響應式配置（sm, md, lg, xl）
+  - 可配置間距
+- [x] **Stack**：垂直/水平堆疊
+  - 可配置方向（row, column）
+  - 可配置間距
+  - 對齊和分佈選項
+- [x] **Header**：頁面標題區塊
+  - 支援標題和副標題
+  - 返回按鈕和操作按鈕
+  - Sticky 選項
+- [x] **Sidebar**：側邊欄
+  - 支援左右位置
+  - 移動端抽屜模式
+  - 可配置寬度
+  - 自動管理 body overflow
+ 
+#### ✅ 表單組件（`components/forms/`）
+- [x] **FormField**：表單欄位容器
+  - 統一的 label、error、helperText 顯示
+  - 必填標記
+- [x] **FormGroup**：表單群組
+  - 統一的間距管理
+  - 可配置方向
+ 
+#### ✅ 圖示系統（`components/icons/`）
+- [x] 引入 lucide-react 圖示庫
+- [x] 建立 Icon 組件封裝
+- [x] 導出常用圖示
+- [x] 統一替換 emoji 圖示
+ 
+#### ✅ 頁面重構
+- [x] 登入頁面（`app/login/page.tsx`）
+  - 使用新組件系統
+  - 響應式設計優化
+- [x] 註冊頁面（`app/register/page.tsx`）
+  - 使用新組件系統
+  - 表單驗證優化
+- [x] Dashboard 頁面（`app/dashboard/page.tsx`）
+  - 使用新組件系統
+  - 卡片式佈局優化
+- [x] 首頁（`app/page.tsx`）
+  - 使用新組件系統
+  - 響應式設計優化
+ 
+#### ✅ 響應式設計優化
+- [x] 觸控友好的按鈕尺寸（最小 44x44px）
+- [x] 移動端優先的響應式設計
+- [x] 統一的斷點系統
+- [x] 移動端導航優化（抽屜式選單）
+- [x] 表單輸入體驗優化
+ 
+#### ✅ 工具函數
+- [x] `lib/utils.ts`：cn 函數
+  - 合併 Tailwind CSS 類名
+  - 使用 clsx 和 tailwind-merge
+ 
+---
+ 
 ## 🟡 待完成功能
  
-### Phase 5: 進階功能 [0%]
+### Phase 6: 進階功能 [0%]
  
 #### ⏳ Action Suggestion Agent
 - [ ] 建立建議系統（`services/agents/action-suggestion-agent.ts`）
@@ -370,10 +494,11 @@ useEffect(() => {
 - ✅ 故事建立：100%
 - ✅ 遊戲核心迴圈：100%
 - ✅ 狀態追蹤：100%
+- ✅ 前端設計系統：100%
 - ⏳ 回顧功能：0%
 - ⏳ 進階功能：0%
  
-**總體完成度：約 85%**
+**總體完成度：約 88%**
  
 ---
  
@@ -383,8 +508,12 @@ useEffect(() => {
 - **框架**：Next.js 15（App Router）
 - **語言**：TypeScript
 - **樣式**：Tailwind CSS
+- **設計系統**：統一的設計 Token 和主題系統
+- **UI 組件庫**：自定義組件庫（Button, Card, Input, Modal 等）
+- **圖示庫**：Lucide React
 - **狀態管理**：React Hooks + Context API
 - **通知系統**：Sonner（Toast）
+- **工具函數**：clsx + tailwind-merge（類名合併）
  
 ### 後端與資料庫
 - **資料庫**：Supabase（PostgreSQL）
@@ -530,6 +659,7 @@ useEffect(() => {
  
 ### ⏳ 進行中
 - [x] 完整重試機制遷移（已完成 9 個服務檔案）
+- [x] 前端設計系統重構（已完成）
 - [ ] ChangeLog 系統
 - [ ] 回顧功能
  
@@ -537,9 +667,10 @@ useEffect(() => {
 - [ ] 進階互動功能
 - [ ] 內容安全機制
 - [ ] 行動裝置支援
+- [ ] 其他頁面遷移至新設計系統（世界觀、角色、故事等頁面）
  
 ---
  
 **最後更新**：2026-01-10
-**當前版本**：v0.8.7-alpha
-**專案狀態**：✅ 核心功能完成，進入優化階段
+**當前版本**：v0.9.0-alpha
+**專案狀態**：✅ 核心功能完成，前端設計系統重構完成，進入優化階段

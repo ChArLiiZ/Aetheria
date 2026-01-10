@@ -243,49 +243,58 @@ function StoryPlayPageContent() {
   return (
     <main className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6 py-3 md:py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white truncate">
               {story.title}
             </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mt-0.5 md:mt-1">
               回合 {turns.length} • {story.story_mode === 'PLAYER_CHARACTER' ? '玩家角色模式' : '導演模式'}
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2 md:gap-3 flex-shrink-0">
             <button
               onClick={() => setShowStatePanel(!showStatePanel)}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+              className="px-3 md:px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium text-sm md:text-base whitespace-nowrap"
             >
-              {showStatePanel ? '隱藏狀態' : '顯示狀態'}
+              {showStatePanel ? '隱藏' : '狀態'}
             </button>
             <button
               onClick={() => router.push(`/stories/${storyId}`)}
-              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+              className="hidden md:block px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
             >
               ← 返回設定
+            </button>
+            <button
+              onClick={() => router.push(`/stories/${storyId}`)}
+              className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+              aria-label="返回設定"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-6">
+          <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 pb-4">
             {/* Story Premise (Turn 0) */}
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 border border-purple-200 dark:border-purple-700">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-4 md:p-6 border border-purple-200 dark:border-purple-700">
+              <div className="flex items-start gap-2 md:gap-3">
+                <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm md:text-base">
                   📖
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1.5 md:mb-2 text-sm md:text-base">
                     故事開始
                   </h3>
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap text-sm md:text-base">
                     {story.premise_text}
                   </p>
                 </div>
@@ -294,45 +303,45 @@ function StoryPlayPageContent() {
 
             {/* Turn History */}
             {turns.map((turn, index) => (
-              <div key={turn.turn_id} className="space-y-4">
+              <div key={turn.turn_id} className="space-y-3 md:space-y-4">
                 {/* User Input */}
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] bg-blue-600 text-white rounded-lg p-4">
-                    <p className="text-sm font-medium mb-1">你的行動</p>
-                    <p className="whitespace-pre-wrap">{turn.user_input_text}</p>
+                  <div className="max-w-[85%] md:max-w-[80%] bg-blue-600 text-white rounded-lg p-3 md:p-4">
+                    <p className="text-xs md:text-sm font-medium mb-1">你的行動</p>
+                    <p className="whitespace-pre-wrap text-sm md:text-base">{turn.user_input_text}</p>
                   </div>
                 </div>
 
                 {/* AI Response */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-start gap-2 md:gap-3">
+                    <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs md:text-sm">
                       AI
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 md:gap-2 mb-2">
+                        <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white">
                           回合 {turn.turn_index}
                         </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 hidden md:inline">
                           {new Date(turn.created_at).toLocaleString('zh-TW')}
                         </span>
                         <button
                           type="button"
                           onClick={() => handleDeleteFromTurn(turn.turn_index)}
                           disabled={deletingTurnIndex !== null}
-                          className="ml-auto text-xs text-red-600 hover:text-red-700 disabled:text-gray-400"
+                          className="ml-auto text-xs text-red-600 hover:text-red-700 disabled:text-gray-400 whitespace-nowrap"
                         >
-                          {deletingTurnIndex === turn.turn_index ? '刪除中...' : '刪除此回合'}
+                          {deletingTurnIndex === turn.turn_index ? '刪除中...' : '刪除'}
                         </button>
                       </div>
-                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap text-sm md:text-base">
                         {turn.narrative_text}
                       </p>
 
                       {/* Dialogue */}
                       {turn.dialogue_json && turn.dialogue_json !== '[]' && (
-                        <div className="mt-4 space-y-2">
+                        <div className="mt-3 md:mt-4 space-y-2">
                           {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
                             const speakerName = resolveSpeakerName(
                               dialogue.speaker_story_character_id,
@@ -342,12 +351,12 @@ function StoryPlayPageContent() {
                             return (
                               <div
                                 key={idx}
-                                className="pl-4 border-l-2 border-gray-300 dark:border-gray-600"
+                                className="pl-3 md:pl-4 border-l-2 border-gray-300 dark:border-gray-600"
                               >
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                <p className="text-xs md:text-sm font-medium text-gray-900 dark:text-white">
                                   {speakerName}
                                 </p>
-                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
                                   {dialogue.text}
                                 </p>
                               </div>
@@ -363,12 +372,12 @@ function StoryPlayPageContent() {
 
             {/* Empty state */}
             {turns.length === 0 && !pendingUserInput && (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">🎮</div>
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              <div className="text-center py-8 md:py-12">
+                <div className="text-5xl md:text-6xl mb-3 md:mb-4">🎮</div>
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white mb-1.5 md:mb-2">
                   準備開始你的冒險
                 </h3>
-                <p className="text-gray-600 dark:text-gray-400">
+                <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
                   在下方輸入你的第一個行動
                 </p>
               </div>
@@ -376,35 +385,35 @@ function StoryPlayPageContent() {
 
             {/* Pending User Input (即時顯示用戶輸入) */}
             {pendingUserInput && (
-              <div className="space-y-4">
+              <div className="space-y-3 md:space-y-4">
                 {/* 用戶輸入 */}
                 <div className="flex justify-end">
-                  <div className="max-w-[80%] bg-blue-600 text-white rounded-lg p-4">
-                    <p className="text-sm font-medium mb-1">你的行動</p>
-                    <p className="whitespace-pre-wrap">{pendingUserInput}</p>
+                  <div className="max-w-[85%] md:max-w-[80%] bg-blue-600 text-white rounded-lg p-3 md:p-4">
+                    <p className="text-xs md:text-sm font-medium mb-1">你的行動</p>
+                    <p className="whitespace-pre-wrap text-sm md:text-base">{pendingUserInput}</p>
                   </div>
                 </div>
 
                 {/* AI 思考中狀態 */}
                 {submitting && !submitError && (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg p-6 border border-gray-200 dark:border-gray-700">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                    <div className="flex items-start gap-2 md:gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs md:text-sm">
                         AI
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white">
                             AI 正在思考...
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="animate-pulse flex gap-1">
-                            <span className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                            <span className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                            <span className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                            <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                            <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                           </div>
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                          <span className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
                             正在生成故事內容...
                           </span>
                         </div>
@@ -415,21 +424,21 @@ function StoryPlayPageContent() {
 
                 {/* 錯誤訊息 */}
                 {submitError && (
-                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-6 border border-red-200 dark:border-red-700">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 md:p-6 border border-red-200 dark:border-red-700">
+                    <div className="flex items-start gap-2 md:gap-3">
+                      <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-red-600 rounded-full flex items-center justify-center text-white font-bold text-sm md:text-base">
                         ⚠
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-medium text-red-800 dark:text-red-200">
+                          <span className="text-xs md:text-sm font-medium text-red-800 dark:text-red-200">
                             AI 回應失敗
                           </span>
                         </div>
-                        <p className="text-sm text-red-700 dark:text-red-300 mb-3">
+                        <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mb-3">
                           {submitError}
                         </p>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <button
                             onClick={() => {
                               // 重試：將 pending 輸入放回輸入框
@@ -437,7 +446,7 @@ function StoryPlayPageContent() {
                               setPendingUserInput(null);
                               setSubmitError(null);
                             }}
-                            className="px-3 py-1.5 text-sm bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-700 transition"
+                            className="px-2.5 md:px-3 py-1.5 text-xs md:text-sm bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-700 transition"
                           >
                             編輯後重試
                           </button>
@@ -452,7 +461,7 @@ function StoryPlayPageContent() {
                                 setTimeout(() => form.requestSubmit(), 100);
                               }
                             }}
-                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+                            className="px-2.5 md:px-3 py-1.5 text-xs md:text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                           >
                             立即重試
                           </button>
@@ -462,7 +471,7 @@ function StoryPlayPageContent() {
                               setPendingUserInput(null);
                               setSubmitError(null);
                             }}
-                            className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
+                            className="px-2.5 md:px-3 py-1.5 text-xs md:text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
                           >
                             取消
                           </button>
@@ -478,9 +487,9 @@ function StoryPlayPageContent() {
           </div>
         </div>
 
-        {/* State Panel */}
+        {/* State Panel - Desktop (Sidebar) */}
         {showStatePanel && (
-          <div className="w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto">
+          <div className="hidden lg:block w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0">
             <div className="p-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
                 角色狀態
@@ -645,12 +654,196 @@ function StoryPlayPageContent() {
             </div>
           </div>
         )}
+
+        {/* State Panel - Mobile (Bottom Drawer) */}
+        {showStatePanel && (
+          <div className="lg:hidden fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 rounded-t-2xl shadow-2xl max-h-[70vh] overflow-hidden flex flex-col">
+            {/* Drawer Handle */}
+            <div className="flex items-center justify-center py-3 border-b border-gray-200 dark:border-gray-700">
+              <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
+            </div>
+
+            {/* Drawer Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                  角色狀態
+                </h2>
+                <button
+                  onClick={() => setShowStatePanel(false)}
+                  className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Characters */}
+              <div className="space-y-3">
+                {storyCharacters.map((sc) => {
+                  const char = characters.get(sc.story_character_id);
+                  if (!char) return null;
+
+                  // Get this character's state values
+                  const charStates = stateValues.filter(
+                    (sv) => sv.story_character_id === sc.story_character_id
+                  );
+
+                  return (
+                    <div
+                      key={sc.story_character_id}
+                      className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-2 h-2 rounded-full bg-purple-600"></div>
+                        <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                          {sc.display_name_override || char.canonical_name}
+                        </h3>
+                        {sc.is_player && (
+                          <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
+                            玩家
+                          </span>
+                        )}
+                      </div>
+
+                      {/* State Values */}
+                      {charStates.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {charStates.map((sv) => {
+                            const schema = worldSchema.find(
+                              (s) => s.schema_key === sv.schema_key
+                            );
+                            if (!schema) return null;
+
+                            let displayValue;
+                            try {
+                              const value = JSON.parse(sv.value_json);
+                              if (schema.type === 'list_text') {
+                                displayValue = Array.isArray(value)
+                                  ? value.join(', ')
+                                  : value;
+                              } else if (typeof value === 'boolean') {
+                                displayValue = value ? '是' : '否';
+                              } else {
+                                displayValue = String(value);
+                              }
+                            } catch {
+                              displayValue = sv.value_json;
+                            }
+
+                            return (
+                              <div key={sv.schema_key} className="text-xs">
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {schema.display_name}:
+                                </span>{' '}
+                                <span className="text-gray-900 dark:text-white font-medium">
+                                  {displayValue}
+                                  {schema.type === 'number' &&
+                                    schema.number_constraints_json &&
+                                    (() => {
+                                      const constraints = JSON.parse(
+                                        schema.number_constraints_json
+                                      );
+                                      return constraints.unit
+                                        ? ` ${constraints.unit}`
+                                        : '';
+                                    })()}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          尚無狀態設定
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Relationships */}
+              {relationships.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">
+                    角色關係
+                  </h3>
+                  <div className="space-y-2">
+                    {relationships.map((rel, index) => {
+                      const fromChar = storyCharacters.find(
+                        (sc) => sc.story_character_id === rel.from_story_character_id
+                      );
+                      const toChar = storyCharacters.find(
+                        (sc) => sc.story_character_id === rel.to_story_character_id
+                      );
+
+                      if (!fromChar || !toChar) return null;
+
+                      const fromCharDetail = characters.get(fromChar.story_character_id);
+                      const toCharDetail = characters.get(toChar.story_character_id);
+
+                      const tags = JSON.parse(rel.tags_json || '[]');
+
+                      return (
+                        <div
+                          key={`${rel.from_story_character_id}-${rel.to_story_character_id}`}
+                          className="bg-gray-50 dark:bg-gray-700 rounded-lg p-2.5 text-xs"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-gray-900 dark:text-white font-medium">
+                              {fromChar.display_name_override ||
+                                fromCharDetail?.canonical_name}
+                            </span>
+                            <span className="text-gray-500">→</span>
+                            <span className="text-gray-900 dark:text-white font-medium">
+                              {toChar.display_name_override ||
+                                toCharDetail?.canonical_name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600 dark:text-gray-400">
+                              分數:
+                            </span>
+                            <span
+                              className={`font-medium ${rel.score > 0
+                                ? 'text-green-600 dark:text-green-400'
+                                : rel.score < 0
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-gray-600 dark:text-gray-400'
+                                }`}
+                            >
+                              {rel.score}
+                            </span>
+                          </div>
+                          {tags.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {tags.map((tag: string) => (
+                                <span
+                                  key={tag}
+                                  className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Input Area */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-4">
+      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 md:px-6 py-3 md:py-4">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex gap-3">
+          <div className="flex flex-col md:flex-row gap-2 md:gap-3">
             <textarea
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
@@ -663,17 +856,17 @@ function StoryPlayPageContent() {
               placeholder="描述你的行動... (Enter 送出，Shift+Enter 換行)"
               disabled={submitting}
               rows={3}
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none disabled:opacity-50"
+              className="flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none disabled:opacity-50 text-sm md:text-base"
             />
             <button
               type="submit"
               disabled={!userInput.trim() || submitting}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold self-end"
+              className="px-4 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold md:self-end text-sm md:text-base"
             >
               {submitting ? '思考中...' : '送出'}
             </button>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 md:mt-2 hidden md:block">
             💡 提示：描述你想做的事情，AI 會根據故事設定生成回應
           </p>
         </form>
