@@ -331,6 +331,29 @@ useEffect(() => {
   - `toast.success()` - 成功通知（綠色）
   - `toast.error()` - 錯誤通知（紅色）
   - `toast.warning()` - 警告通知（黃色）
+
+#### ✅ Supabase onAuthStateChange 最佳實踐
+
+**重要**：Supabase SDK 的已知問題 - 在 `onAuthStateChange` 回調中使用 `async/await` 會導致死鎖！
+
+**問題**：當 token 刷新時，`onAuthStateChange` 被觸發，如果回調中 `await` 另一個 Supabase API 呼叫，會導致兩個請求互相等待，造成永久卡住。
+
+**正確寫法**（`contexts/AuthContext.tsx`）：
+```tsx
+supabase.auth.onAuthStateChange((event, session) => {
+  // ❌ 不要使用 async/await！
+  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    if (session?.user) {
+      // ✅ 使用 setTimeout 延遲執行，避免死鎖
+      setTimeout(() => {
+        refreshUser();  // 不要 await
+      }, 0);
+    }
+  }
+});
+```
+
+**參考**：[supabase/supabase-js#762](https://github.com/supabase/supabase-js/issues/762)
  
 ---
  
@@ -671,6 +694,6 @@ useEffect(() => {
  
 ---
  
-**最後更新**：2026-01-10
-**當前版本**：v0.9.0-alpha
-**專案狀態**：✅ 核心功能完成，前端設計系統重構完成，進入優化階段
+**最後更新**：2026-01-11
+**當前版本**：v0.9.1-alpha
+**專案狀態**：✅ 核心功能完成，修復 Supabase 載入死鎖問題，進入優化階段

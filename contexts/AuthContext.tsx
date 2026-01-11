@@ -78,7 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        // 注意：不要在這個回調中使用 async/await！
+        // 這是 Supabase SDK 的已知問題，會導致死鎖。
+        // 參考：https://github.com/supabase/supabase-js/issues/762
         if (cancelled) return;
 
         console.log('Auth state changed:', event);
@@ -91,15 +94,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           event === 'TOKEN_REFRESHED'
         ) {
           if (session?.user) {
-            await refreshUser();
-          }
-        } else if (event === 'INITIAL_SESSION') {
-          // INITIAL_SESSION 事件會在 getSession 之後觸發
-          // 如果我們已經載入過了，就不需要再處理
-          if (!user && session?.user) {
-            await refreshUser();
+            // 使用 setTimeout 延遲執行，避免死鎖
+            setTimeout(() => {
+              if (!cancelled) {
+                refreshUser();
+              }
+            }, 0);
           }
         }
+        // INITIAL_SESSION 不處理，讓 initAuth 處理初始化
       }
     );
 

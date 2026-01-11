@@ -64,55 +64,67 @@ function StoryPlayPageContent() {
     return storyChar.display_name_override || character?.canonical_name || fallback || '未知角色';
   };
 
+  // 載入故事資料，使用 cancelled 標記防止 race condition
   useEffect(() => {
-    loadStory();
-  }, [user, storyId]);
+    let cancelled = false;
 
-  useEffect(() => {
-    // Auto-scroll to bottom when new turns are added
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [turns]);
-
-  const loadStory = async () => {
-    if (!user) return;
-
-    try {
-      setLoading(true);
-
-      // Load story, turns, and provider settings in parallel
-      const [storyData, turnsData, settings] = await Promise.all([
-        getStoryById(storyId, user.user_id),
-        getStoryTurns(storyId, user.user_id),
-        getProviderSetting(user.user_id, 'openrouter'),
-      ]);
-
-      if (!storyData) {
-        toast.error('故事不存在');
-        router.push('/stories');
+    const loadData = async () => {
+      // 如果沒有 user_id，設定 loading = false 並返回
+      if (!user?.user_id) {
+        setLoading(false);
         return;
       }
 
-      if (!settings) {
-        toast.warning('請先到設定頁面設定 AI 提供商');
-        router.push('/settings');
-        return;
+      try {
+        setLoading(true);
+
+        // Load story, turns, and provider settings in parallel
+        const [storyData, turnsData, settings] = await Promise.all([
+          getStoryById(storyId, user.user_id),
+          getStoryTurns(storyId, user.user_id),
+          getProviderSetting(user.user_id, 'openrouter'),
+        ]);
+
+        if (cancelled) return;
+
+        if (!storyData) {
+          toast.error('故事不存在');
+          router.push('/stories');
+          return;
+        }
+
+        if (!settings) {
+          toast.warning('請先到設定頁面設定 AI 提供商');
+          router.push('/settings');
+          return;
+        }
+
+        setStory(storyData);
+        setTurns(turnsData);
+        setProviderSettings(settings);
+
+        // Load character states
+        await loadCharacterStatesInternal(storyData.world_id, cancelled);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('Failed to load story:', err);
+        toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
+    };
 
-      setStory(storyData);
-      setTurns(turnsData);
-      setProviderSettings(settings);
+    loadData();
 
-      // Load character states
-      await loadCharacterStates(storyData.world_id);
-    } catch (err: any) {
-      console.error('Failed to load story:', err);
-      toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.user_id, storyId]);
 
-  const loadCharacterStates = async (worldId: string) => {
+  // 內部載入角色狀態函式（支援 cancelled 參數）
+  const loadCharacterStatesInternal = async (worldId: string, cancelled: boolean) => {
     if (!user) return;
 
     try {
@@ -124,6 +136,8 @@ function StoryPlayPageContent() {
         getSchemaByWorldId(worldId, user.user_id),
       ]);
 
+      if (cancelled) return;
+
       setStoryCharacters(storyChars);
       setStateValues(states);
       setRelationships(rels);
@@ -134,6 +148,8 @@ function StoryPlayPageContent() {
         storyChars.map((sc) => getCharacterById(sc.character_id, user.user_id))
       );
 
+      if (cancelled) return;
+
       const charMap = new Map<string, Character>();
       charDetails.forEach((char, index) => {
         if (char) {
@@ -142,9 +158,20 @@ function StoryPlayPageContent() {
       });
       setCharacters(charMap);
     } catch (err: any) {
+      if (cancelled) return;
       console.error('Failed to load character states:', err);
     }
   };
+
+  // 公開的載入角色狀態函式（供其他地方呼叫）
+  const loadCharacterStates = async (worldId: string) => {
+    return loadCharacterStatesInternal(worldId, false);
+  };
+
+  // Auto-scroll to bottom when new turns are added
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [turns]);
 
   const handleDeleteFromTurn = async (turnIndex: number) => {
     if (!user || !story || deletingTurnIndex) return;
