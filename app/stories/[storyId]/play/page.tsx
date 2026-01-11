@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import ReactMarkdown from 'react-markdown';
 import {
   Story,
   StoryTurn,
@@ -11,10 +12,9 @@ import {
   StoryCharacter,
   Character,
   StoryStateValue,
-  StoryRelationship,
   WorldStateSchema,
 } from '@/types';
-import { getStoryById } from '@/services/supabase/stories';
+import { getStoryById, updateStory } from '@/services/supabase/stories';
 import { getStoryTurns } from '@/services/supabase/story-turns';
 import { getProviderSetting } from '@/services/supabase/provider-settings';
 import { executeTurn } from '@/services/gameplay/execute-turn';
@@ -22,19 +22,27 @@ import { rollbackStoryToTurn } from '@/services/gameplay/rollback-turns';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
 import { getAllStateValuesForStory } from '@/services/supabase/story-state-values';
-import { getStoryRelationships } from '@/services/supabase/story-relationships';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Send, Trash2, ArrowLeft, Menu, BookOpen, Bot, User, AlertCircle } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { MODEL_PRESETS, PROVIDER_INFO, Provider, PROVIDERS, DEFAULT_PROVIDER, DEFAULT_MODELS } from '@/lib/ai-providers';
+
+// 預設上下文回合數
+const DEFAULT_CONTEXT_TURNS = 5;
 
 function StoryPlayPageContent() {
   const { user } = useAuth();
@@ -58,29 +66,27 @@ function StoryPlayPageContent() {
   const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
   const [characters, setCharacters] = useState<Map<string, Character>>(new Map());
   const [stateValues, setStateValues] = useState<StoryStateValue[]>([]);
-  const [relationships, setRelationships] = useState<StoryRelationship[]>([]);
   const [worldSchema, setWorldSchema] = useState<WorldStateSchema[]>([]);
-  const [showStatePanel, setShowStatePanel] = useState(false); // Used for mobile/sheet state or desktop toggle? Actually with Sheet we can just use open state.
-  // Let's use it for the Sheet open state on mobile/desktop.
+  const [showStatePanel, setShowStatePanel] = useState(false);
+
+  // Settings panel
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [tempProvider, setTempProvider] = useState<Provider>(DEFAULT_PROVIDER);
+  const [tempUsePreset, setTempUsePreset] = useState<'preset' | 'custom'>('preset');
+  const [tempModel, setTempModel] = useState<string>('');
+  const [tempCustomModel, setTempCustomModel] = useState<string>('');
+  const [tempTemperature, setTempTemperature] = useState<number>(0.7);
+  const [tempMaxTokens, setTempMaxTokens] = useState<number>(3000);
+  const [tempContextTurns, setTempContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const resolveSpeakerName = (speakerId?: string, fallback?: string) => {
-    if (!speakerId) return fallback || '未知角色';
-    const storyChar = storyCharacters.find(
-      (sc) => sc.story_character_id === speakerId
-    );
-    if (!storyChar) return fallback || '未知角色';
-    const character = characters.get(storyChar.story_character_id);
-    return storyChar.display_name_override || character?.canonical_name || fallback || '未知角色';
-  };
-
-  // 載入故事資料，使用 cancelled 標記防止 race condition
+  // 載入故事資料
   useEffect(() => {
     let cancelled = false;
 
     const loadData = async () => {
-      // 如果沒有 user_id，設定 loading = false 並返回
       if (!user?.user_id) {
         setLoading(false);
         return;
@@ -89,7 +95,6 @@ function StoryPlayPageContent() {
       try {
         setLoading(true);
 
-        // Load story, turns, and provider settings in parallel
         const [storyData, turnsData, settings] = await Promise.all([
           getStoryById(storyId, user.user_id),
           getStoryTurns(storyId, user.user_id),
@@ -114,6 +119,28 @@ function StoryPlayPageContent() {
         setTurns(turnsData);
         setProviderSettings(settings);
 
+        // Initialize settings - 從現有模型名稱推斷供應商
+        const existingModel = storyData.model_override || settings.default_model || DEFAULT_MODELS[DEFAULT_PROVIDER];
+        const inferredProvider = existingModel.includes('/') ? 'openrouter' as Provider : 'openai' as Provider;
+        setTempProvider(inferredProvider);
+
+        // 檢查是否為預設模型
+        const isPreset = MODEL_PRESETS[inferredProvider].includes(existingModel);
+        setTempUsePreset(isPreset ? 'preset' : 'custom');
+        if (isPreset) {
+          setTempModel(existingModel);
+        } else {
+          setTempModel(MODEL_PRESETS[inferredProvider][0] || '');
+          setTempCustomModel(existingModel);
+        }
+
+        const params = storyData.params_override_json
+          ? JSON.parse(storyData.params_override_json)
+          : JSON.parse(settings.default_params_json || '{}');
+        setTempTemperature(params.temperature ?? 0.7);
+        setTempMaxTokens(params.max_tokens ?? 3000);
+        setTempContextTurns(storyData.context_turns_override ?? settings.default_context_turns ?? DEFAULT_CONTEXT_TURNS);
+
         // Load character states
         await loadCharacterStatesInternal(storyData.world_id, cancelled);
       } catch (err: any) {
@@ -134,16 +161,13 @@ function StoryPlayPageContent() {
     };
   }, [user?.user_id, storyId]);
 
-  // 內部載入角色狀態函式（支援 cancelled 參數）
   const loadCharacterStatesInternal = async (worldId: string, cancelled: boolean) => {
     if (!user) return;
 
     try {
-      // Load all character-related data in parallel
-      const [storyChars, states, rels, schema] = await Promise.all([
+      const [storyChars, states, schema] = await Promise.all([
         getStoryCharacters(storyId, user.user_id),
         getAllStateValuesForStory(storyId, user.user_id),
-        getStoryRelationships(storyId, user.user_id),
         getSchemaByWorldId(worldId, user.user_id),
       ]);
 
@@ -151,10 +175,8 @@ function StoryPlayPageContent() {
 
       setStoryCharacters(storyChars);
       setStateValues(states);
-      setRelationships(rels);
       setWorldSchema(schema);
 
-      // Load character details
       const charDetails = await Promise.all(
         storyChars.map((sc) => getCharacterById(sc.character_id, user.user_id))
       );
@@ -174,15 +196,14 @@ function StoryPlayPageContent() {
     }
   };
 
-  // 公開的載入角色狀態函式（供其他地方呼叫）
   const loadCharacterStates = async (worldId: string) => {
     return loadCharacterStatesInternal(worldId, false);
   };
 
-  // Auto-scroll to bottom when new turns are added
+  // Auto-scroll to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [turns, pendingUserInput, submitError]); // Also scroll on pending/error to keep focus
+  }, [turns, pendingUserInput, submitError]);
 
   // Auto-resize textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -196,21 +217,16 @@ function StoryPlayPageContent() {
   const handleDeleteFromTurn = async (turnIndex: number) => {
     if (!user || !story || deletingTurnIndex) return;
 
-    if (
-      !confirm(
-        `確定要刪除回合 ${turnIndex} 及其後所有內容嗎？\n\n此操作將回溯角色狀態與關係，且無法復原。`
-      )
-    ) {
+    if (!confirm(`確定要刪除回合 ${turnIndex} 及其後所有內容嗎？\n\n此操作將回溯角色狀態，且無法復原。`)) {
       return;
     }
 
     try {
       setDeletingTurnIndex(turnIndex);
       const remainingTurns = await rollbackStoryToTurn(storyId, turnIndex, user.user_id);
-      const newTurnCount =
-        remainingTurns.length > 0
-          ? Math.max(...remainingTurns.map((turn) => turn.turn_index))
-          : 0;
+      const newTurnCount = remainingTurns.length > 0
+        ? Math.max(...remainingTurns.map((turn) => turn.turn_index))
+        : 0;
 
       setTurns(remainingTurns);
       setStory({ ...story, turn_count: newTurnCount });
@@ -231,47 +247,39 @@ function StoryPlayPageContent() {
     const input = userInput.trim();
 
     try {
-      // 立即顯示用戶輸入（樂觀 UI）
       setPendingUserInput(input);
       setSubmitError(null);
       setSubmitting(true);
       setUserInput('');
 
-      // Reset height
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
 
-      // Execute turn with AI
+      const selectedModel = tempUsePreset === 'preset' ? tempModel : tempCustomModel;
       const result = await executeTurn({
         story,
         userInput: input,
         userId: user.user_id,
         apiKey: providerSettings.api_key,
-        model: story.model_override || providerSettings.default_model,
-        params: story.params_override_json
-          ? JSON.parse(story.params_override_json)
-          : JSON.parse(providerSettings.default_params_json || '{}'),
+        model: selectedModel,
+        params: {
+          temperature: tempTemperature,
+          max_tokens: tempMaxTokens,
+        },
+        contextTurns: tempContextTurns,
       });
 
-      // 成功：清除 pending 狀態，加入回合
       setPendingUserInput(null);
       setTurns([...turns, result.turn]);
-
-      // Update story object with new turn count
       setStory({ ...story, turn_count: result.turn.turn_index });
-
-      // Reload character states to reflect changes
       await loadCharacterStates(story.world_id);
     } catch (err: any) {
       console.error('Failed to submit:', err);
-      // 顯示錯誤訊息在 UI 中
       setSubmitError(err.message || '提交失敗，請稍後再試');
       toast.error(`提交失敗: ${err.message || '未知錯誤'}`, {
         description: '請檢查 AI 設定是否正確。',
       });
-      // 保留 pending 狀態讓用戶可以看到他們的輸入
-      // 不清除 pendingUserInput，讓用戶可以重試
     } finally {
       setSubmitting(false);
     }
@@ -281,6 +289,39 @@ function StoryPlayPageContent() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    if (!user || !story) return;
+
+    try {
+      setSavingSettings(true);
+      const selectedModel = tempUsePreset === 'preset' ? tempModel : tempCustomModel;
+      await updateStory(story.story_id, user.user_id, {
+        model_override: selectedModel,
+        params_override_json: JSON.stringify({
+          temperature: tempTemperature,
+          max_tokens: tempMaxTokens,
+        }),
+        context_turns_override: tempContextTurns,
+      });
+      setStory({
+        ...story,
+        model_override: selectedModel,
+        params_override_json: JSON.stringify({
+          temperature: tempTemperature,
+          max_tokens: tempMaxTokens,
+        }),
+        context_turns_override: tempContextTurns,
+      });
+      toast.success('設定已儲存');
+      setShowSettingsPanel(false);
+    } catch (err: any) {
+      console.error('Failed to save settings:', err);
+      toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -321,6 +362,129 @@ function StoryPlayPageContent() {
           </div>
 
           <div className="flex gap-2 shrink-0">
+            {/* Settings Button */}
+            <Sheet open={showSettingsPanel} onOpenChange={setShowSettingsPanel}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon" title="設定">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[85vw] sm:w-[400px] overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>遊戲設定</SheetTitle>
+                  <SheetDescription>調整 AI 模型和參數</SheetDescription>
+                </SheetHeader>
+                <div className="py-6 space-y-6">
+                  {/* Provider */}
+                  <div className="space-y-2">
+                    <Label>API 供應商</Label>
+                    <Select value={tempProvider} onValueChange={(v) => {
+                      setTempProvider(v as Provider);
+                      setTempModel(MODEL_PRESETS[v as Provider][0] || '');
+                      setTempCustomModel('');
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="選擇供應商" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROVIDERS.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {PROVIDER_INFO[p].icon} {PROVIDER_INFO[p].name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Model Selection */}
+                  <div className="space-y-3">
+                    <Label>模型名稱</Label>
+                    <RadioGroup value={tempUsePreset} onValueChange={(v: 'preset' | 'custom') => setTempUsePreset(v)} className="flex gap-4">
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="preset" id="opt-preset" />
+                        <Label htmlFor="opt-preset" className="cursor-pointer font-normal">選擇常用</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="custom" id="opt-custom" />
+                        <Label htmlFor="opt-custom" className="cursor-pointer font-normal">手動輸入</Label>
+                      </div>
+                    </RadioGroup>
+
+                    {tempUsePreset === 'preset' ? (
+                      <Select value={tempModel} onValueChange={setTempModel}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="選擇模型" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MODEL_PRESETS[tempProvider].map((model) => (
+                            <SelectItem key={model} value={model}>{model}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={tempCustomModel}
+                        onChange={(e) => setTempCustomModel(e.target.value)}
+                        placeholder="例如：anthropic/claude-3.5-sonnet"
+                      />
+                    )}
+                  </div>
+
+                  {/* Temperature */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label>Temperature（創意程度）</Label>
+                      <span className="text-sm text-muted-foreground">{tempTemperature.toFixed(1)}</span>
+                    </div>
+                    <Slider
+                      value={[tempTemperature]}
+                      onValueChange={([v]: number[]) => setTempTemperature(v)}
+                      min={0}
+                      max={2}
+                      step={0.1}
+                    />
+                    <p className="text-xs text-muted-foreground">0 = 保守穩定，2 = 創意多變</p>
+                  </div>
+
+                  {/* Max Tokens */}
+                  <div className="space-y-2">
+                    <Label>Max Tokens（回應長度上限）</Label>
+                    <Input
+                      type="number"
+                      value={tempMaxTokens}
+                      onChange={(e) => setTempMaxTokens(parseInt(e.target.value) || 1000)}
+                      min={100}
+                      max={8000}
+                    />
+                  </div>
+
+                  {/* Context Turns */}
+                  <div className="space-y-2">
+                    <Label>上下文回合數</Label>
+                    <Input
+                      type="number"
+                      value={tempContextTurns}
+                      onChange={(e) => setTempContextTurns(parseInt(e.target.value) || 5)}
+                      min={1}
+                      max={50}
+                    />
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
+                        回合數越多，每次 AI 呼叫的 token 消耗越高，費用也會增加。
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+
+                  <Button onClick={handleSaveSettings} disabled={savingSettings} className="w-full">
+                    {savingSettings && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    儲存設定
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+
+            {/* State Panel */}
             <Sheet open={showStatePanel} onOpenChange={setShowStatePanel}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="hidden lg:flex">
@@ -329,111 +493,73 @@ function StoryPlayPageContent() {
               </SheetTrigger>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="lg:hidden">
-                  <Menu className="h-5 w-5" />
+                  <BookOpen className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-[85vw] sm:w-[400px] overflow-y-auto">
                 <SheetHeader>
                   <SheetTitle>角色狀態</SheetTitle>
                 </SheetHeader>
-                <div className="py-6 space-y-6">
-                  {/* Characters */}
-                  <div className="space-y-4">
-                    {storyCharacters.map((sc) => {
-                      const char = characters.get(sc.story_character_id);
-                      if (!char) return null;
-                      const charStates = stateValues.filter(
-                        (sv) => sv.story_character_id === sc.story_character_id
-                      );
+                <div className="py-6 space-y-4">
+                  {storyCharacters.map((sc) => {
+                    const char = characters.get(sc.story_character_id);
+                    if (!char) return null;
+                    const charStates = stateValues.filter(
+                      (sv) => sv.story_character_id === sc.story_character_id
+                    );
 
-                      return (
-                        <Card key={sc.story_character_id}>
-                          <CardHeader className="p-4 pb-2">
-                            <div className="flex items-center justify-between">
-                              <div className="font-semibold flex items-center gap-2">
-                                {sc.display_name_override || char.canonical_name}
-                                {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5">玩家</Badge>}
-                              </div>
+                    return (
+                      <Card key={sc.story_character_id}>
+                        <CardHeader className="p-4 pb-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-semibold flex items-center gap-2">
+                              {sc.display_name_override || char.canonical_name}
+                              {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5">玩家</Badge>}
                             </div>
-                          </CardHeader>
-                          <CardContent className="p-4 pt-0">
-                            {charStates.length > 0 ? (
-                              <div className="space-y-1 text-sm">
-                                {charStates.map((sv) => {
-                                  const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
-                                  if (!schema) return null;
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-0">
+                          {charStates.length > 0 ? (
+                            <div className="space-y-1 text-sm">
+                              {charStates.map((sv) => {
+                                const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
+                                if (!schema) return null;
 
-                                  let displayValue;
-                                  try {
-                                    const value = JSON.parse(sv.value_json);
-                                    if (schema.type === 'list_text') {
-                                      displayValue = Array.isArray(value) ? value.join(', ') : value;
-                                    } else if (typeof value === 'boolean') {
-                                      displayValue = value ? '是' : '否';
-                                    } else {
-                                      displayValue = String(value);
-                                    }
-                                  } catch {
-                                    displayValue = sv.value_json;
+                                let displayValue;
+                                try {
+                                  const value = JSON.parse(sv.value_json);
+                                  if (schema.type === 'list_text') {
+                                    displayValue = Array.isArray(value) ? value.join(', ') : value;
+                                  } else if (typeof value === 'boolean') {
+                                    displayValue = value ? '是' : '否';
+                                  } else {
+                                    displayValue = String(value);
                                   }
+                                } catch {
+                                  displayValue = sv.value_json;
+                                }
 
-                                  return (
-                                    <div key={sv.schema_key} className="flex justify-between border-b last:border-0 py-1 border-muted">
-                                      <span className="text-muted-foreground">{schema.display_name}</span>
-                                      <span className="font-medium text-right">
-                                        {displayValue}
-                                        {schema.type === 'number' && schema.number_constraints_json && (() => {
-                                          const constraints = JSON.parse(schema.number_constraints_json);
-                                          return constraints.unit ? ` ${constraints.unit}` : '';
-                                        })()}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">尚無狀態</span>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-
-                  {/* Relationships */}
-                  {relationships.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">角色關係</h3>
-                      <div className="space-y-2">
-                        {relationships.map((rel) => {
-                          const fromChar = storyCharacters.find(sc => sc.story_character_id === rel.from_story_character_id);
-                          const toChar = storyCharacters.find(sc => sc.story_character_id === rel.to_story_character_id);
-                          if (!fromChar || !toChar) return null;
-                          const tags = JSON.parse(rel.tags_json || '[]');
-
-                          return (
-                            <div key={`${rel.from_story_character_id}-${rel.to_story_character_id}`} className="flex items-center justify-between p-3 border rounded-lg bg-card text-card-foreground">
-                              <div className="flex flex-col gap-1">
-                                <div className="text-sm font-medium">
-                                  {fromChar.display_name_override || characters.get(fromChar.story_character_id)?.canonical_name}
-                                  <span className="text-muted-foreground mx-1">→</span>
-                                  {toChar.display_name_override || characters.get(toChar.story_character_id)?.canonical_name}
-                                </div>
-                                {tags.length > 0 && (
-                                  <div className="flex flex-wrap gap-1">
-                                    {tags.map((tag: string) => <Badge key={tag} variant="outline" className="text-[10px] px-1 h-4">{tag}</Badge>)}
+                                return (
+                                  <div key={sv.schema_key} className="flex justify-between border-b last:border-0 py-1 border-muted">
+                                    <span className="text-muted-foreground">{schema.display_name}</span>
+                                    <span className="font-medium text-right">
+                                      {displayValue}
+                                      {schema.type === 'number' && schema.number_constraints_json && (() => {
+                                        const constraints = JSON.parse(schema.number_constraints_json);
+                                        return constraints.unit ? ` ${constraints.unit}` : '';
+                                      })()}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                              <div className={cn("text-sm font-bold", rel.score > 0 ? "text-green-600" : rel.score < 0 ? "text-red-600" : "text-muted-foreground")}>
-                                {rel.score}
-                              </div>
+                                );
+                              })}
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                          ) : (
+                            <span className="text-xs text-muted-foreground">尚無狀態</span>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </SheetContent>
             </Sheet>
@@ -465,7 +591,6 @@ function StoryPlayPageContent() {
               {/* User Input */}
               <div className="flex justify-end pl-12">
                 <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-full md:max-w-[85%] shadow-sm">
-                  {/* <p className="text-xs font-medium opacity-70 mb-1">你的行動</p> */}
                   <p className="whitespace-pre-wrap leading-relaxed">{turn.user_input_text}</p>
                 </div>
               </div>
@@ -490,23 +615,22 @@ function StoryPlayPageContent() {
                       {deletingTurnIndex === turn.turn_index ? '刪除中...' : '回溯至此'}
                     </Button>
                   </div>
-                  <div className="prose dark:prose-invert max-w-none text-foreground leading-relaxed whitespace-pre-wrap">
-                    {turn.narrative_text}
-                  </div>
-
-                  {turn.dialogue_json && turn.dialogue_json !== '[]' && (
-                    <div className="mt-4 pl-4 border-l-2 space-y-3">
-                      {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
-                        const speakerName = resolveSpeakerName(dialogue.speaker_story_character_id, dialogue.speaker);
-                        return (
-                          <div key={idx} className="space-y-0.5">
-                            <p className="text-sm font-semibold text-primary">{speakerName}</p>
-                            <p className="text-muted-foreground">{dialogue.text}</p>
+                  {/* Markdown Rendered Narrative */}
+                  <div className="prose dark:prose-invert max-w-none text-foreground leading-relaxed">
+                    <ReactMarkdown
+                      components={{
+                        blockquote: ({ children }) => (
+                          <div className="my-3 pl-4 py-2 border-l-4 border-primary bg-primary/5 dark:bg-primary/10 rounded-r-lg">
+                            <div className="text-foreground [&>p]:m-0 [&>p>strong]:text-primary [&>p>strong]:font-semibold">
+                              {children}
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                        ),
+                      }}
+                    >
+                      {turn.narrative_text}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
             </div>
@@ -532,7 +656,6 @@ function StoryPlayPageContent() {
                 </div>
               </div>
 
-              {/* Loading / Error State */}
               <div className="flex gap-4 pr-4">
                 <div className="shrink-0 mt-1">
                   <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border">
@@ -552,7 +675,7 @@ function StoryPlayPageContent() {
                         }}>編輯後重試</Button>
                         <Button size="sm" onClick={() => {
                           setSubmitError(null);
-                          handleSubmit(); // Try again directly
+                          handleSubmit();
                         }}>重試</Button>
                         <Button size="sm" variant="ghost" onClick={() => {
                           setPendingUserInput(null);
@@ -598,7 +721,7 @@ function StoryPlayPageContent() {
             </Button>
           </form>
           <p className="text-[10px] text-muted-foreground text-center mt-2">
-            AI 模型: {story.model_override || providerSettings?.default_model || 'Loading...'}
+            {PROVIDER_INFO[tempProvider].icon} {tempUsePreset === 'preset' ? tempModel : tempCustomModel} | 上下文: {tempContextTurns} 回合
           </p>
         </div>
       </div>

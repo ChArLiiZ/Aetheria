@@ -9,7 +9,6 @@ import {
   getProviderSettings,
   upsertProviderSettings,
   deleteProviderSettings,
-  Provider,
 } from '@/services/supabase/provider-settings';
 import { getUserById } from '@/services/supabase/users';
 import {
@@ -31,33 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Save, Trash2, FlaskConical, Eye, EyeOff, Key, User, Server } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-
-// Model presets for each provider
-const MODEL_PRESETS: Record<Provider, string[]> = {
-  openrouter: [
-    'anthropic/claude-3.5-sonnet',
-    'anthropic/claude-3-opus',
-    'anthropic/claude-3-haiku',
-    'openai/gpt-4-turbo',
-  ],
-  openai: ['gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo'],
-};
-
-const PROVIDER_INFO: Record<
-  Provider,
-  { name: string; icon: string; description: string }
-> = {
-  openrouter: {
-    name: 'OpenRouter',
-    icon: '🚀',
-    description: '統一多個 AI 模型的接入平台',
-  },
-  openai: {
-    name: 'OpenAI',
-    icon: '🤖',
-    description: 'GPT 系列模型提供商',
-  },
-};
+import { MODEL_PRESETS, PROVIDER_INFO, Provider, PROVIDERS } from '@/lib/ai-providers';
 
 type MainTab = 'providers' | 'account';
 
@@ -87,6 +60,7 @@ function SettingsPageContent() {
   const [temperature, setTemperature] = useState(1.0);
   const [maxTokens, setMaxTokens] = useState(4000);
   const [topP, setTopP] = useState(1.0);
+  const [defaultContextTurns, setDefaultContextTurns] = useState(5);
   const [savingProvider, setSavingProvider] = useState(false);
   const [testingProvider, setTestingProvider] = useState(false);
 
@@ -128,6 +102,8 @@ function SettingsPageContent() {
       } catch (e) {
         console.error('Failed to parse params:', e);
       }
+      // Load context turns
+      setDefaultContextTurns(settings.default_context_turns ?? 5);
     } else {
       // Reset form for new provider
       setApiKey('');
@@ -137,6 +113,7 @@ function SettingsPageContent() {
       setTemperature(1.0);
       setMaxTokens(4000);
       setTopP(1.0);
+      setDefaultContextTurns(5);
     }
     setShowApiKey(false);
   }, [selectedProvider, providerSettings]);
@@ -545,6 +522,24 @@ function SettingsPageContent() {
                         onChange={(e) => setTopP(parseFloat(e.target.value))}
                         className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                       />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>預設上下文回合數: {defaultContextTurns}</Label>
+                        <span className="text-xs text-muted-foreground">每次 AI 呼叫包含的歷史回合數</span>
+                      </div>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={defaultContextTurns}
+                        onChange={(e) => setDefaultContextTurns(parseInt(e.target.value) || 5)}
+                        className="w-24 px-3 py-1 border rounded-md text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        ⚠️ 回合數越多，token 消耗越高，費用也會增加
+                      </p>
                     </div>
                   </div>
                 </CardContent>

@@ -4,13 +4,11 @@ export type StoryMode = 'PLAYER_CHARACTER' | 'DIRECTOR';
 export type StoryStatus = 'active' | 'ended';
 export type UserStatus = 'active' | 'disabled';
 export type SchemaFieldType = 'number' | 'text' | 'bool' | 'enum' | 'list_text';
-export type EntityType = 'state' | 'relationship';
+export type EntityType = 'state';
 
 // State operation types
 export type StateOp = 'set' | 'inc';
 export type ListOp = 'push' | 'remove' | 'set';
-export type RelationshipScoreOp = 'set_score' | 'inc_score';
-export type RelationshipTagOp = 'add' | 'remove';
 
 // ==================== Base Types ====================
 
@@ -30,6 +28,7 @@ export interface ProviderSettings {
   api_key: string;
   default_model: string;
   default_params_json: string; // JSON string
+  default_context_turns?: number; // 預設上下文回合數
   updated_at: string;
 }
 
@@ -100,6 +99,7 @@ export interface Story {
   story_prompt: string;
   model_override?: string;
   params_override_json?: string; // JSON string
+  context_turns_override?: number; // 上下文回合數覆蓋
   status: StoryStatus;
   turn_count?: number;
   created_at: string;
@@ -125,7 +125,7 @@ export interface StoryCharacterOverride {
   updated_at: string;
 }
 
-// ==================== State & Relationships ====================
+// ==================== State ====================
 
 export interface StoryStateValue {
   story_id: string;
@@ -136,15 +136,6 @@ export interface StoryStateValue {
   updated_at: string;
 }
 
-export interface StoryRelationship {
-  story_id: string;
-  user_id: string;
-  from_story_character_id: string;
-  to_story_character_id: string;
-  score: number;
-  tags_json: string; // JSON array string
-  updated_at: string;
-}
 
 // ==================== Gameplay ====================
 
@@ -155,8 +146,6 @@ export interface StoryTurn {
   turn_index: number;
   user_input_text: string;
   narrative_text: string;
-  dialogue_json: string; // JSON array of DialogueEntry
-  scene_tags_json?: string; // JSON array string
   created_at: string;
   error_flag?: boolean;
   token_usage_json?: string; // JSON string
@@ -170,15 +159,8 @@ export interface ChangeLog {
   story_id: string;
   user_id: string;
   entity_type: EntityType;
-
-  // For state changes
   target_story_character_id?: string;
   schema_key?: string;
-
-  // For relationship changes
-  from_story_character_id?: string;
-  to_story_character_id?: string;
-
   op: string;
   before_value_json?: string;
   after_value_json?: string;
@@ -191,13 +173,6 @@ export interface CharacterTags {
   tags: string[];
 }
 
-export interface SceneTags {
-  tags: string[];
-}
-
-export interface RelationshipTags {
-  tags: string[];
-}
 
 export interface TokenUsage {
   prompt_tokens?: number;

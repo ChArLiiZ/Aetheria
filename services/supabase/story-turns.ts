@@ -66,8 +66,6 @@ export async function createStoryTurn(
     turn_index: number;
     user_input_text: string;
     narrative_text: string;
-    dialogue_json: string;
-    scene_tags_json?: string;
     token_usage_json?: string;
   }
 ): Promise<StoryTurn> {
@@ -77,8 +75,6 @@ export async function createStoryTurn(
     turn_index: data.turn_index,
     user_input_text: data.user_input_text,
     narrative_text: data.narrative_text,
-    dialogue_json: data.dialogue_json,
-    scene_tags_json: data.scene_tags_json || '',
     token_usage_json: data.token_usage_json,
     error_flag: false,
   };
