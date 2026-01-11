@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import {
   Story,
   StoryTurn,
@@ -25,6 +25,16 @@ import { getAllStateValuesForStory } from '@/services/supabase/story-state-value
 import { getStoryRelationships } from '@/services/supabase/story-relationships';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 import { toast } from 'sonner';
+
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Send, Trash2, ArrowLeft, Menu, BookOpen, Bot, User, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 function StoryPlayPageContent() {
   const { user } = useAuth();
@@ -50,7 +60,8 @@ function StoryPlayPageContent() {
   const [stateValues, setStateValues] = useState<StoryStateValue[]>([]);
   const [relationships, setRelationships] = useState<StoryRelationship[]>([]);
   const [worldSchema, setWorldSchema] = useState<WorldStateSchema[]>([]);
-  const [showStatePanel, setShowStatePanel] = useState(false);
+  const [showStatePanel, setShowStatePanel] = useState(false); // Used for mobile/sheet state or desktop toggle? Actually with Sheet we can just use open state.
+  // Let's use it for the Sheet open state on mobile/desktop.
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -171,7 +182,16 @@ function StoryPlayPageContent() {
   // Auto-scroll to bottom when new turns are added
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [turns]);
+  }, [turns, pendingUserInput, submitError]); // Also scroll on pending/error to keep focus
+
+  // Auto-resize textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [userInput]);
 
   const handleDeleteFromTurn = async (turnIndex: number) => {
     if (!user || !story || deletingTurnIndex) return;
@@ -203,8 +223,8 @@ function StoryPlayPageContent() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
     if (!userInput.trim() || submitting || !user || !story || !providerSettings) return;
 
@@ -216,6 +236,11 @@ function StoryPlayPageContent() {
       setSubmitError(null);
       setSubmitting(true);
       setUserInput('');
+
+      // Reset height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
 
       // Execute turn with AI
       const result = await executeTurn({
@@ -252,12 +277,19 @@ function StoryPlayPageContent() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
+          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">載入中...</p>
         </div>
       </div>
     );
@@ -268,637 +300,309 @@ function StoryPlayPageContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="flex flex-col h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6 py-3 md:py-4">
+      <header className="flex-none border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 px-4 py-3 sticky top-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg md:text-2xl font-bold text-gray-900 dark:text-white truncate">
-              {story.title}
-            </h1>
-            <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mt-0.5 md:mt-1">
-              回合 {turns.length} • {story.story_mode === 'PLAYER_CHARACTER' ? '玩家角色模式' : '導演模式'}
-            </p>
-          </div>
-          <div className="flex gap-2 md:gap-3 flex-shrink-0">
-            <button
-              onClick={() => setShowStatePanel(!showStatePanel)}
-              className="px-3 md:px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium text-sm md:text-base whitespace-nowrap"
-            >
-              {showStatePanel ? '隱藏' : '狀態'}
-            </button>
-            <button
-              onClick={() => router.push(`/stories/${storyId}`)}
-              className="hidden md:block px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-            >
-              ← 返回設定
-            </button>
-            <button
-              onClick={() => router.push(`/stories/${storyId}`)}
-              className="md:hidden p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-              aria-label="返回設定"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-6">
-          <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 pb-4">
-            {/* Story Premise (Turn 0) */}
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-4 md:p-6 border border-purple-200 dark:border-purple-700">
-              <div className="flex items-start gap-2 md:gap-3">
-                <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm md:text-base">
-                  📖
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1.5 md:mb-2 text-sm md:text-base">
-                    故事開始
-                  </h3>
-                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap text-sm md:text-base">
-                    {story.premise_text}
-                  </p>
-                </div>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <Button variant="ghost" size="icon" onClick={() => router.push(`/stories/${storyId}`)} title="返回設定">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold truncate leading-tight">
+                {story.title}
+              </h1>
+              <div className="flex items-center text-xs text-muted-foreground mt-0.5 space-x-2">
+                <span>回合 {turns.length}</span>
+                <span>•</span>
+                <span>{story.story_mode === 'PLAYER_CHARACTER' ? '玩家角色' : '導演模式'}</span>
               </div>
             </div>
-
-            {/* Turn History */}
-            {turns.map((turn, index) => (
-              <div key={turn.turn_id} className="space-y-3 md:space-y-4">
-                {/* User Input */}
-                <div className="flex justify-end">
-                  <div className="max-w-[85%] md:max-w-[80%] bg-blue-600 text-white rounded-lg p-3 md:p-4">
-                    <p className="text-xs md:text-sm font-medium mb-1">你的行動</p>
-                    <p className="whitespace-pre-wrap text-sm md:text-base">{turn.user_input_text}</p>
-                  </div>
-                </div>
-
-                {/* AI Response */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-start gap-2 md:gap-3">
-                    <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs md:text-sm">
-                      AI
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 md:gap-2 mb-2">
-                        <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white">
-                          回合 {turn.turn_index}
-                        </span>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 hidden md:inline">
-                          {new Date(turn.created_at).toLocaleString('zh-TW')}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteFromTurn(turn.turn_index)}
-                          disabled={deletingTurnIndex !== null}
-                          className="ml-auto text-xs text-red-600 hover:text-red-700 disabled:text-gray-400 whitespace-nowrap"
-                        >
-                          {deletingTurnIndex === turn.turn_index ? '刪除中...' : '刪除'}
-                        </button>
-                      </div>
-                      <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap text-sm md:text-base">
-                        {turn.narrative_text}
-                      </p>
-
-                      {/* Dialogue */}
-                      {turn.dialogue_json && turn.dialogue_json !== '[]' && (
-                        <div className="mt-3 md:mt-4 space-y-2">
-                          {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
-                            const speakerName = resolveSpeakerName(
-                              dialogue.speaker_story_character_id,
-                              dialogue.speaker
-                            );
-
-                            return (
-                              <div
-                                key={idx}
-                                className="pl-3 md:pl-4 border-l-2 border-gray-300 dark:border-gray-600"
-                              >
-                                <p className="text-xs md:text-sm font-medium text-gray-900 dark:text-white">
-                                  {speakerName}
-                                </p>
-                                <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
-                                  {dialogue.text}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* Empty state */}
-            {turns.length === 0 && !pendingUserInput && (
-              <div className="text-center py-8 md:py-12">
-                <div className="text-5xl md:text-6xl mb-3 md:mb-4">🎮</div>
-                <h3 className="text-lg md:text-xl font-semibold text-gray-900 dark:text-white mb-1.5 md:mb-2">
-                  準備開始你的冒險
-                </h3>
-                <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
-                  在下方輸入你的第一個行動
-                </p>
-              </div>
-            )}
-
-            {/* Pending User Input (即時顯示用戶輸入) */}
-            {pendingUserInput && (
-              <div className="space-y-3 md:space-y-4">
-                {/* 用戶輸入 */}
-                <div className="flex justify-end">
-                  <div className="max-w-[85%] md:max-w-[80%] bg-blue-600 text-white rounded-lg p-3 md:p-4">
-                    <p className="text-xs md:text-sm font-medium mb-1">你的行動</p>
-                    <p className="whitespace-pre-wrap text-sm md:text-base">{pendingUserInput}</p>
-                  </div>
-                </div>
-
-                {/* AI 思考中狀態 */}
-                {submitting && !submitError && (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
-                    <div className="flex items-start gap-2 md:gap-3">
-                      <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-xs md:text-sm">
-                        AI
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs md:text-sm font-medium text-gray-900 dark:text-white">
-                            AI 正在思考...
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="animate-pulse flex gap-1">
-                            <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                            <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                            <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                          </div>
-                          <span className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
-                            正在生成故事內容...
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 錯誤訊息 */}
-                {submitError && (
-                  <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 md:p-6 border border-red-200 dark:border-red-700">
-                    <div className="flex items-start gap-2 md:gap-3">
-                      <div className="flex-shrink-0 w-7 h-7 md:w-8 md:h-8 bg-red-600 rounded-full flex items-center justify-center text-white font-bold text-sm md:text-base">
-                        ⚠
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs md:text-sm font-medium text-red-800 dark:text-red-200">
-                            AI 回應失敗
-                          </span>
-                        </div>
-                        <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mb-3">
-                          {submitError}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => {
-                              // 重試：將 pending 輸入放回輸入框
-                              setUserInput(pendingUserInput);
-                              setPendingUserInput(null);
-                              setSubmitError(null);
-                            }}
-                            className="px-2.5 md:px-3 py-1.5 text-xs md:text-sm bg-red-100 dark:bg-red-800 text-red-700 dark:text-red-200 rounded hover:bg-red-200 dark:hover:bg-red-700 transition"
-                          >
-                            編輯後重試
-                          </button>
-                          <button
-                            onClick={() => {
-                              // 直接重新提交
-                              setSubmitError(null);
-                              const form = document.querySelector('form');
-                              if (form) {
-                                setUserInput(pendingUserInput);
-                                setPendingUserInput(null);
-                                setTimeout(() => form.requestSubmit(), 100);
-                              }
-                            }}
-                            className="px-2.5 md:px-3 py-1.5 text-xs md:text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                          >
-                            立即重試
-                          </button>
-                          <button
-                            onClick={() => {
-                              // 取消
-                              setPendingUserInput(null);
-                              setSubmitError(null);
-                            }}
-                            className="px-2.5 md:px-3 py-1.5 text-xs md:text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-                          >
-                            取消
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div ref={chatEndRef} />
           </div>
-        </div>
 
-        {/* State Panel - Desktop (Sidebar) */}
-        {showStatePanel && (
-          <div className="hidden lg:block w-96 bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 overflow-y-auto flex-shrink-0">
-            <div className="p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                角色狀態
-              </h2>
-
-              {/* Characters */}
-              <div className="space-y-4">
-                {storyCharacters.map((sc) => {
-                  const char = characters.get(sc.story_character_id);
-                  if (!char) return null;
-
-                  // Get this character's state values
-                  const charStates = stateValues.filter(
-                    (sv) => sv.story_character_id === sc.story_character_id
-                  );
-
-                  return (
-                    <div
-                      key={sc.story_character_id}
-                      className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4"
-                    >
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-2 h-2 rounded-full bg-purple-600"></div>
-                        <h3 className="font-semibold text-gray-900 dark:text-white">
-                          {sc.display_name_override || char.canonical_name}
-                        </h3>
-                        {sc.is_player && (
-                          <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
-                            玩家
-                          </span>
-                        )}
-                      </div>
-
-                      {/* State Values */}
-                      {charStates.length > 0 ? (
-                        <div className="space-y-2">
-                          {charStates.map((sv) => {
-                            const schema = worldSchema.find(
-                              (s) => s.schema_key === sv.schema_key
-                            );
-                            if (!schema) return null;
-
-                            let displayValue;
-                            try {
-                              const value = JSON.parse(sv.value_json);
-                              if (schema.type === 'list_text') {
-                                displayValue = Array.isArray(value)
-                                  ? value.join(', ')
-                                  : value;
-                              } else if (typeof value === 'boolean') {
-                                displayValue = value ? '是' : '否';
-                              } else {
-                                displayValue = String(value);
-                              }
-                            } catch {
-                              displayValue = sv.value_json;
-                            }
-
-                            return (
-                              <div key={sv.schema_key} className="text-sm">
-                                <span className="text-gray-600 dark:text-gray-400">
-                                  {schema.display_name}:
-                                </span>{' '}
-                                <span className="text-gray-900 dark:text-white font-medium">
-                                  {displayValue}
-                                  {schema.type === 'number' &&
-                                    schema.number_constraints_json &&
-                                    (() => {
-                                      const constraints = JSON.parse(
-                                        schema.number_constraints_json
-                                      );
-                                      return constraints.unit
-                                        ? ` ${constraints.unit}`
-                                        : '';
-                                    })()}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          尚無狀態設定
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Relationships */}
-              {relationships.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                    角色關係
-                  </h3>
-                  <div className="space-y-2">
-                    {relationships.map((rel, index) => {
-                      const fromChar = storyCharacters.find(
-                        (sc) => sc.story_character_id === rel.from_story_character_id
+          <div className="flex gap-2 shrink-0">
+            <Sheet open={showStatePanel} onOpenChange={setShowStatePanel}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="hidden lg:flex">
+                  <BookOpen className="mr-2 h-4 w-4" /> 狀態
+                </Button>
+              </SheetTrigger>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="lg:hidden">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[85vw] sm:w-[400px] overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>角色狀態</SheetTitle>
+                </SheetHeader>
+                <div className="py-6 space-y-6">
+                  {/* Characters */}
+                  <div className="space-y-4">
+                    {storyCharacters.map((sc) => {
+                      const char = characters.get(sc.story_character_id);
+                      if (!char) return null;
+                      const charStates = stateValues.filter(
+                        (sv) => sv.story_character_id === sc.story_character_id
                       );
-                      const toChar = storyCharacters.find(
-                        (sc) => sc.story_character_id === rel.to_story_character_id
-                      );
-
-                      if (!fromChar || !toChar) return null;
-
-                      const fromCharDetail = characters.get(fromChar.story_character_id);
-                      const toCharDetail = characters.get(toChar.story_character_id);
-
-                      const tags = JSON.parse(rel.tags_json || '[]');
 
                       return (
-                        <div
-                          key={`${rel.from_story_character_id}-${rel.to_story_character_id}`}
-                          className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-sm"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-gray-900 dark:text-white font-medium">
-                              {fromChar.display_name_override ||
-                                fromCharDetail?.canonical_name}
-                            </span>
-                            <span className="text-gray-500">→</span>
-                            <span className="text-gray-900 dark:text-white font-medium">
-                              {toChar.display_name_override ||
-                                toCharDetail?.canonical_name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-600 dark:text-gray-400">
-                              分數:
-                            </span>
-                            <span
-                              className={`font-medium ${rel.score > 0
-                                ? 'text-green-600 dark:text-green-400'
-                                : rel.score < 0
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-gray-600 dark:text-gray-400'
-                                }`}
-                            >
-                              {rel.score}
-                            </span>
-                          </div>
-                          {tags.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {tags.map((tag: string) => (
-                                <span
-                                  key={tag}
-                                  className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
+                        <Card key={sc.story_character_id}>
+                          <CardHeader className="p-4 pb-2">
+                            <div className="flex items-center justify-between">
+                              <div className="font-semibold flex items-center gap-2">
+                                {sc.display_name_override || char.canonical_name}
+                                {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5">玩家</Badge>}
+                              </div>
                             </div>
-                          )}
-                        </div>
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            {charStates.length > 0 ? (
+                              <div className="space-y-1 text-sm">
+                                {charStates.map((sv) => {
+                                  const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
+                                  if (!schema) return null;
+
+                                  let displayValue;
+                                  try {
+                                    const value = JSON.parse(sv.value_json);
+                                    if (schema.type === 'list_text') {
+                                      displayValue = Array.isArray(value) ? value.join(', ') : value;
+                                    } else if (typeof value === 'boolean') {
+                                      displayValue = value ? '是' : '否';
+                                    } else {
+                                      displayValue = String(value);
+                                    }
+                                  } catch {
+                                    displayValue = sv.value_json;
+                                  }
+
+                                  return (
+                                    <div key={sv.schema_key} className="flex justify-between border-b last:border-0 py-1 border-muted">
+                                      <span className="text-muted-foreground">{schema.display_name}</span>
+                                      <span className="font-medium text-right">
+                                        {displayValue}
+                                        {schema.type === 'number' && schema.number_constraints_json && (() => {
+                                          const constraints = JSON.parse(schema.number_constraints_json);
+                                          return constraints.unit ? ` ${constraints.unit}` : '';
+                                        })()}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">尚無狀態</span>
+                            )}
+                          </CardContent>
+                        </Card>
                       );
                     })}
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
-        {/* State Panel - Mobile (Bottom Drawer) */}
-        {showStatePanel && (
-          <div className="lg:hidden fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 rounded-t-2xl shadow-2xl max-h-[70vh] overflow-hidden flex flex-col">
-            {/* Drawer Handle */}
-            <div className="flex items-center justify-center py-3 border-b border-gray-200 dark:border-gray-700">
-              <div className="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
-            </div>
+                  {/* Relationships */}
+                  {relationships.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">角色關係</h3>
+                      <div className="space-y-2">
+                        {relationships.map((rel) => {
+                          const fromChar = storyCharacters.find(sc => sc.story_character_id === rel.from_story_character_id);
+                          const toChar = storyCharacters.find(sc => sc.story_character_id === rel.to_story_character_id);
+                          if (!fromChar || !toChar) return null;
+                          const tags = JSON.parse(rel.tags_json || '[]');
 
-            {/* Drawer Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                  角色狀態
-                </h2>
-                <button
-                  onClick={() => setShowStatePanel(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Characters */}
-              <div className="space-y-3">
-                {storyCharacters.map((sc) => {
-                  const char = characters.get(sc.story_character_id);
-                  if (!char) return null;
-
-                  // Get this character's state values
-                  const charStates = stateValues.filter(
-                    (sv) => sv.story_character_id === sc.story_character_id
-                  );
-
-                  return (
-                    <div
-                      key={sc.story_character_id}
-                      className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 rounded-full bg-purple-600"></div>
-                        <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
-                          {sc.display_name_override || char.canonical_name}
-                        </h3>
-                        {sc.is_player && (
-                          <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded">
-                            玩家
-                          </span>
-                        )}
-                      </div>
-
-                      {/* State Values */}
-                      {charStates.length > 0 ? (
-                        <div className="space-y-1.5">
-                          {charStates.map((sv) => {
-                            const schema = worldSchema.find(
-                              (s) => s.schema_key === sv.schema_key
-                            );
-                            if (!schema) return null;
-
-                            let displayValue;
-                            try {
-                              const value = JSON.parse(sv.value_json);
-                              if (schema.type === 'list_text') {
-                                displayValue = Array.isArray(value)
-                                  ? value.join(', ')
-                                  : value;
-                              } else if (typeof value === 'boolean') {
-                                displayValue = value ? '是' : '否';
-                              } else {
-                                displayValue = String(value);
-                              }
-                            } catch {
-                              displayValue = sv.value_json;
-                            }
-
-                            return (
-                              <div key={sv.schema_key} className="text-xs">
-                                <span className="text-gray-600 dark:text-gray-400">
-                                  {schema.display_name}:
-                                </span>{' '}
-                                <span className="text-gray-900 dark:text-white font-medium">
-                                  {displayValue}
-                                  {schema.type === 'number' &&
-                                    schema.number_constraints_json &&
-                                    (() => {
-                                      const constraints = JSON.parse(
-                                        schema.number_constraints_json
-                                      );
-                                      return constraints.unit
-                                        ? ` ${constraints.unit}`
-                                        : '';
-                                    })()}
-                                </span>
+                          return (
+                            <div key={`${rel.from_story_character_id}-${rel.to_story_character_id}`} className="flex items-center justify-between p-3 border rounded-lg bg-card text-card-foreground">
+                              <div className="flex flex-col gap-1">
+                                <div className="text-sm font-medium">
+                                  {fromChar.display_name_override || characters.get(fromChar.story_character_id)?.canonical_name}
+                                  <span className="text-muted-foreground mx-1">→</span>
+                                  {toChar.display_name_override || characters.get(toChar.story_character_id)?.canonical_name}
+                                </div>
+                                {tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {tags.map((tag: string) => <Badge key={tag} variant="outline" className="text-[10px] px-1 h-4">{tag}</Badge>)}
+                                  </div>
+                                )}
                               </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          尚無狀態設定
-                        </p>
-                      )}
+                              <div className={cn("text-sm font-bold", rel.score > 0 ? "text-green-600" : rel.score < 0 ? "text-red-600" : "text-muted-foreground")}>
+                                {rel.score}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content (Chat) */}
+      <ScrollArea className="flex-1 p-4 md:p-6">
+        <div className="max-w-3xl mx-auto space-y-6 pb-4">
+          {/* Story Premise */}
+          <Card className="bg-muted/50 border-primary/20">
+            <CardContent className="p-4 md:p-6 flex gap-4">
+              <div className="shrink-0 mt-1">
+                <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                  <BookOpen className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-semibold">故事開始</h3>
+                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{story.premise_text}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Turns */}
+          {turns.map((turn) => (
+            <div key={turn.turn_id} className="space-y-6">
+              {/* User Input */}
+              <div className="flex justify-end pl-12">
+                <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-full md:max-w-[85%] shadow-sm">
+                  {/* <p className="text-xs font-medium opacity-70 mb-1">你的行動</p> */}
+                  <p className="whitespace-pre-wrap leading-relaxed">{turn.user_input_text}</p>
+                </div>
               </div>
 
-              {/* Relationships */}
-              {relationships.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">
-                    角色關係
-                  </h3>
-                  <div className="space-y-2">
-                    {relationships.map((rel, index) => {
-                      const fromChar = storyCharacters.find(
-                        (sc) => sc.story_character_id === rel.from_story_character_id
-                      );
-                      const toChar = storyCharacters.find(
-                        (sc) => sc.story_character_id === rel.to_story_character_id
-                      );
-
-                      if (!fromChar || !toChar) return null;
-
-                      const fromCharDetail = characters.get(fromChar.story_character_id);
-                      const toCharDetail = characters.get(toChar.story_character_id);
-
-                      const tags = JSON.parse(rel.tags_json || '[]');
-
-                      return (
-                        <div
-                          key={`${rel.from_story_character_id}-${rel.to_story_character_id}`}
-                          className="bg-gray-50 dark:bg-gray-700 rounded-lg p-2.5 text-xs"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-gray-900 dark:text-white font-medium">
-                              {fromChar.display_name_override ||
-                                fromCharDetail?.canonical_name}
-                            </span>
-                            <span className="text-gray-500">→</span>
-                            <span className="text-gray-900 dark:text-white font-medium">
-                              {toChar.display_name_override ||
-                                toCharDetail?.canonical_name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-600 dark:text-gray-400">
-                              分數:
-                            </span>
-                            <span
-                              className={`font-medium ${rel.score > 0
-                                ? 'text-green-600 dark:text-green-400'
-                                : rel.score < 0
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-gray-600 dark:text-gray-400'
-                                }`}
-                            >
-                              {rel.score}
-                            </span>
-                          </div>
-                          {tags.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {tags.map((tag: string) => (
-                                <span
-                                  key={tag}
-                                  className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded text-xs"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+              {/* AI-Response */}
+              <div className="flex gap-4 pr-4">
+                <div className="shrink-0 mt-1">
+                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border">
+                    <Bot className="h-4 w-4 text-muted-foreground" />
                   </div>
                 </div>
-              )}
+                <div className="space-y-2 flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground font-medium">回合 {turn.turn_index}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs text-muted-foreground hover:text-destructive p-0"
+                      onClick={() => handleDeleteFromTurn(turn.turn_index)}
+                      disabled={deletingTurnIndex !== null}
+                    >
+                      {deletingTurnIndex === turn.turn_index ? '刪除中...' : '回溯至此'}
+                    </Button>
+                  </div>
+                  <div className="prose dark:prose-invert max-w-none text-foreground leading-relaxed whitespace-pre-wrap">
+                    {turn.narrative_text}
+                  </div>
+
+                  {turn.dialogue_json && turn.dialogue_json !== '[]' && (
+                    <div className="mt-4 pl-4 border-l-2 space-y-3">
+                      {JSON.parse(turn.dialogue_json).map((dialogue: any, idx: number) => {
+                        const speakerName = resolveSpeakerName(dialogue.speaker_story_character_id, dialogue.speaker);
+                        return (
+                          <div key={idx} className="space-y-0.5">
+                            <p className="text-sm font-semibold text-primary">{speakerName}</p>
+                            <p className="text-muted-foreground">{dialogue.text}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          ))}
+
+          {/* Empty State */}
+          {turns.length === 0 && !pendingUserInput && (
+            <div className="text-center py-12 text-muted-foreground">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
+                <Send className="h-6 w-6 opacity-50" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-1">開始你的冒險</h3>
+              <p>在下方輸入你的第一個行動</p>
+            </div>
+          )}
+
+          {/* Pending Input */}
+          {pendingUserInput && (
+            <div className="space-y-6">
+              <div className="flex justify-end pl-12">
+                <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-full md:max-w-[85%] shadow-sm opacity-70">
+                  <p className="whitespace-pre-wrap leading-relaxed">{pendingUserInput}</p>
+                </div>
+              </div>
+
+              {/* Loading / Error State */}
+              <div className="flex gap-4 pr-4">
+                <div className="shrink-0 mt-1">
+                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border">
+                    {submitError ? <AlertCircle className="h-4 w-4 text-destructive" /> : <Bot className="h-4 w-4 text-muted-foreground" />}
+                  </div>
+                </div>
+                <div className="space-y-2 flex-1">
+                  {submitError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>AI 回應失敗</AlertTitle>
+                      <AlertDescription>{submitError}</AlertDescription>
+                      <div className="flex gap-2 mt-3">
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setUserInput(pendingUserInput);
+                          setPendingUserInput(null);
+                          setSubmitError(null);
+                        }}>編輯後重試</Button>
+                        <Button size="sm" onClick={() => {
+                          setSubmitError(null);
+                          handleSubmit(); // Try again directly
+                        }}>重試</Button>
+                        <Button size="sm" variant="ghost" onClick={() => {
+                          setPendingUserInput(null);
+                          setSubmitError(null);
+                        }}>取消</Button>
+                      </div>
+                    </Alert>
+                  ) : (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">AI 正在思考...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={chatEndRef} />
+        </div>
+      </ScrollArea>
 
       {/* Input Area */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 md:px-6 py-3 md:py-4">
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex flex-col md:flex-row gap-2 md:gap-3">
-            <textarea
+      <div className="flex-none p-4 bg-background border-t">
+        <div className="max-w-3xl mx-auto relative">
+          <form onSubmit={handleSubmit} className="relative flex items-end gap-2 p-2 border rounded-xl bg-muted/30 focus-within:ring-2 focus-within:ring-ring focus-within:border-primary">
+            <Textarea
+              ref={textareaRef}
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder="描述你的行動... (Enter 送出，Shift+Enter 換行)"
+              onKeyDown={handleKeyDown}
+              placeholder="輸入你的行動... (Shift+Enter 換行)"
+              className="min-h-[44px] max-h-[200px] w-full resize-none border-0 bg-transparent focus-visible:ring-0 px-2 py-2.5"
               disabled={submitting}
-              rows={3}
-              className="flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white resize-none disabled:opacity-50 text-sm md:text-base"
             />
-            <button
+            <Button
               type="submit"
+              size="icon"
               disabled={!userInput.trim() || submitting}
-              className="px-4 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold md:self-end text-sm md:text-base"
+              className="mb-0.5 shrink-0"
             >
-              {submitting ? '思考中...' : '送出'}
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 md:mt-2 hidden md:block">
-            💡 提示：描述你想做的事情，AI 會根據故事設定生成回應
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </form>
+          <p className="text-[10px] text-muted-foreground text-center mt-2">
+            AI 模型: {story.model_override || providerSettings?.default_model || 'Loading...'}
           </p>
-        </form>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
 

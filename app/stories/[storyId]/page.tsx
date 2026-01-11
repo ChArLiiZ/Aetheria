@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Story, World, Character, StoryMode, StoryCharacter, WorldStateSchema, StoryStateValue } from '@/types';
 import { getStoryById, createStory, updateStory, storyTitleExists } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
@@ -20,6 +21,34 @@ import {
   setMultipleStateValues
 } from '@/services/supabase/story-state-values';
 import { toast } from 'sonner';
+
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Loader2, ArrowLeft, Save, Plus, X, Search, ChevronLeft, ChevronRight, Play, Edit, Trash2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Pagination helper
 const ITEMS_PER_PAGE = 6;
@@ -62,7 +91,7 @@ function StoryDetailPageContent() {
   const [storyCharacters, setStoryCharacters] = useState<StoryCharacter[]>([]);
 
   // Creation tabs (only for new story)
-  const [currentTab, setCurrentTab] = useState<'basic' | 'characters' | 'ai'>('basic');
+  const [currentTab, setCurrentTab] = useState('basic');
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [initialStates, setInitialStates] = useState<Record<string, Record<string, any>>>({});
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
@@ -172,7 +201,7 @@ function StoryDetailPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [user?.user_id, storyId]);
+  }, [user?.user_id, storyId]); // Removed form dependencies to avoid loops, only re-fetch on ID/User change or specific triggers
 
   // Reload data function for use after updates
   const loadData = async () => {
@@ -499,6 +528,8 @@ function StoryDetailPageContent() {
   const handleRemoveCharacter = async (storyCharacterId: string, characterName: string) => {
     if (!user || isNewStory) return;
 
+    // Use window.confirm for now as AlertDialog integration for this dynamic list is complex
+    // Or we could add a state for characterToRemove
     if (!confirm(`確定要從故事中移除「${characterName}」嗎？\n\n這將同時刪除該角色的所有狀態數據。`)) {
       return;
     }
@@ -589,11 +620,11 @@ function StoryDetailPageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
@@ -602,376 +633,227 @@ function StoryDetailPageContent() {
   const playerCharacter = characters.find((c) => c.character_id === formData.player_character_id);
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {isNewStory ? '創建新故事' : story?.title}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              {isNewStory ? '設定你的互動故事' : '查看和管理故事設定'}
-            </p>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 text-muted-foreground text-sm">
+            <Button variant="ghost" size="sm" onClick={() => router.push('/stories')}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> 返回列表
+            </Button>
           </div>
-          <button
-            onClick={() => router.push('/stories')}
-            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-          >
-            ← 返回列表
-          </button>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                {isNewStory ? '創建新故事' : story?.title}
+              </h1>
+              <p className="text-muted-foreground">
+                {isNewStory ? '設定你的互動故事' : '查看和管理故事設定'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => router.push('/stories')}>取消</Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isNewStory ? '創建故事' : '儲存變更'}
+              </Button>
+            </div>
+          </div>
         </div>
 
-        {/* Form */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          {/* Tabs (only for new story) */}
+        {/* Form Content */}
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="space-y-4">
           {isNewStory && (
-            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setCurrentTab('basic')}
-                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${currentTab === 'basic'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                  基本設定
-                </button>
-                <button
-                  onClick={() => setCurrentTab('characters')}
-                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${currentTab === 'characters'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                  故事角色 {selectedCharacterIds.length > 0 && `(${selectedCharacterIds.length})`}
-                </button>
-                <button
-                  onClick={() => setCurrentTab('ai')}
-                  className={`pb-3 px-2 font-medium text-sm transition border-b-2 ${currentTab === 'ai'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                    }`}
-                >
-                  AI 設定
-                </button>
-              </div>
-            </div>
+            <TabsList>
+              <TabsTrigger value="basic">基本設定</TabsTrigger>
+              <TabsTrigger value="characters">
+                故事角色 {selectedCharacterIds.length > 0 && <Badge variant="secondary" className="ml-2">{selectedCharacterIds.length}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="ai">AI 設定</TabsTrigger>
+            </TabsList>
           )}
 
-          {/* Tab: Basic Settings */}
-          {(isNewStory && currentTab === 'basic') || !isNewStory ? (
-            <>
-              {/* World Selection */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  世界觀 *
-                </label>
-                {isNewStory ? (
-                  <>
-                    {selectedWorld ? (
-                      <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 mb-2">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                              {selectedWorld.name}
-                            </h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                              {selectedWorld.description}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setFormData({ ...formData, world_id: '' });
-                              setWorldSearch('');
-                              setWorldPage(1);
-                            }}
-                            className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                          >
-                            清除
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowWorldSelector(!showWorldSelector)}
-                        className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 transition"
-                      >
-                        {showWorldSelector ? '收起選擇器' : '+ 選擇世界觀'}
-                      </button>
-                    )}
-
-                    {showWorldSelector && !selectedWorld && (
-                      <div className="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                        {/* Search */}
-                        <input
-                          type="text"
-                          value={worldSearch}
-                          onChange={(e) => {
-                            setWorldSearch(e.target.value);
-                            setWorldPage(1);
-                          }}
-                          placeholder="搜尋世界觀..."
-                          className="w-full px-4 py-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                        />
-
-                        {/* World Cards */}
-                        {paginatedWorlds.length === 0 ? (
-                          <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                            {worlds.length === 0 ? '還沒有世界觀，請先創建一個' : '找不到符合條件的世界觀'}
-                          </p>
-                        ) : (
-                          <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                              {paginatedWorlds.map((world) => (
-                                <button
-                                  key={world.world_id}
-                                  onClick={() => handleWorldSelect(world.world_id)}
-                                  className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
-                                >
-                                  <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                                    {world.name}
-                                  </h4>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                                    {world.description}
-                                  </p>
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Pagination */}
-                            {worldTotalPages > 1 && (
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => setWorldPage((p) => Math.max(1, p - 1))}
-                                  disabled={worldPage === 1}
-                                  className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                                >
-                                  上一頁
-                                </button>
-                                <span className="text-sm text-gray-600 dark:text-gray-400">
-                                  {worldPage} / {worldTotalPages}
-                                </span>
-                                <button
-                                  onClick={() => setWorldPage((p) => Math.min(worldTotalPages, p + 1))}
-                                  disabled={worldPage === worldTotalPages}
-                                  className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                                >
-                                  下一頁
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {errors.world_id && (
-                      <p className="mt-1 text-sm text-red-600">{errors.world_id}</p>
-                    )}
-                  </>
-                ) : (
-                  <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <p className="text-gray-900 dark:text-white font-medium">
-                      {selectedWorld?.name || '未知世界觀'}
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      {selectedWorld?.description}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Title */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  故事標題 *
-                </label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                  placeholder="給你的故事起個名字"
-                />
-                {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title}</p>}
-              </div>
-
-              {/* Premise */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  故事前提 *
-                </label>
-                <textarea
-                  value={formData.premise_text}
-                  onChange={(e) => setFormData({ ...formData, premise_text: e.target.value })}
-                  rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
-                  placeholder="描述故事的背景和起始狀況"
-                />
-                {errors.premise_text && <p className="mt-1 text-sm text-red-600">{errors.premise_text}</p>}
-              </div>
-
-              {/* Story Mode */}
-              {isNewStory && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    遊戲模式 *
-                  </label>
-                  <div className="space-y-3">
-                    <label className="flex items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
-                      <input
-                        type="radio"
-                        name="story_mode"
-                        value="PLAYER_CHARACTER"
-                        checked={formData.story_mode === 'PLAYER_CHARACTER'}
-                        onChange={(e) =>
-                          setFormData({ ...formData, story_mode: e.target.value as StoryMode })
-                        }
-                        className="mt-1 mr-3"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          玩家角色模式
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          你將扮演一個特定角色，從第一人稱視角體驗故事
-                        </p>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
-                      <input
-                        type="radio"
-                        name="story_mode"
-                        value="DIRECTOR"
-                        checked={formData.story_mode === 'DIRECTOR'}
-                        onChange={(e) =>
-                          setFormData({ ...formData, story_mode: e.target.value as StoryMode })
-                        }
-                        className="mt-1 mr-3"
-                      />
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">導演模式</div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          你將作為導演，從上帝視角控制整個故事的發展
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              {/* Player Character (only in PLAYER_CHARACTER mode) */}
-              {formData.story_mode === 'PLAYER_CHARACTER' && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    玩家角色 *
-                  </label>
+          <TabsContent value="basic" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>基本設定</CardTitle>
+                <CardDescription>選擇世界觀並設定故事的基本資訊。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* World Selection */}
+                <div className="space-y-2">
+                  <Label>世界觀 *</Label>
                   {isNewStory ? (
                     <>
-                      {playerCharacter ? (
-                        <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 mb-2">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                                {playerCharacter.canonical_name}
-                              </h4>
-                              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                                {playerCharacter.core_profile_text}
-                              </p>
-                              {playerCharacter.tags_json && JSON.parse(playerCharacter.tags_json).length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {JSON.parse(playerCharacter.tags_json).map((tag: string) => (
-                                    <span
-                                      key={tag}
-                                      className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded"
-                                    >
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => {
-                                setFormData({ ...formData, player_character_id: '' });
-                                setCharacterSearch('');
-                                setSelectedTags([]);
-                                setCharacterPage(1);
-                              }}
-                              className="ml-4 px-3 py-1 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                            >
-                              清除
-                            </button>
+                      {selectedWorld ? (
+                        <div className="flex items-center justify-between border rounded-lg p-4">
+                          <div>
+                            <h4 className="font-semibold">{selectedWorld.name}</h4>
+                            <p className="text-sm text-muted-foreground line-clamp-1">{selectedWorld.description}</p>
                           </div>
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => {
+                            setFormData({ ...formData, world_id: '' });
+                            setWorldSearch('');
+                            setWorldPage(1);
+                          }}>清除</Button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setShowCharacterSelector(!showCharacterSelector)}
-                          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 hover:text-blue-600 transition"
-                        >
-                          {showCharacterSelector ? '收起選擇器' : '+ 選擇玩家角色'}
-                        </button>
+                        <Button variant="outline" className="w-full justify-start text-muted-foreground dashed" onClick={() => setShowWorldSelector(!showWorldSelector)}>
+                          <Plus className="mr-2 h-4 w-4" /> 選擇世界觀
+                        </Button>
                       )}
+                      {showWorldSelector && !selectedWorld && (
+                        <Card className="mt-2">
+                          <div className="p-4 space-y-4">
+                            <div className="relative">
+                              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                              <Input
+                                placeholder="搜尋世界觀..."
+                                className="pl-8"
+                                value={worldSearch}
+                                onChange={(e) => {
+                                  setWorldSearch(e.target.value);
+                                  setWorldPage(1);
+                                }}
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {paginatedWorlds.map((world) => (
+                                <div key={world.world_id}
+                                  className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition"
+                                  onClick={() => handleWorldSelect(world.world_id)}
+                                >
+                                  <h4 className="font-semibold">{world.name}</h4>
+                                  <p className="text-sm text-muted-foreground line-clamp-2">{world.description}</p>
+                                </div>
+                              ))}
+                            </div>
+                            {worldTotalPages > 1 && (
+                              <div className="flex justify-center gap-2">
+                                <Button variant="outline" size="sm" onClick={() => setWorldPage(p => Math.max(1, p - 1))} disabled={worldPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                                <span className="py-1 text-sm">{worldPage} / {worldTotalPages}</span>
+                                <Button variant="outline" size="sm" onClick={() => setWorldPage(p => Math.min(worldTotalPages, p + 1))} disabled={worldPage === worldTotalPages}><ChevronRight className="h-4 w-4" /></Button>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <h4 className="font-medium">{selectedWorld?.name || '未知世界觀'}</h4>
+                    </div>
+                  )}
+                  {errors.world_id && <p className="text-sm text-destructive">{errors.world_id}</p>}
+                </div>
 
-                      {showCharacterSelector && !playerCharacter && (
-                        <div className="mt-4 border border-gray-300 dark:border-gray-600 rounded-lg p-4">
-                          {/* Search */}
-                          <input
-                            type="text"
-                            value={characterSearch}
-                            onChange={(e) => {
-                              setCharacterSearch(e.target.value);
-                              setCharacterPage(1);
-                            }}
-                            placeholder="搜尋角色名稱或描述..."
-                            className="w-full px-4 py-2 mb-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                          />
+                <div className="space-y-2">
+                  <Label htmlFor="title">故事標題 *</Label>
+                  <Input id="title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="給你的故事起個名字" />
+                  {errors.title && <p className="text-sm text-destructive">{errors.title}</p>}
+                </div>
 
-                          {/* Tag Filter */}
-                          {allTags.length > 0 && (
-                            <div className="mb-4">
-                              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                篩選標籤:
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                {allTags.map((tag) => (
-                                  <button
-                                    key={tag}
-                                    onClick={() => toggleTag(tag)}
-                                    className={`px-3 py-1 text-sm rounded transition ${selectedTags.includes(tag)
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                      }`}
-                                  >
-                                    {tag}
-                                  </button>
+                <div className="space-y-2">
+                  <Label htmlFor="premise">故事前提 *</Label>
+                  <Textarea id="premise" value={formData.premise_text} onChange={(e) => setFormData({ ...formData, premise_text: e.target.value })} placeholder="描述故事的背景和起始狀況" rows={4} />
+                  {errors.premise_text && <p className="text-sm text-destructive">{errors.premise_text}</p>}
+                </div>
+
+                {/* Story Mode */}
+                {isNewStory && (
+                  <div className="space-y-2">
+                    <Label>遊戲模式 *</Label>
+                    <RadioGroup value={formData.story_mode} onValueChange={(val) => setFormData({ ...formData, story_mode: val as StoryMode })} className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <RadioGroupItem value="PLAYER_CHARACTER" id="mode-pc" className="peer sr-only" />
+                        <Label htmlFor="mode-pc" className="flex flex-col items-start justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer">
+                          <span className="text-lg font-semibold mb-1">玩家角色模式</span>
+                          <span className="text-sm text-muted-foreground font-normal">你將扮演一個特定角色，從第一人稱視角體驗故事</span>
+                        </Label>
+                      </div>
+                      <div>
+                        <RadioGroupItem value="DIRECTOR" id="mode-director" className="peer sr-only" />
+                        <Label htmlFor="mode-director" className="flex flex-col items-start justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer">
+                          <span className="text-lg font-semibold mb-1">導演模式</span>
+                          <span className="text-sm text-muted-foreground font-normal">你將作為導演，從上帝視角控制整個故事的發展</span>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                )}
+
+                {/* Player Character Selector */}
+                {formData.story_mode === 'PLAYER_CHARACTER' && (
+                  <div className="space-y-2">
+                    <Label>玩家角色 *</Label>
+                    {isNewStory ? (
+                      <>
+                        {playerCharacter ? (
+                          <div className="flex items-center justify-between border rounded-lg p-4">
+                            <div>
+                              <h4 className="font-semibold">{playerCharacter.canonical_name}</h4>
+                              <div className="flex gap-1 mt-1">
+                                {playerCharacter.tags_json && JSON.parse(playerCharacter.tags_json).map((tag: string, i: number) => (
+                                  <Badge key={i} variant="secondary" className="text-xs">{tag}</Badge>
                                 ))}
                               </div>
                             </div>
-                          )}
-
-                          {/* Character Cards */}
-                          {paginatedCharacters.length === 0 ? (
-                            <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                              {characters.length === 0 ? '還沒有角色，請先創建一個' : '找不到符合條件的角色'}
-                            </p>
-                          ) : (
-                            <>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => {
+                              setFormData({ ...formData, player_character_id: '' });
+                              setCharacterSearch('');
+                              setCharacterPage(1);
+                            }}>清除</Button>
+                          </div>
+                        ) : (
+                          <Button variant="outline" className="w-full justify-start text-muted-foreground" onClick={() => setShowCharacterSelector(!showCharacterSelector)}>
+                            <Plus className="mr-2 h-4 w-4" /> 選擇玩家角色
+                          </Button>
+                        )}
+                        {showCharacterSelector && !playerCharacter && (
+                          <Card className="mt-2">
+                            <div className="p-4 space-y-4">
+                              <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                  placeholder="搜尋角色..."
+                                  className="pl-8"
+                                  value={characterSearch}
+                                  onChange={(e) => {
+                                    setCharacterSearch(e.target.value);
+                                    setCharacterPage(1);
+                                  }}
+                                />
+                              </div>
+                              {/* Tag Filters */}
+                              {allTags.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {allTags.map(tag => (
+                                    <Badge
+                                      key={tag}
+                                      variant={selectedTags.includes(tag) ? 'default' : 'outline'}
+                                      className="cursor-pointer"
+                                      onClick={() => toggleTag(tag)}
+                                    >
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {paginatedCharacters.map((char) => {
                                   const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
                                   return (
-                                    <button
-                                      key={char.character_id}
+                                    <div key={char.character_id}
+                                      className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition"
                                       onClick={() => {
                                         setFormData({ ...formData, player_character_id: char.character_id });
-                                        // 自動將玩家角色加入故事角色列表
                                         if (!selectedCharacterIds.includes(char.character_id)) {
                                           setSelectedCharacterIds([...selectedCharacterIds, char.character_id]);
-                                          // 初始化該角色的狀態值
+                                          // Init states logic...
                                           if (creationWorldSchema.length > 0) {
+                                            const newStates = { ...initialStates };
                                             const defaultValues: Record<string, any> = {};
                                             creationWorldSchema.forEach((schema) => {
                                               try {
@@ -980,695 +862,329 @@ function StoryDetailPageContent() {
                                                 defaultValues[schema.schema_key] = '';
                                               }
                                             });
-                                            setInitialStates((prev) => ({ ...prev, [char.character_id]: defaultValues }));
+                                            newStates[char.character_id] = defaultValues;
+                                            setInitialStates(newStates);
                                           }
                                         }
                                         setShowCharacterSelector(false);
                                       }}
-                                      className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
                                     >
-                                      <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                                        {char.canonical_name}
-                                      </h4>
-                                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
-                                        {char.core_profile_text}
-                                      </p>
-                                      {charTags.length > 0 && (
-                                        <div className="flex flex-wrap gap-1">
-                                          {charTags.map((tag: string) => (
-                                            <span
-                                              key={tag}
-                                              className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded"
-                                            >
-                                              {tag}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </button>
+                                      <h4 className="font-semibold">{char.canonical_name}</h4>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {charTags.slice(0, 3).map((tag: string, i: number) => (
+                                          <Badge key={i} variant="secondary" className="text-xs">{tag}</Badge>
+                                        ))}
+                                      </div>
+                                    </div>
                                   );
                                 })}
                               </div>
-
-                              {/* Pagination */}
                               {characterTotalPages > 1 && (
-                                <div className="flex items-center justify-center gap-2">
-                                  <button
-                                    onClick={() => setCharacterPage((p) => Math.max(1, p - 1))}
-                                    disabled={characterPage === 1}
-                                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                                  >
-                                    上一頁
-                                  </button>
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    {characterPage} / {characterTotalPages}
-                                  </span>
-                                  <button
-                                    onClick={() => setCharacterPage((p) => Math.min(characterTotalPages, p + 1))}
-                                    disabled={characterPage === characterTotalPages}
-                                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
-                                  >
-                                    下一頁
-                                  </button>
+                                <div className="flex justify-center gap-2">
+                                  <Button variant="outline" size="sm" onClick={() => setCharacterPage(p => Math.max(1, p - 1))} disabled={characterPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                                  <span className="py-1 text-sm">{characterPage} / {characterTotalPages}</span>
+                                  <Button variant="outline" size="sm" onClick={() => setCharacterPage(p => Math.min(characterTotalPages, p + 1))} disabled={characterPage === characterTotalPages}><ChevronRight className="h-4 w-4" /></Button>
                                 </div>
                               )}
-                            </>
-                          )}
-                        </div>
-                      )}
+                            </div>
+                          </Card>
+                        )}
+                      </>
+                    ) : (
+                      <div className="p-4 bg-muted/50 rounded-lg">
+                        <h4 className="font-medium">{playerCharacter?.canonical_name || '未知角色'}</h4>
+                      </div>
+                    )}
+                    {errors.player_character_id && <p className="text-sm text-destructive">{errors.player_character_id}</p>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                      {errors.player_character_id && (
-                        <p className="mt-1 text-sm text-red-600">{errors.player_character_id}</p>
-                      )}
-                    </>
-                  ) : (
-                    <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <p className="text-gray-900 dark:text-white font-medium">
-                        {playerCharacter?.canonical_name || '未知角色'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-            </>
-          ) : null}
-
-          {/* Tab: Characters */}
-          {isNewStory && currentTab === 'characters' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  選擇故事角色
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  選擇要加入故事的角色（可以在創建後繼續新增或移除）
-                </p>
-              </div>
-
-              {selectedCharacterIds.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                    已選擇 ({selectedCharacterIds.length} 個角色)
-                  </h4>
+          <TabsContent value="characters" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>選擇故事角色</CardTitle>
+                <CardDescription>選擇要加入故事的角色（可以在創建後繼續新增或移除）。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {selectedCharacterIds.length > 0 && (
                   <div className="space-y-3">
-                    {selectedCharacterIds.map((charId) => {
-                      const char = characters.find((c) => c.character_id === charId);
-                      if (!char) return null;
-                      const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
-                      const isEditing = editingCharacterId === charId;
-                      const charStates = initialStates[charId] || {};
+                    <h4 className="font-medium">已選擇 ({selectedCharacterIds.length})</h4>
+                    <div className="grid gap-4">
+                      {selectedCharacterIds.map(charId => {
+                        const char = characters.find(c => c.character_id === charId);
+                        if (!char) return null;
+                        const isEditing = editingCharacterId === charId;
+                        const charStates = initialStates[charId] || {};
 
-                      return (
-                        <div
-                          key={charId}
-                          className="border border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg"
-                        >
-                          <div className="flex items-start justify-between p-3">
-                            <div className="flex-1">
-                              <h5 className="font-medium text-gray-900 dark:text-white text-sm">
-                                {char.canonical_name}
-                              </h5>
-                              <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-1">
-                                {char.core_profile_text}
-                              </p>
-                              {charTags.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {charTags.slice(0, 2).map((tag: string) => (
-                                    <span
-                                      key={tag}
-                                      className="px-1.5 py-0.5 text-xs bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200 rounded"
-                                    >
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
+                        return (
+                          <div key={charId} className="border rounded-lg overflow-hidden">
+                            <div className="flex items-center justify-between p-4 bg-muted/30">
+                              <div className="flex items-center gap-3">
+                                <span className="font-medium">{char.canonical_name}</span>
+                                {formData.player_character_id === charId && <Badge>玩家角色</Badge>}
+                              </div>
+                              <div className="flex gap-2">
+                                {formData.world_id && creationWorldSchema.length > 0 && (
+                                  <Button size="sm" variant={isEditing ? "secondary" : "outline"} onClick={() => setEditingCharacterId(isEditing ? null : charId)}>
+                                    {isEditing ? '收起' : '設定狀態'}
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setSelectedCharacterIds(prev => prev.filter(id => id !== charId))}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex gap-2 ml-3">
-                              {formData.world_id && creationWorldSchema.length > 0 && (
-                                <button
-                                  onClick={() =>
-                                    setEditingCharacterId(isEditing ? null : charId)
-                                  }
-                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                                >
-                                  {isEditing ? '收起' : '設定狀態'}
-                                </button>
-                              )}
-                              <button
-                                onClick={() =>
-                                  setSelectedCharacterIds((prev) =>
-                                    prev.filter((id) => id !== charId)
-                                  )
-                                }
-                                className="px-2 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition border border-red-300 dark:border-red-600"
-                              >
-                                移除
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Initial State Editor */}
-                          {isEditing && formData.world_id && (
-                            <div className="border-t border-blue-300 dark:border-blue-600 p-3 bg-white dark:bg-gray-800">
-                              <h6 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-3">
-                                初始狀態設定
-                              </h6>
-                              <div className="space-y-3">
-                                {creationWorldSchema.map((schema) => (
+                            {isEditing && formData.world_id && (
+                              <div className="p-4 border-t bg-muted/10 grid gap-4 grid-cols-1 md:grid-cols-2">
+                                {creationWorldSchema.map(schema => (
                                   <div key={schema.schema_id} className="space-y-1">
-                                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      {schema.display_name}
-                                      <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                                        ({schema.type})
-                                      </span>
-                                    </label>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                                      {schema.ai_description}
-                                    </p>
-
-                                    {/* Number input */}
+                                    <Label className="text-xs text-muted-foreground">{schema.display_name}</Label>
                                     {schema.type === 'number' && (
-                                      <input
-                                        type="number"
-                                        value={charStates[schema.schema_key] ?? ''}
-                                        onChange={(e) => {
-                                          const newStates = { ...initialStates };
-                                          if (!newStates[charId]) newStates[charId] = {};
-                                          newStates[charId][schema.schema_key] =
-                                            parseFloat(e.target.value) || 0;
-                                          setInitialStates(newStates);
-                                        }}
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                                      />
+                                      <Input type="number" className="h-8" value={charStates[schema.schema_key] ?? ''} onChange={(e) => {
+                                        const newStates = { ...initialStates };
+                                        if (!newStates[charId]) newStates[charId] = {};
+                                        newStates[charId][schema.schema_key] = parseFloat(e.target.value) || 0;
+                                        setInitialStates(newStates);
+                                      }} />
                                     )}
-
-                                    {/* Text input */}
                                     {schema.type === 'text' && (
-                                      <input
-                                        type="text"
-                                        value={charStates[schema.schema_key] ?? ''}
-                                        onChange={(e) => {
-                                          const newStates = { ...initialStates };
-                                          if (!newStates[charId]) newStates[charId] = {};
-                                          newStates[charId][schema.schema_key] = e.target.value;
-                                          setInitialStates(newStates);
-                                        }}
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                                      />
+                                      <Input className="h-8" value={charStates[schema.schema_key] ?? ''} onChange={(e) => {
+                                        const newStates = { ...initialStates };
+                                        if (!newStates[charId]) newStates[charId] = {};
+                                        newStates[charId][schema.schema_key] = e.target.value;
+                                        setInitialStates(newStates);
+                                      }} />
                                     )}
-
-                                    {/* Boolean input */}
                                     {schema.type === 'bool' && (
-                                      <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={charStates[schema.schema_key] ?? false}
-                                          onChange={(e) => {
-                                            const newStates = { ...initialStates };
-                                            if (!newStates[charId]) newStates[charId] = {};
-                                            newStates[charId][schema.schema_key] =
-                                              e.target.checked;
-                                            setInitialStates(newStates);
-                                          }}
-                                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                        />
-                                        <span className="text-xs text-gray-700 dark:text-gray-300">
+                                      <div className="flex items-center space-x-2 h-8">
+                                        <Checkbox id={`check-${charId}-${schema.schema_id}`} checked={charStates[schema.schema_key] ?? false} onCheckedChange={(checked) => {
+                                          const newStates = { ...initialStates };
+                                          if (!newStates[charId]) newStates[charId] = {};
+                                          newStates[charId][schema.schema_key] = checked;
+                                          setInitialStates(newStates);
+                                        }} />
+                                        <label htmlFor={`check-${charId}-${schema.schema_id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
                                           {charStates[schema.schema_key] ? '是' : '否'}
-                                        </span>
-                                      </label>
+                                        </label>
+                                      </div>
                                     )}
-
-                                    {/* Enum select */}
                                     {schema.type === 'enum' && schema.enum_options_json && (
-                                      <select
-                                        value={charStates[schema.schema_key] ?? ''}
-                                        onChange={(e) => {
-                                          const newStates = { ...initialStates };
-                                          if (!newStates[charId]) newStates[charId] = {};
-                                          newStates[charId][schema.schema_key] = e.target.value;
-                                          setInitialStates(newStates);
-                                        }}
-                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                                      >
-                                        <option value="">選擇...</option>
-                                        {JSON.parse(schema.enum_options_json).map(
-                                          (option: string) => (
-                                            <option key={option} value={option}>
-                                              {option}
-                                            </option>
-                                          )
-                                        )}
-                                      </select>
-                                    )}
-
-                                    {/* List of text */}
-                                    {schema.type === 'list_text' && (
-                                      <textarea
-                                        value={
-                                          Array.isArray(charStates[schema.schema_key])
-                                            ? charStates[schema.schema_key].join('\n')
-                                            : ''
-                                        }
-                                        onChange={(e) => {
-                                          const newStates = { ...initialStates };
-                                          if (!newStates[charId]) newStates[charId] = {};
-                                          newStates[charId][schema.schema_key] = e.target.value
-                                            .split('\n')
-                                            .filter((line) => line.trim());
-                                          setInitialStates(newStates);
-                                        }}
-                                        rows={3}
-                                        placeholder="每行一個項目"
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                                      />
+                                      <Select value={charStates[schema.schema_key] ?? ''} onValueChange={(val) => {
+                                        const newStates = { ...initialStates };
+                                        if (!newStates[charId]) newStates[charId] = {};
+                                        newStates[charId][schema.schema_key] = val;
+                                        setInitialStates(newStates);
+                                      }}>
+                                        <SelectTrigger className="h-8">
+                                          <SelectValue placeholder="選擇..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {JSON.parse(schema.enum_options_json).map((opt: string) => (
+                                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
                                     )}
                                   </div>
                                 ))}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {formData.world_id && creationWorldSchema.length === 0 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      此世界觀尚未定義狀態 Schema，創建後角色將使用預設狀態
-                    </p>
-                  )}
-                  {!formData.world_id && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      請先在「基本設定」中選擇世界觀，才能設定角色初始狀態
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  可選擇的角色
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {characters
-                    .filter((char) => !selectedCharacterIds.includes(char.character_id))
-                    .map((char) => {
-                      const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
-                      return (
-                        <button
-                          key={char.character_id}
-                          onClick={() => {
-                            setSelectedCharacterIds((prev) => [...prev, char.character_id]);
-                            // Initialize default states for this character
-                            if (creationWorldSchema.length > 0) {
-                              const newStates = { ...initialStates };
-                              const defaultValues: Record<string, any> = {};
-                              creationWorldSchema.forEach((schema) => {
-                                try {
-                                  defaultValues[schema.schema_key] = getSchemaDefaultValue(schema);
-                                } catch {
-                                  defaultValues[schema.schema_key] = '';
-                                }
-                              });
-                              newStates[char.character_id] = defaultValues;
-                              setInitialStates(newStates);
-                            }
-                          }}
-                          className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
-                        >
-                          <h5 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
-                            {char.canonical_name}
-                          </h5>
-                          <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mb-1">
-                            {char.core_profile_text}
-                          </p>
-                          {charTags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {charTags.slice(0, 3).map((tag: string) => (
-                                <span
-                                  key={tag}
-                                  className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                </div>
-                {characters.filter((char) => !selectedCharacterIds.includes(char.character_id))
-                  .length === 0 && (
-                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                      所有角色都已選擇
-                    </p>
-                  )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab: AI Settings */}
-          {(isNewStory && currentTab === 'ai') || !isNewStory ? (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                AI 提示詞 *
-              </label>
-              <textarea
-                value={formData.story_prompt}
-                onChange={(e) => setFormData({ ...formData, story_prompt: e.target.value })}
-                rows={6}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm font-mono"
-                placeholder="給 AI 的指示，例如：\n- 故事風格和語氣\n- 角色行為準則\n- 特殊規則"
-              />
-              {errors.story_prompt && <p className="mt-1 text-sm text-red-600">{errors.story_prompt}</p>}
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                這個提示詞會在每次 AI 生成回應時使用，用來指導 AI 的行為
-              </p>
-            </div>
-          ) : null}
-
-          {/* Actions */}
-          <div className="flex gap-4">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold"
-            >
-              {saving ? '儲存中...' : isNewStory ? '✨ 創建故事' : '💾 儲存更改'}
-            </button>
-            <button
-              onClick={() => router.push('/stories')}
-              className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-            >
-              取消
-            </button>
-          </div>
-        </div>
-
-        {/* Story Characters Management (only for existing stories) */}
-        {!isNewStory && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                故事角色
-              </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {storyCharacters.length} 個角色
-              </p>
-            </div>
-
-            {/* Story characters list */}
-            {storyCharacters.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-500 dark:text-gray-400 mb-4">
-                  還沒有加入任何角色到故事中
-                </p>
-                <p className="text-sm text-gray-400 dark:text-gray-500">
-                  從下方選擇角色加入故事
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {storyCharacters.map((storyChar) => {
-                  const char = characters.find((c) => c.character_id === storyChar.character_id);
-                  if (!char) return null;
-
-                  return (
-                    <div
-                      key={storyChar.story_character_id}
-                      className="border border-gray-300 dark:border-gray-600 rounded-lg p-4"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                            {storyChar.display_name_override || char.canonical_name}
-                            {storyChar.is_player && (
-                              <span className="ml-2 px-2 py-0.5 text-xs bg-blue-600 text-white rounded">
-                                玩家角色
-                              </span>
                             )}
-                          </h4>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                            {char.core_profile_text}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEditStates(storyChar)}
-                          className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
-                        >
-                          編輯狀態
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleRemoveCharacter(
-                              storyChar.story_character_id,
-                              storyChar.display_name_override || char.canonical_name
-                            )
-                          }
-                          className="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition border border-red-300 dark:border-red-600"
-                          title="移除角色"
-                        >
-                          移除
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Add character section */}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                新增角色到故事
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {characters
-                  .filter(
-                    (char) =>
-                      !storyCharacters.some((sc) => sc.character_id === char.character_id)
-                  )
-                  .map((char) => {
-                    const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
-                    return (
-                      <button
-                        key={char.character_id}
-                        onClick={() => handleAddCharacter(char.character_id)}
-                        className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition text-left"
-                      >
-                        <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
-                          {char.canonical_name}
-                        </h4>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mb-1">
-                          {char.core_profile_text}
-                        </p>
-                        {charTags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {charTags.slice(0, 3).map((tag: string) => (
-                              <span
-                                key={tag}
-                                className="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded"
-                              >
-                                {tag}
-                              </span>
-                            ))}
                           </div>
-                        )}
-                      </button>
-                    );
-                  })}
-              </div>
-              {characters.filter(
-                (char) => !storyCharacters.some((sc) => sc.character_id === char.character_id)
-              ).length === 0 && (
-                  <p className="text-center text-gray-500 dark:text-gray-400 py-4">
-                    所有角色都已加入故事中
-                  </p>
-                )}
-            </div>
-          </div>
-        )}
-
-        {/* Play Button (only for existing stories) */}
-        {!isNewStory && story?.status === 'active' && (
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg shadow-md p-6 text-white text-center">
-            <h3 className="text-xl font-semibold mb-2">準備好開始冒險了嗎？</h3>
-            <p className="mb-4 opacity-90">
-              當前回合數: {story.turn_count || 0}
-            </p>
-            <button
-              onClick={() => router.push(`/stories/${storyId}/play`)}
-              className="px-8 py-3 bg-white text-blue-600 rounded-lg hover:bg-gray-100 transition font-semibold"
-            >
-              🎮 進入遊戲
-            </button>
-          </div>
-        )}
-
-        {/* State Editor Modal */}
-        {editingStoryCharacter && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              {/* Header */}
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  編輯角色狀態
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {editingStoryCharacter.display_name_override ||
-                    characters.find((c) => c.character_id === editingStoryCharacter.character_id)?.canonical_name}
-                </p>
-              </div>
-
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
-                {worldSchema.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 dark:text-gray-400">
-                      此世界觀尚未定義任何狀態欄位
-                    </p>
-                    <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                      請先在世界觀設定中新增狀態 Schema
-                    </p>
+                        );
+                      })}
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {worldSchema.map((schema) => (
-                      <div key={schema.schema_id} className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {schema.display_name}
-                          <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                            ({schema.type})
-                          </span>
-                        </label>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                          {schema.ai_description}
-                        </p>
+                )}
 
-                        {/* Number input */}
-                        {schema.type === 'number' && (
-                          <input
-                            type="number"
-                            value={stateValues[schema.schema_key] ?? ''}
-                            onChange={(e) =>
-                              setStateValues({
-                                ...stateValues,
-                                [schema.schema_key]: parseFloat(e.target.value) || 0,
-                              })
+                <div>
+                  <h4 className="font-medium mb-3">可選擇的角色</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {characters.filter(c => !selectedCharacterIds.includes(c.character_id)).map(char => (
+                      <div key={char.character_id} className="border rounded-lg p-3 cursor-pointer hover:bg-muted/50 transition" onClick={() => {
+                        setSelectedCharacterIds(prev => [...prev, char.character_id]);
+                        // Init defaults...
+                        if (creationWorldSchema.length > 0) {
+                          const newStates = { ...initialStates };
+                          const defaultValues: Record<string, any> = {};
+                          creationWorldSchema.forEach((schema) => {
+                            try {
+                              defaultValues[schema.schema_key] = getSchemaDefaultValue(schema);
+                            } catch {
+                              defaultValues[schema.schema_key] = '';
                             }
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                          />
-                        )}
-
-                        {/* Text input */}
-                        {schema.type === 'text' && (
-                          <input
-                            type="text"
-                            value={stateValues[schema.schema_key] ?? ''}
-                            onChange={(e) =>
-                              setStateValues({
-                                ...stateValues,
-                                [schema.schema_key]: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                          />
-                        )}
-
-                        {/* Boolean input */}
-                        {schema.type === 'bool' && (
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={stateValues[schema.schema_key] ?? false}
-                              onChange={(e) =>
-                                setStateValues({
-                                  ...stateValues,
-                                  [schema.schema_key]: e.target.checked,
-                                })
-                              }
-                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <span className="text-sm text-gray-700 dark:text-gray-300">
-                              {stateValues[schema.schema_key] ? '是' : '否'}
-                            </span>
-                          </label>
-                        )}
-
-                        {/* Enum select */}
-                        {schema.type === 'enum' && schema.enum_options_json && (
-                          <select
-                            value={stateValues[schema.schema_key] ?? ''}
-                            onChange={(e) =>
-                              setStateValues({
-                                ...stateValues,
-                                [schema.schema_key]: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                          >
-                            <option value="">選擇...</option>
-                            {JSON.parse(schema.enum_options_json).map((option: string) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-
-                        {/* List of text */}
-                        {schema.type === 'list_text' && (
-                          <textarea
-                            value={
-                              Array.isArray(stateValues[schema.schema_key])
-                                ? stateValues[schema.schema_key].join('\n')
-                                : ''
-                            }
-                            onChange={(e) =>
-                              setStateValues({
-                                ...stateValues,
-                                [schema.schema_key]: e.target.value
-                                  .split('\n')
-                                  .filter((line) => line.trim()),
-                              })
-                            }
-                            rows={4}
-                            placeholder="每行一個項目"
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm"
-                          />
-                        )}
+                          });
+                          newStates[char.character_id] = defaultValues;
+                          setInitialStates(newStates);
+                        }
+                      }}>
+                        <h5 className="font-medium text-sm">{char.canonical_name}</h5>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{char.core_profile_text}</p>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              {/* Footer */}
-              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex gap-3">
-                <button
-                  onClick={handleSaveStates}
-                  disabled={savingStates || worldSchema.length === 0}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
-                >
-                  {savingStates ? '儲存中...' : '💾 儲存狀態'}
-                </button>
-                <button
-                  onClick={handleCloseStateEditor}
-                  disabled={savingStates}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition disabled:opacity-50"
-                >
-                  取消
-                </button>
+          <TabsContent value="ai" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>AI 設定</CardTitle>
+                <CardDescription>設定 AI 的行為準則與提示詞。</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label htmlFor="prompt">AI 提示詞 *</Label>
+                  <Textarea
+                    id="prompt"
+                    value={formData.story_prompt}
+                    onChange={(e) => setFormData({ ...formData, story_prompt: e.target.value })}
+                    rows={10}
+                    className="font-mono text-sm"
+                    placeholder="給 AI 的指示，例如：\n- 故事風格和語氣\n- 角色行為準則\n- 特殊規則"
+                  />
+                  {errors.story_prompt && <p className="text-sm text-destructive">{errors.story_prompt}</p>}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Existing Story Content (Characters List) */}
+        {!isNewStory && (
+          <Card>
+            <CardHeader>
+              <CardTitle>故事角色</CardTitle>
+              <CardDescription>管理故事中的角色及其狀態。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Story Characters List */}
+              {storyCharacters.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {storyCharacters.map(storyChar => {
+                    const char = characters.find(c => c.character_id === storyChar.character_id);
+                    if (!char) return null;
+                    return (
+                      <div key={storyChar.story_character_id} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-semibold flex items-center gap-2">
+                              {storyChar.display_name_override || char.canonical_name}
+                              {storyChar.is_player && <Badge>玩家</Badge>}
+                            </h4>
+                            <p className="text-sm text-muted-foreground line-clamp-1">{char.core_profile_text}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" className="flex-1" onClick={() => handleEditStates(storyChar)}>編輯狀態</Button>
+                          <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => handleRemoveCharacter(storyChar.story_character_id, storyChar.display_name_override || char.canonical_name)}>移除</Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">還沒有加入任何角色</div>
+              )}
+
+              {/* Add Character Section */}
+              <div className="border-t pt-6">
+                <h4 className="font-medium mb-4">新增角色到故事</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {characters.filter(c => !storyCharacters.some(sc => sc.character_id === c.character_id)).map(char => (
+                    <Button key={char.character_id} variant="outline" className="justify-start h-auto py-3 px-4" onClick={() => handleAddCharacter(char.character_id)}>
+                      <div className="text-left">
+                        <div className="font-medium text-sm">{char.canonical_name}</div>
+                        <div className="text-xs text-muted-foreground font-normal line-clamp-1">{char.core_profile_text}</div>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
-      </div>
-    </main>
+
+        {/* Play Button */}
+        {!isNewStory && story?.status === 'active' && (
+          <Card className="bg-gradient-to-r from-primary to-purple-600 text-primary-foreground border-none">
+            <CardContent className="flex flex-col items-center justify-center p-8 text-center space-y-4">
+              <h3 className="text-2xl font-bold">準備好開始冒險了嗎？</h3>
+              <p className="opacity-90">當前回合數: {story.turn_count || 0}</p>
+              <Button asChild size="lg" variant="secondary" className="font-bold text-lg px-8">
+                <Link href={`/stories/${storyId}/play`}>
+                  <Play className="mr-2 h-5 w-5" /> 進入遊戲
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* State Editor Dialog */}
+        <Dialog open={!!editingStoryCharacter} onOpenChange={(open) => !open && handleCloseStateEditor()}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>編輯角色狀態</DialogTitle>
+              <DialogDescription>
+                {editingStoryCharacter?.display_name_override ||
+                  characters.find(c => c.character_id === editingStoryCharacter?.character_id)?.canonical_name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              {worldSchema.length === 0 ? (
+                <div className="text-center text-muted-foreground">此世界觀尚未定義狀態</div>
+              ) : (
+                <div className="grid gap-4">
+                  {worldSchema.map(schema => (
+                    <div key={schema.schema_id} className="space-y-2">
+                      <Label>{schema.display_name} <span className="text-xs text-muted-foreground">({schema.type})</span></Label>
+                      <p className="text-xs text-muted-foreground">{schema.ai_description}</p>
+
+                      {schema.type === 'number' && (
+                        <Input type="number" value={stateValues[schema.schema_key] ?? ''} onChange={(e) => setStateValues({ ...stateValues, [schema.schema_key]: parseFloat(e.target.value) || 0 })} />
+                      )}
+                      {schema.type === 'text' && (
+                        <Input value={stateValues[schema.schema_key] ?? ''} onChange={(e) => setStateValues({ ...stateValues, [schema.schema_key]: e.target.value })} />
+                      )}
+                      {schema.type === 'bool' && (
+                        <div className="flex items-center space-x-2">
+                          <Checkbox id={`edit-${schema.schema_id}`} checked={stateValues[schema.schema_key] ?? false} onCheckedChange={(checked) => setStateValues({ ...stateValues, [schema.schema_key]: checked })} />
+                          <label htmlFor={`edit-${schema.schema_id}`} className="text-sm font-medium leading-none cursor-pointer">{stateValues[schema.schema_key] ? '是' : '否'}</label>
+                        </div>
+                      )}
+                      {schema.type === 'enum' && schema.enum_options_json && (
+                        <Select value={stateValues[schema.schema_key] ?? ''} onValueChange={(val) => setStateValues({ ...stateValues, [schema.schema_key]: val })}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="選擇..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {JSON.parse(schema.enum_options_json).map((opt: string) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCloseStateEditor}>取消</Button>
+              <Button onClick={handleSaveStates} disabled={savingStates}>
+                {savingStates && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                儲存狀態
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+      </main>
+    </div>
   );
 }
 

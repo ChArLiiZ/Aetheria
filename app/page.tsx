@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button, Card, CardContent, Alert, Loading } from '@/components/ui';
-import { Container, Grid, Stack } from '@/components/layout';
-import { LogIn, UserPlus, LayoutDashboard, Github } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Alert } from '@/components/ui/alert';
+import { LogIn, UserPlus, LayoutDashboard, Github, Loader2 } from 'lucide-react';
+import { ModeToggle } from '@/components/mode-toggle';
 
 export default function Home() {
   const { user, isAuthenticated, loading, logout } = useAuth();
@@ -12,117 +14,129 @@ export default function Home() {
   // 載入中時顯示載入畫面
   if (loading) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-8">
-        <Loading size="lg" text="載入中..." />
+      <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="mt-4 text-muted-foreground">載入中...</p>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <Container size="lg">
-        <Stack spacing="lg" className="w-full">
-          {/* Auth Status Bar */}
-          {isAuthenticated && (
-            <Alert variant="info">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-bold">
-                    {user?.display_name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900 dark:text-white">
-                      {user?.display_name}
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {user?.email}
-                    </p>
-                  </div>
-                </div>
-                <Button variant="danger" size="sm" onClick={logout}>
-                  登出
-                </Button>
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8 bg-background relative overflow-hidden">
+      {/* Background decorations could go here */}
+
+      <div className="absolute top-4 right-4">
+        <ModeToggle />
+      </div>
+
+      <div className="w-full max-w-4xl space-y-8 z-10">
+        {/* Auth Status Bar */}
+        {isAuthenticated && (
+          <Alert className="flex items-center justify-between border-primary/20 bg-primary/5">
+            <div className="flex items-center gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
+                {user?.display_name.charAt(0).toUpperCase()}
               </div>
-            </Alert>
-          )}
+              <div>
+                <p className="font-medium text-foreground">
+                  {user?.display_name}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {user?.email}
+                </p>
+              </div>
+            </div>
+            <Button variant="destructive" size="sm" onClick={logout}>
+              登出
+            </Button>
+          </Alert>
+        )}
 
-          {/* Hero Section */}
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4">
-              Aetheria
-            </h1>
-            <p className="text-xl text-gray-600 dark:text-gray-300 mb-2">
-              AI 互動小說應用程式
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Next.js + TypeScript + Supabase + OpenRouter / OpenAI
-            </p>
+        {/* Hero Section */}
+        <div className="text-center space-y-4">
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tighter text-foreground bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+            Aetheria
+          </h1>
+          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
+            AI 互動式小說創作平台
+          </p>
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground/80">
+            <span>Next.js 15</span>
+            <span>•</span>
+            <span>Supabase</span>
+            <span>•</span>
+            <span>OpenRouter</span>
           </div>
+        </div>
 
-          {/* Action Cards */}
-          <Grid
-            cols={1}
-            responsive={{ md: 2 }}
-            gap="md"
-            className="max-w-2xl mx-auto"
-          >
-            {isAuthenticated ? (
-              <Link href="/dashboard" className="md:col-span-2">
-                <Card variant="elevated" className="h-full hover:shadow-xl transition-shadow cursor-pointer">
-                  <CardContent>
-                    <Stack spacing="sm" align="center" className="text-center py-4">
-                      <LayoutDashboard className="w-12 h-12 text-primary-600 dark:text-primary-400 mb-2" />
-                      <div className="font-semibold text-lg">進入 Dashboard</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        管理世界觀、角色與故事
-                      </div>
-                    </Stack>
+        {/* Action Cards */}
+        <div className="grid gap-6 md:grid-cols-2 max-w-2xl mx-auto">
+          {isAuthenticated ? (
+            <Link href="/dashboard" className="md:col-span-2 group">
+              <Card className="h-full transition-all group-hover:border-primary group-hover:shadow-lg">
+                <CardContent className="flex flex-col items-center text-center p-8 space-y-4">
+                  <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                    <LayoutDashboard className="h-8 w-8" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="font-bold text-xl">進入 Dashboard</h3>
+                    <p className="text-muted-foreground">
+                      管理您的世界觀、角色與故事
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ) : (
+            <>
+              <Link href="/login" className="group">
+                <Card className="h-full transition-all group-hover:border-primary group-hover:shadow-lg">
+                  <CardContent className="flex flex-col items-center text-center p-8 space-y-4">
+                    <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <LogIn className="h-8 w-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-xl">登入</h3>
+                      <p className="text-muted-foreground">
+                        使用現有帳號繼續旅程
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
               </Link>
-            ) : (
-              <>
-                <Link href="/login">
-                  <Card variant="elevated" className="h-full hover:shadow-xl transition-shadow cursor-pointer bg-primary-600 text-white">
-                    <CardContent>
-                      <Stack spacing="sm" align="center" className="text-center py-4">
-                        <LogIn className="w-12 h-12 mb-2" />
-                        <div className="font-semibold text-lg">登入</div>
-                        <div className="text-sm opacity-90">使用現有帳號登入</div>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Link>
-                <Link href="/register">
-                  <Card variant="elevated" className="h-full hover:shadow-xl transition-shadow cursor-pointer bg-success-600 text-white">
-                    <CardContent>
-                      <Stack spacing="sm" align="center" className="text-center py-4">
-                        <UserPlus className="w-12 h-12 mb-2" />
-                        <div className="font-semibold text-lg">註冊</div>
-                        <div className="text-sm opacity-90">建立新帳號</div>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </>
-            )}
-          </Grid>
+              <Link href="/register" className="group">
+                <Card className="h-full transition-all group-hover:border-primary group-hover:shadow-lg">
+                  <CardContent className="flex flex-col items-center text-center p-8 space-y-4">
+                    <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <UserPlus className="h-8 w-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="font-bold text-xl">註冊</h3>
+                      <p className="text-muted-foreground">
+                        建立新帳號開始創作
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </>
+          )}
+        </div>
 
-          {/* Footer Info */}
-          <Stack spacing="sm" className="text-center text-sm text-gray-600 dark:text-gray-400">
-            <p>專案狀態：開發中</p>
-            <a
-              href="https://github.com/ChArLiiZ/Aetheria"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 transition-colors"
-            >
-              <Github className="w-4 h-4" />
-              查看 GitHub
-            </a>
-          </Stack>
-        </Stack>
-      </Container>
+        {/* Footer Info */}
+        <div className="text-center text-sm text-muted-foreground space-y-2">
+          <p>專案狀態：開發中</p>
+          <a
+            href="https://github.com/ChArLiiZ/Aetheria"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <Github className="h-4 w-4" />
+            查看 GitHub
+          </a>
+        </div>
+      </div>
     </main>
   );
 }

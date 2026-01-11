@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { validatePassword, validateEmail } from '@/lib/auth/password';
-import { Button, Input, Alert, Card, CardContent } from '@/components/ui';
-import { Container, Stack } from '@/components/layout';
-import { FormField, FormGroup } from '@/components/forms';
-import { ArrowLeft, UserPlus } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowLeft, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -66,125 +68,134 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4 py-8">
-      <Container size="sm">
-        <Stack spacing="lg" className="w-full">
-          {/* Header */}
-          <div className="text-center">
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-              Aetheria
-            </h1>
-            <h2 className="text-xl text-gray-600 dark:text-gray-400">建立新帳號</h2>
-          </div>
+    <main className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+      <div className="w-full max-w-md space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight text-foreground">
+            Aetheria
+          </h1>
+          <p className="text-muted-foreground">建立您的新帳號</p>
+        </div>
 
-          {/* Form */}
+        <Card>
+          <CardHeader>
+            <CardTitle>註冊</CardTitle>
+            <CardDescription>
+              填寫以下資訊以開始使用
+            </CardDescription>
+          </CardHeader>
           <form onSubmit={handleSubmit}>
-            <Card>
-              <CardContent>
-                <FormGroup spacing="md">
-                  {errors.length > 0 && (
-                    <Alert variant="error" title="驗證失敗">
-                      <ul className="list-disc list-inside space-y-1 mt-2">
-                        {errors.map((error, index) => (
-                          <li key={index}>{error}</li>
-                        ))}
-                      </ul>
-                    </Alert>
-                  )}
+            <CardContent className="space-y-4">
+              {errors.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>驗證失敗</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc list-inside space-y-1">
+                      {errors.map((error, index) => (
+                        <li key={index}>{error}</li>
+                      ))}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
 
-                  <FormField label="電子郵件" required>
-                    <Input
-                      id="email"
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      disabled={loading}
-                    />
-                  </FormField>
+              <div className="space-y-2">
+                <Label htmlFor="email">電子郵件 <span className="text-destructive">*</span></Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="name@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
 
-                  <FormField label="顯示名稱" required>
-                    <Input
-                      id="displayName"
-                      type="text"
-                      required
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="你的名字"
-                      disabled={loading}
-                    />
-                  </FormField>
+              <div className="space-y-2">
+                <Label htmlFor="displayName">顯示名稱 <span className="text-destructive">*</span></Label>
+                <Input
+                  id="displayName"
+                  type="text"
+                  placeholder="你的名字"
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
 
-                  <FormField
-                    label="密碼"
-                    required
-                    helperText="至少 8 個字元，包含大小寫字母和數字"
-                  >
-                    <Input
-                      id="password"
-                      type="password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      disabled={loading}
-                    />
-                  </FormField>
+              <div className="space-y-2">
+                <Label htmlFor="password">密碼 <span className="text-destructive">*</span></Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                />
+                <p className="text-sm text-muted-foreground">
+                  至少 8 個字元，包含大小寫字母和數字
+                </p>
+              </div>
 
-                  <FormField label="確認密碼" required>
-                    <Input
-                      id="confirmPassword"
-                      type="password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="••••••••"
-                      disabled={loading}
-                    />
-                  </FormField>
-
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    isLoading={loading}
-                    fullWidth
-                    className="mt-2"
-                  >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    註冊
-                  </Button>
-                </FormGroup>
-              </CardContent>
-            </Card>
-          </form>
-
-          {/* Links */}
-          <Stack spacing="sm" className="text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              已經有帳號了？{' '}
-              <Link
-                href="/login"
-                className="text-primary-600 hover:text-primary-700 font-medium transition-colors"
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">確認密碼 <span className="text-destructive">*</span></Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col space-y-4">
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading}
               >
-                立即登入
-              </Link>
-            </p>
-            <Link
-              href="/"
-              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              返回首頁
-            </Link>
-          </Stack>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    註冊處理中...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    建立帳號
+                  </>
+                )}
+              </Button>
 
-          {/* Info */}
-          <Alert variant="info" className="text-xs">
-            資料儲存在 Supabase 中。
-          </Alert>
-        </Stack>
-      </Container>
+              <div className="text-center text-sm text-muted-foreground">
+                已經有帳號了？{' '}
+                <Link
+                  href="/login"
+                  className="text-primary hover:text-primary/90 underline-offset-4 hover:underline font-medium"
+                >
+                  立即登入
+                </Link>
+              </div>
+            </CardFooter>
+          </form>
+        </Card>
+
+        <div className="text-center">
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            返回首頁
+          </Link>
+        </div>
+      </div>
     </main>
   );
 }

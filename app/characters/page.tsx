@@ -2,17 +2,36 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Character } from '@/types';
 import { getCharacters, deleteCharacter } from '@/services/supabase/characters';
 import { toast } from 'sonner';
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, User, Edit, Trash2, Calendar } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 function CharactersListPageContent() {
   const { user } = useAuth();
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [characterToDelete, setCharacterToDelete] = useState<{ id: string, name: string } | null>(null);
 
   // Load characters with cancellation support to prevent race conditions
   useEffect(() => {
@@ -64,20 +83,24 @@ function CharactersListPageContent() {
     }
   };
 
-  const handleDelete = async (characterId: string, name: string) => {
-    if (!user) return;
+  const confirmDelete = (characterId: string, name: string) => {
+    setCharacterToDelete({ id: characterId, name });
+  };
 
-    if (!confirm(`確定要刪除角色「${name}」嗎？\n\n此操作無法復原！`)) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!user || !characterToDelete) return;
 
     try {
-      await deleteCharacter(characterId, user.user_id);
+      setDeletingId(characterToDelete.id);
+      await deleteCharacter(characterToDelete.id, user.user_id);
       await loadCharacters();
       toast.success('刪除成功！');
     } catch (err: any) {
       console.error('Failed to delete character:', err);
       toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setCharacterToDelete(null);
+      setDeletingId(null);
     }
   };
 
@@ -92,134 +115,122 @@ function CharactersListPageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-            >
-              ← 返回主選單
-            </button>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight">角色管理</h1>
+            <p className="text-muted-foreground">
+              建立與管理跨世界共用的角色卡
+            </p>
           </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                角色管理
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                建立與管理跨世界共用的角色卡
-              </p>
-            </div>
-            <button
-              onClick={() => router.push('/characters/new')}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-            >
-              + 新增角色
-            </button>
-          </div>
+          <Link href="/characters/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              新增角色
+            </Button>
+          </Link>
         </div>
 
         {/* Characters List */}
         {characters.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
-            <div className="mb-4">
-              <svg
-                className="mx-auto h-16 w-16 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                />
-              </svg>
+          <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+            <div className="p-4 rounded-full bg-primary/10 mb-4">
+              <User className="h-10 w-10 text-primary" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              還沒有任何角色
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+            <h2 className="text-2xl font-semibold mb-2">還沒有任何角色</h2>
+            <p className="text-muted-foreground mb-6 max-w-sm">
               建立第一個角色來開始您的故事之旅
             </p>
-            <button
-              onClick={() => router.push('/characters/new')}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              建立第一個角色
-            </button>
-          </div>
+            <Link href="/characters/new">
+              <Button>建立第一個角色</Button>
+            </Link>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {characters.map((character) => {
               const tags = parseTags(character.tags_json);
               return (
-                <div
-                  key={character.character_id}
-                  className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition"
-                >
-                  <div className="mb-4">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      {character.canonical_name}
-                    </h3>
-                    {tags.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {tags.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">
+                <Card key={character.character_id} className="flex flex-col hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {tags.map((tag, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs font-normal">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
                       {character.core_profile_text}
                     </p>
-                  </div>
-
-                  <div className="text-xs text-gray-500 dark:text-gray-500 mb-4">
-                    建立時間：{new Date(character.created_at).toLocaleDateString('zh-TW')}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => router.push(`/characters/${character.character_id}`)}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    <div className="flex items-center text-xs text-muted-foreground mt-auto" suppressHydrationWarning>
+                      <Calendar className="mr-1 h-3 w-3" />
+                      建立於 {new Date(character.created_at).toLocaleDateString('zh-TW')}
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex gap-2 pt-4 border-t">
+                    <Link href={`/characters/${character.character_id}`} className="flex-1">
+                      <Button variant="outline" className="w-full">
+                        <Edit className="mr-2 h-4 w-4" />
+                        編輯
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => confirmDelete(character.character_id, character.canonical_name)}
+                      disabled={deletingId === character.character_id}
                     >
-                      編輯
-                    </button>
-                    <button
-                      onClick={() =>
-                        handleDelete(character.character_id, character.canonical_name)
-                      }
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                    >
-                      刪除
-                    </button>
-                  </div>
-                </div>
+                      {deletingId === character.character_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
               );
             })}
           </div>
         )}
-      </div>
-    </main>
+
+        {/* Delete Alert */}
+        <AlertDialog open={!!characterToDelete} onOpenChange={(open) => !open && setCharacterToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>確定要刪除角色嗎？</AlertDialogTitle>
+              <AlertDialogDescription>
+                您正在刪除「{characterToDelete?.name}」。
+                此操作無法復原！
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                確認刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+      </main>
+    </div>
   );
 }
 

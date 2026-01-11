@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Character } from '@/types';
 import {
   getCharacterById,
@@ -12,6 +12,13 @@ import {
   characterNameExists,
 } from '@/services/supabase/characters';
 import { toast } from 'sonner';
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Loader2, ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
 
 function CharacterEditorPageContent() {
   const { user } = useAuth();
@@ -123,8 +130,7 @@ function CharacterEditorPageContent() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!user) return;
 
     const isValid = await validateForm();
@@ -162,163 +168,116 @@ function CharacterEditorPageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              {isNewCharacter ? '新增角色' : `編輯角色：${character?.canonical_name || ''}`}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              {isNewCharacter
-                ? '建立一個新的角色卡（背景、性格、說話風格等）'
-                : '修改角色的核心資料'}
-            </p>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 text-muted-foreground text-sm">
+            <Button variant="ghost" size="sm" onClick={() => router.push('/characters')}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> 返回列表
+            </Button>
           </div>
-          <button
-            onClick={() => router.push('/characters')}
-            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-          >
-            ← 返回列表
-          </button>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                {isNewCharacter ? '新增角色' : `編輯角色：${character?.canonical_name || ''}`}
+              </h1>
+              <p className="text-muted-foreground">
+                {isNewCharacter
+                  ? '建立一個新的角色卡（背景、性格、說話風格等）'
+                  : '修改角色的核心資料'}
+              </p>
+            </div>
+            <Button onClick={handleSubmit} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Save className="mr-2 h-4 w-4" /> 儲存變更
+            </Button>
+          </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-          {/* Canonical Name */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              角色名稱 * <span className="text-gray-500">(canonical_name)</span>
-            </label>
-            <input
-              type="text"
-              value={formData.canonical_name}
-              onChange={(e) =>
-                setFormData({ ...formData, canonical_name: e.target.value })
-              }
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-              placeholder="例如：艾莉亞、約翰"
-            />
-            {errors.canonical_name && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                {errors.canonical_name}
-              </p>
-            )}
-          </div>
+        {/* Main Form */}
+        <Card>
+          <CardHeader>
+            <CardTitle>基本資料</CardTitle>
+            <CardDescription>設定角色的名稱、屬性與詳細設定。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="char-name">角色名稱 (canonical_name)</Label>
+              <Input
+                id="char-name"
+                placeholder="例如：艾莉亞"
+                value={formData.canonical_name}
+                onChange={(e) => setFormData({ ...formData, canonical_name: e.target.value })}
+              />
+              {errors.canonical_name && <p className="text-sm text-destructive">{errors.canonical_name}</p>}
+            </div>
 
-          {/* Core Profile Text */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              核心角色資料 * <span className="text-gray-500">(背景/性格/動機/秘密/說話風格)</span>
-            </label>
-            <textarea
-              value={formData.core_profile_text}
-              onChange={(e) =>
-                setFormData({ ...formData, core_profile_text: e.target.value })
-              }
-              rows={12}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white font-mono text-sm"
-              placeholder={`範例：
+            <div className="space-y-2">
+              <Label htmlFor="char-profile">核心角色資料 (背景/性格/動機/秘密/說話風格)</Label>
+              <Textarea
+                id="char-profile"
+                placeholder="詳細描述這個角色..."
+                rows={12}
+                className="font-mono text-sm"
+                value={formData.core_profile_text}
+                onChange={(e) => setFormData({ ...formData, core_profile_text: e.target.value })}
+              />
+              {errors.core_profile_text && <p className="text-sm text-destructive">{errors.core_profile_text}</p>}
+              <p className="text-xs text-muted-foreground">詳細的角色資料有助於 AI 更準確地扮演這個角色。</p>
+            </div>
 
-【背景】
-艾莉亞是一名來自北方的遊俠，自幼在森林中長大...
-
-【性格】
-謹慎、獨立、對陌生人保持警戒...
-
-【動機】
-尋找失蹤的家人...
-
-【秘密】
-擁有精靈血統...
-
-【說話風格】
-簡潔、直接、少用修飾詞...`}
-            />
-            {errors.core_profile_text && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                {errors.core_profile_text}
-              </p>
-            )}
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              提示：詳細的角色資料有助於 AI 更準確地扮演這個角色
-            </p>
-          </div>
-
-          {/* Tags */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              標籤 <span className="text-gray-500">(可選，用於分類)</span>
-            </label>
-            {formData.tags.map((tag, index) => (
-              <div key={index} className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={tag}
-                  onChange={(e) => {
-                    const newTags = [...formData.tags];
-                    newTags[index] = e.target.value;
-                    setFormData({ ...formData, tags: newTags });
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                  placeholder={`標籤 ${index + 1}（例如：戰士、法師、NPC）`}
-                />
-                {formData.tags.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newTags = formData.tags.filter((_, i) => i !== index);
-                      setFormData({ ...formData, tags: newTags });
-                    }}
-                    className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                  >
-                    刪除
-                  </button>
-                )}
+            <div className="space-y-2">
+              <Label>標籤 (分類用)</Label>
+              <div className="space-y-2">
+                {formData.tags.map((tag, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <Input
+                      value={tag}
+                      placeholder={`標籤 ${idx + 1}`}
+                      onChange={(e) => {
+                        const newTags = [...formData.tags];
+                        newTags[idx] = e.target.value;
+                        setFormData({ ...formData, tags: newTags });
+                      }}
+                    />
+                    {formData.tags.length > 1 && (
+                      <Button variant="outline" size="icon" onClick={() => {
+                        const newTags = formData.tags.filter((_, i) => i !== idx);
+                        setFormData({ ...formData, tags: newTags });
+                      }}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button variant="secondary" size="sm" onClick={() => setFormData({ ...formData, tags: [...formData.tags, ''] })}>
+                  <Plus className="mr-2 h-4 w-4" /> 新增標籤
+                </Button>
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={() =>
-                setFormData({ ...formData, tags: [...formData.tags, ''] })
-              }
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
-            >
-              + 新增標籤
-            </button>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => router.push('/characters')}
-              className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-            >
-              {saving ? '儲存中...' : isNewCharacter ? '建立角色' : '儲存變更'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </main>
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-end gap-4 border-t pt-4">
+            <Button variant="outline" onClick={() => router.push('/characters')}>取消</Button>
+            <Button onClick={handleSubmit} disabled={saving}>
+              {saving ? '儲存中...' : '儲存變更'}
+            </Button>
+          </CardFooter>
+        </Card>
+      </main>
+    </div>
   );
 }
 

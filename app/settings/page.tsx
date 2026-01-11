@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { ProviderSettings, AIParams } from '@/types';
 import {
   getProviderSettings,
@@ -18,6 +18,19 @@ import {
 } from '@/services/supabase/auth';
 import { testProviderConnection } from '@/services/api/provider-test';
 import { toast } from 'sonner';
+
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Save, Trash2, FlaskConical, Eye, EyeOff, Key, User, Server } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // Model presets for each provider
 const MODEL_PRESETS: Record<Provider, string[]> = {
@@ -36,12 +49,12 @@ const PROVIDER_INFO: Record<
 > = {
   openrouter: {
     name: 'OpenRouter',
-    icon: '??',
+    icon: '🚀',
     description: '統一多個 AI 模型的接入平台',
   },
   openai: {
     name: 'OpenAI',
-    icon: '??',
+    icon: '🤖',
     description: 'GPT 系列模型提供商',
   },
 };
@@ -69,7 +82,7 @@ function SettingsPageContent() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [defaultModel, setDefaultModel] = useState('');
-  const [usePreset, setUsePreset] = useState(true);
+  const [usePreset, setUsePreset] = useState<"preset" | "custom">("preset");
   const [customModel, setCustomModel] = useState('');
   const [temperature, setTemperature] = useState(1.0);
   const [maxTokens, setMaxTokens] = useState(4000);
@@ -99,7 +112,7 @@ function SettingsPageContent() {
 
       // Check if model is in presets
       const isPreset = MODEL_PRESETS[selectedProvider].includes(settings.default_model);
-      setUsePreset(isPreset);
+      setUsePreset(isPreset ? "preset" : "custom");
       if (!isPreset) {
         setCustomModel(settings.default_model);
       } else {
@@ -120,7 +133,7 @@ function SettingsPageContent() {
       setApiKey('');
       setDefaultModel('');
       setCustomModel('');
-      setUsePreset(true);
+      setUsePreset("preset");
       setTemperature(1.0);
       setMaxTokens(4000);
       setTopP(1.0);
@@ -170,7 +183,7 @@ function SettingsPageContent() {
       return;
     }
 
-    const model = usePreset ? defaultModel : customModel;
+    const model = usePreset === "preset" ? defaultModel : customModel;
     if (!model.trim()) {
       toast.warning('請選擇或輸入模型名稱');
       return;
@@ -206,9 +219,8 @@ function SettingsPageContent() {
     if (!user) return;
 
     const providerName = PROVIDER_INFO[selectedProvider].name;
-    if (!confirm(`確定要刪除 ${providerName} 的設定嗎？`)) {
-      return;
-    }
+    const isConfirmed = confirm(`確定要刪除 ${providerName} 的設定嗎？`); // Using confirm for simplicity for now
+    if (!isConfirmed) return;
 
     try {
       await deleteProviderSettings(user.user_id, selectedProvider);
@@ -217,6 +229,10 @@ function SettingsPageContent() {
         [selectedProvider]: null,
       });
       toast.success('刪除成功！');
+      // Reset form
+      setApiKey('');
+      setDefaultModel('');
+      setCustomModel('');
     } catch (err: any) {
       console.error('Failed to delete:', err);
       toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
@@ -229,7 +245,7 @@ function SettingsPageContent() {
       return;
     }
 
-    const model = usePreset ? defaultModel : customModel;
+    const model = usePreset === "preset" ? defaultModel : customModel;
     if (!model.trim()) {
       toast.warning('請先選擇或輸入模型名稱');
       return;
@@ -243,11 +259,11 @@ function SettingsPageContent() {
 
       if (result.success) {
         toast.success(result.message, {
-          description: `${result.details}\n\n注意：這是基本連接測試，實際使用時可能還會遇到其他問題。`,
+          description: result.details ? `${result.details}\n\n注意：這是基本連接測試，實際使用時可能還會遇到其他問題。` : undefined,
         });
       } else {
         toast.error(result.message, {
-          description: `${result.details}\n\n請檢查：API Key 是否正確、模型名稱是否正確、API Key 是否有足夠的額度`,
+          description: `${result.details || ''}\n\n請檢查：API Key 是否正確、模型名稱是否正確、API Key 是否有足夠的額度`,
         });
       }
     } catch (err: any) {
@@ -333,11 +349,11 @@ function SettingsPageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
@@ -346,431 +362,289 @@ function SettingsPageContent() {
   const hasSettings = currentSettings && currentSettings.api_key;
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-            >
-              ← 返回主選單
-            </button>
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">設定</h1>
-            <p className="text-gray-600 dark:text-gray-400">管理 AI 供應商與帳號設定</p>
-          </div>
+    <div className="min-h-screen bg-background pb-12">
+      <AppHeader />
+
+      <main className="container mx-auto px-4 py-8 space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">設定</h1>
+          <p className="text-muted-foreground">管理 AI 供應商與帳號設定</p>
         </div>
 
-        {/* Main Tabs */}
-        <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-          <nav className="flex space-x-8">
-            <button
-              onClick={() => setActiveMainTab('providers')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeMainTab === 'providers'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-            >
-              🤖 AI 供應商
-            </button>
-            <button
-              onClick={() => setActiveMainTab('account')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeMainTab === 'account'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-            >
-              👤 帳號管理
-            </button>
-          </nav>
-        </div>
+        <Tabs value={activeMainTab} onValueChange={(val) => setActiveMainTab(val as MainTab)} className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="providers" className="flex items-center gap-2">
+              <Server className="h-4 w-4" /> AI 供應商
+            </TabsTrigger>
+            <TabsTrigger value="account" className="flex items-center gap-2">
+              <User className="h-4 w-4" /> 帳號管理
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Tab Content */}
-        {activeMainTab === 'providers' ? (
-          <div className="flex gap-6">
-            {/* Left Sidebar - Provider List */}
-            <div className="w-64 flex-shrink-0">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="font-semibold text-gray-900 dark:text-white">供應商列表</h3>
-                </div>
-                <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {(Object.keys(PROVIDER_INFO) as Provider[]).map((provider) => {
-                    const info = PROVIDER_INFO[provider];
-                    const settings = providerSettings[provider];
-                    const isActive = selectedProvider === provider;
+          {/* AI Providers Tab */}
+          <TabsContent value="providers" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              {/* Left Sidebar - Provider List */}
+              <Card className="md:col-span-1 h-fit">
+                <CardHeader className="pb-3 border-b">
+                  <CardTitle className="text-base">供應商列表</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="flex flex-col">
+                    {(Object.keys(PROVIDER_INFO) as Provider[]).map((provider) => {
+                      const info = PROVIDER_INFO[provider];
+                      const settings = providerSettings[provider];
+                      const isActive = selectedProvider === provider;
 
-                    return (
-                      <button
-                        key={provider}
-                        onClick={() => setSelectedProvider(provider)}
-                        className={`w-full px-4 py-3 text-left transition ${isActive
-                            ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-600'
-                            : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 border-l-4 border-transparent'
-                          }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{info.icon}</span>
+                      return (
+                        <button
+                          key={provider}
+                          onClick={() => setSelectedProvider(provider)}
+                          className={`flex items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50 ${isActive ? 'bg-muted border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'
+                            }`}
+                        >
+                          <span className="text-xl">{info.icon}</span>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900 dark:text-white">
-                              {info.name}
-                            </div>
+                            <div className="font-medium">{info.name}</div>
                             {settings && settings.api_key && (
-                              <div className="text-xs text-green-600 dark:text-green-400">
-                                ✓ 已設定
-                              </div>
+                              <span className="text-xs text-green-600 dark:text-green-400 font-medium">✓ 已設定</span>
                             )}
                           </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <p className="text-xs text-blue-800 dark:text-blue-300">
-                  💡 提示：這些是預設設定，在建立故事時可以個別覆寫模型和參數。
-                </p>
-              </div>
-            </div>
-
-            {/* Right Panel - Provider Settings */}
-            <div className="flex-1">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <span className="text-3xl">{PROVIDER_INFO[selectedProvider].icon}</span>
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                      {PROVIDER_INFO[selectedProvider].name}
-                    </h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {PROVIDER_INFO[selectedProvider].description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {/* API Key */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      API Key *
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type={showApiKey ? 'text' : 'password'}
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white font-mono text-sm"
-                        placeholder="輸入您的 API Key"
-                      />
-                      {apiKey && (
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKey(!showApiKey)}
-                          className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition"
-                        >
-                          {showApiKey ? '隱藏' : '顯示'}
                         </button>
-                      )}
+                      );
+                    })}
+                  </div>
+                </CardContent>
+                <CardFooter className="p-4 bg-muted/20 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    提示：這些是預設設定，在建立故事時可以個別覆寫模型和參數。
+                  </p>
+                </CardFooter>
+              </Card>
+
+              {/* Right Panel - Provider Settings */}
+              <Card className="md:col-span-3">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{PROVIDER_INFO[selectedProvider].icon}</span>
+                    <div>
+                      <CardTitle>{PROVIDER_INFO[selectedProvider].name}</CardTitle>
+                      <CardDescription>{PROVIDER_INFO[selectedProvider].description}</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* API Key */}
+                  <div className="space-y-2">
+                    <Label htmlFor="apiKey">API Key *</Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Input
+                          id="apiKey"
+                          type={showApiKey ? 'text' : 'password'}
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          placeholder="輸入您的 API Key"
+                          className="font-mono pr-10"
+                        />
+                      </div>
+                      <Button variant="outline" type="button" onClick={() => setShowApiKey(!showApiKey)}>
+                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
                     </div>
                     {hasSettings && !showApiKey && (
-                      <p className="mt-1 text-xs text-gray-500">
+                      <p className="text-xs text-muted-foreground">
                         目前：{maskApiKey(currentSettings.api_key)}
                       </p>
                     )}
                   </div>
 
-                  {/* Model Selection */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      預設模型 *
-                    </label>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-4">
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            checked={usePreset}
-                            onChange={() => setUsePreset(true)}
-                            className="text-blue-600"
-                          />
-                          <span className="text-sm text-gray-700 dark:text-gray-300">
-                            選擇常用模型
-                          </span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            checked={!usePreset}
-                            onChange={() => setUsePreset(false)}
-                            className="text-blue-600"
-                          />
-                          <span className="text-sm text-gray-700 dark:text-gray-300">
-                            手動輸入
-                          </span>
-                        </label>
-                      </div>
+                  <Separator />
 
-                      {usePreset ? (
-                        <select
-                          value={defaultModel}
-                          onChange={(e) => setDefaultModel(e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                        >
-                          <option value="">請選擇模型</option>
+                  {/* Model Selection */}
+                  <div className="space-y-4">
+                    <Label>預設模型 *</Label>
+                    <RadioGroup value={usePreset} onValueChange={(val: "preset" | "custom") => setUsePreset(val)} className="flex items-center gap-6">
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="preset" id="opt-preset" />
+                        <Label htmlFor="opt-preset" className="cursor-pointer font-normal">選擇常用模型</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="custom" id="opt-custom" />
+                        <Label htmlFor="opt-custom" className="cursor-pointer font-normal">手動輸入</Label>
+                      </div>
+                    </RadioGroup>
+
+                    {usePreset === "preset" ? (
+                      <Select value={defaultModel} onValueChange={setDefaultModel}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="請選擇模型" />
+                        </SelectTrigger>
+                        <SelectContent>
                           {MODEL_PRESETS[selectedProvider].map((model) => (
-                            <option key={model} value={model}>
-                              {model}
-                            </option>
+                            <SelectItem key={model} value={model}>{model}</SelectItem>
                           ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={customModel}
-                          onChange={(e) => setCustomModel(e.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          placeholder="例如：anthropic/claude-3.5-sonnet"
-                        />
-                      )}
-                    </div>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={customModel}
+                        onChange={(e) => setCustomModel(e.target.value)}
+                        placeholder="例如：anthropic/claude-3.5-sonnet"
+                      />
+                    )}
                   </div>
 
-                  {/* Parameters */}
-                  <div className="space-y-4">
-                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      預設參數
-                    </h4>
+                  <Separator />
 
-                    {/* Temperature */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm text-gray-700 dark:text-gray-300">
-                          Temperature
-                        </label>
-                        <input
-                          type="number"
-                          value={temperature}
-                          onChange={(e) => setTemperature(Number(e.target.value))}
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm"
-                        />
+                  {/* Parameters */}
+                  <div className="space-y-6">
+                    <h4 className="text-sm font-medium">預設參數</h4>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Temperature (隨機性): {temperature}</Label>
+                        <span className="text-xs text-muted-foreground">0 = 確定性，2 = 最隨機</span>
                       </div>
                       <input
                         type="range"
-                        value={temperature}
-                        onChange={(e) => setTemperature(Number(e.target.value))}
                         min={0}
                         max={2}
                         step={0.1}
-                        className="w-full"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        控制輸出的隨機性（0 = 確定性，2 = 最隨機）
-                      </p>
                     </div>
 
-                    {/* Max Tokens */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm text-gray-700 dark:text-gray-300">
-                          Max Tokens
-                        </label>
-                        <input
-                          type="number"
-                          value={maxTokens}
-                          onChange={(e) => setMaxTokens(Number(e.target.value))}
-                          min={1}
-                          max={128000}
-                          step={100}
-                          className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm"
-                        />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Max Tokens (長度): {maxTokens}</Label>
                       </div>
                       <input
                         type="range"
-                        value={maxTokens}
-                        onChange={(e) => setMaxTokens(Number(e.target.value))}
                         min={100}
                         max={128000}
                         step={100}
-                        className="w-full"
+                        value={maxTokens}
+                        onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        最大生成 token 數量
-                      </p>
                     </div>
 
-                    {/* Top P */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm text-gray-700 dark:text-gray-300">Top P</label>
-                        <input
-                          type="number"
-                          value={topP}
-                          onChange={(e) => setTopP(Number(e.target.value))}
-                          min={0}
-                          max={1}
-                          step={0.1}
-                          className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm"
-                        />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Top P (取樣): {topP}</Label>
                       </div>
                       <input
                         type="range"
-                        value={topP}
-                        onChange={(e) => setTopP(Number(e.target.value))}
                         min={0}
                         max={1}
                         step={0.1}
-                        className="w-full"
+                        value={topP}
+                        onChange={(e) => setTopP(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        核心取樣參數（0.9 = 考慮前 90% 可能性的詞彙）
-                      </p>
                     </div>
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button
-                      onClick={handleTestProvider}
-                      disabled={testingProvider}
-                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition disabled:bg-gray-400"
-                    >
-                      {testingProvider ? '測試中...' : '🧪 測試連接'}
-                    </button>
-                    <button
-                      onClick={handleSaveProvider}
-                      disabled={savingProvider}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-                    >
-                      {savingProvider ? '儲存中...' : '💾 儲存設定'}
-                    </button>
+                </CardContent>
+                <CardFooter className="flex justify-between border-t p-6">
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleTestProvider} disabled={testingProvider}>
+                      {testingProvider ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FlaskConical className="mr-2 h-4 w-4" />}
+                      測試連接
+                    </Button>
                     {hasSettings && (
-                      <button
-                        onClick={handleDeleteProvider}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                      >
-                        🗑️ 刪除
-                      </button>
+                      <Button variant="destructive" onClick={handleDeleteProvider}>
+                        <Trash2 className="mr-2 h-4 w-4" /> 刪除
+                      </Button>
                     )}
                   </div>
-                </div>
-              </div>
+                  <Button onClick={handleSaveProvider} disabled={savingProvider}>
+                    {savingProvider ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    儲存設定
+                  </Button>
+                </CardFooter>
+              </Card>
             </div>
-          </div>
-        ) : (
-          /* Account Management Tab */
-          <div className="max-w-3xl">
-            <div className="space-y-6">
-              {/* Display Name */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                  顯示名稱
-                </h3>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    placeholder="您的顯示名稱"
-                  />
-                  <button
-                    onClick={handleSaveDisplayName}
-                    disabled={savingDisplayName}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-                  >
-                    {savingDisplayName ? '儲存中...' : '儲存'}
-                  </button>
-                </div>
-              </div>
+          </TabsContent>
 
-              {/* Change Password */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                  修改密碼
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      舊密碼
-                    </label>
-                    <input
-                      type="password"
-                      value={oldPassword}
-                      onChange={(e) => setOldPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+          {/* Account Tab */}
+          <TabsContent value="account" className="space-y-6 max-w-3xl">
+            <Card>
+              <CardHeader>
+                <CardTitle>個人資料</CardTitle>
+                <CardDescription>管理您的顯示名稱與基本資訊</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="displayName">顯示名稱</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="displayName"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="您的顯示名稱"
                     />
+                    <Button onClick={handleSaveDisplayName} disabled={savingDisplayName}>
+                      {savingDisplayName ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : '儲存'}
+                    </Button>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      新密碼
-                    </label>
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      確認新密碼
-                    </label>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSavePassword}
-                    disabled={savingPassword}
-                    className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-                  >
-                    {savingPassword ? '更新中...' : '更新密碼'}
-                  </button>
                 </div>
-              </div>
 
-              {/* Account Info */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                  帳號資訊
-                </h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">電子郵件：</span>
-                    <span className="text-gray-900 dark:text-white">{user?.email}</span>
+                <Separator className="my-4" />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground">電子郵件</p>
+                    <p className="font-medium">{user?.email}</p>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">帳號狀態：</span>
-                    <span className="text-green-600 dark:text-green-400">
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground">帳號狀態</p>
+                    <Badge variant={user?.status === 'active' ? 'default' : 'destructive'}>
                       {user?.status === 'active' ? '正常' : '停用'}
-                    </span>
+                    </Badge>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">建立日期：</span>
-                    <span className="text-gray-900 dark:text-white">
-                      {user?.created_at
-                        ? new Date(user.created_at).toLocaleDateString('zh-TW')
-                        : '-'}
-                    </span>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground">建立日期</p>
+                    <p className="font-medium" suppressHydrationWarning>{user?.created_at ? new Date(user.created_at).toLocaleDateString('zh-TW') : '-'}</p>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>安全設定</CardTitle>
+                <CardDescription>更新您的密碼</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="oldPass">舊密碼</Label>
+                  <Input id="oldPass" type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newPass">新密碼</Label>
+                    <Input id="newPass" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPass">確認新密碼</Label>
+                    <Input id="confirmPass" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={handleSavePassword} disabled={savingPassword} className="w-full sm:w-auto">
+                  {savingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Key className="mr-2 h-4 w-4" />}
+                  更新密碼
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
   );
 }
 
@@ -781,4 +655,3 @@ export default function SettingsPage() {
     </ProtectedRoute>
   );
 }
-

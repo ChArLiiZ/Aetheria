@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { World, WorldStateSchema, SchemaFieldType } from '@/types';
 import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/supabase/worlds';
 import {
@@ -14,6 +14,55 @@ import {
   schemaKeyExists,
 } from '@/services/supabase/world-schema';
 import { toast } from 'sonner';
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Loader2, Plus, ArrowLeft, Save, Trash2, Edit } from 'lucide-react';
+import { Badge } from "@/components/ui/badge";
 
 type Tab = 'basic' | 'states';
 
@@ -36,7 +85,7 @@ function WorldEditorPageContent() {
   const params = useParams();
   const worldId = params.worldId as string;
 
-  const [activeTab, setActiveTab] = useState<Tab>('basic');
+  const [activeTab, setActiveTab] = useState<string>('basic');
   const [world, setWorld] = useState<World | null>(null);
   const [schemas, setSchemas] = useState<WorldStateSchema[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +117,9 @@ function WorldEditorPageContent() {
   });
   const [schemaErrors, setSchemaErrors] = useState<Record<string, string>>({});
 
+  // Delete confirm state
+  const [schemaToDelete, setSchemaToDelete] = useState<{ id: string, name: string } | null>(null);
+
   const isNewWorld = worldId === 'new';
 
   // Load data with cancellation support to prevent race conditions
@@ -80,7 +132,6 @@ function WorldEditorPageContent() {
         return;
       }
 
-      // 如果沒有 user_id，設定 loading = false 並返回
       if (!user?.user_id) {
         setLoading(false);
         return;
@@ -93,7 +144,6 @@ function WorldEditorPageContent() {
           getSchemaByWorldId(worldId, user.user_id),
         ]);
 
-        // Check if this request was cancelled (e.g., component unmounted or user changed)
         if (cancelled) return;
 
         if (!worldData) {
@@ -110,7 +160,6 @@ function WorldEditorPageContent() {
         });
         setSchemas(schemasData);
       } catch (err: any) {
-        // Don't show error if request was cancelled
         if (cancelled) return;
         console.error('Failed to load data:', err);
         toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
@@ -124,13 +173,11 @@ function WorldEditorPageContent() {
 
     fetchData();
 
-    // Cleanup: mark as cancelled when effect re-runs or component unmounts
     return () => {
       cancelled = true;
     };
   }, [worldId, user?.user_id, isNewWorld, router]);
 
-  // Reload data function for use after updates
   const reloadData = async () => {
     if (!user?.user_id || isNewWorld) return;
 
@@ -162,7 +209,6 @@ function WorldEditorPageContent() {
     }
   };
 
-  // Basic info handlers
   const validateBasicForm = async (): Promise<boolean> => {
     const newErrors: Record<string, string> = {};
 
@@ -199,14 +245,12 @@ function WorldEditorPageContent() {
     try {
       setCreatingWorld(true);
 
-      // Create new world
       const newWorld = await createWorld(user.user_id, {
         name: basicFormData.name.trim(),
         description: basicFormData.description.trim(),
         rules_text: basicFormData.rules_text.trim(),
       });
 
-      // Create all schema items
       for (const schema of schemas) {
         await createSchemaItem(newWorld.world_id, user.user_id, {
           schema_key: schema.schema_key,
@@ -219,8 +263,7 @@ function WorldEditorPageContent() {
         });
       }
 
-      // Redirect to worlds list page
-      toast.success(`世界觀「${newWorld.name}」建立成功！${schemas.length > 0 ? `已設定 ${schemas.length} 個狀態種類。` : ''}`);
+      toast.success(`世界觀「${newWorld.name}」建立成功！`);
       router.push('/worlds');
     } catch (err: any) {
       console.error('Failed to create world:', err);
@@ -239,7 +282,6 @@ function WorldEditorPageContent() {
     try {
       setSavingBasic(true);
 
-      // Update existing world
       await updateWorld(worldId, user.user_id, {
         name: basicFormData.name.trim(),
         description: basicFormData.description.trim(),
@@ -256,7 +298,6 @@ function WorldEditorPageContent() {
     }
   };
 
-  // Schema handlers
   const resetSchemaForm = () => {
     setSchemaFormData({
       schema_key: '',
@@ -332,7 +373,6 @@ function WorldEditorPageContent() {
       newErrors.schema_key = '狀態 Key 只能包含小寫字母和底線';
     } else if (user) {
       if (isNewWorld) {
-        // Check in local state
         const exists = schemas.some(
           s => s.schema_key === schemaFormData.schema_key && s.schema_id !== editingSchemaId
         );
@@ -340,7 +380,6 @@ function WorldEditorPageContent() {
           newErrors.schema_key = '此狀態 Key 已存在';
         }
       } else {
-        // Check in database
         const exists = await schemaKeyExists(
           worldId,
           user.user_id,
@@ -372,8 +411,7 @@ function WorldEditorPageContent() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmitSchema = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmitSchema = async () => {
     if (!user) return;
 
     const isValid = await validateSchemaForm();
@@ -409,16 +447,13 @@ function WorldEditorPageContent() {
       }
 
       if (isNewWorld) {
-        // In new mode, just update local state
         if (editingSchemaId) {
-          // Edit existing local schema
           setSchemas(schemas.map(s =>
             s.schema_id === editingSchemaId
               ? { ...s, ...data, updated_at: new Date().toISOString() }
               : s
           ));
         } else {
-          // Add new local schema
           const newSchema: WorldStateSchema = {
             schema_id: `temp-${Date.now()}`,
             world_id: 'temp',
@@ -429,648 +464,346 @@ function WorldEditorPageContent() {
           };
           setSchemas([...schemas, newSchema]);
         }
-        resetSchemaForm();
       } else {
-        // In edit mode, save to database
         if (editingSchemaId) {
           await updateSchemaItem(editingSchemaId, user.user_id, data);
         } else {
           await createSchemaItem(worldId, user.user_id, data);
         }
-
         await reloadData();
-        resetSchemaForm();
       }
+      resetSchemaForm();
     } catch (err: any) {
       console.error('Failed to save schema:', err);
       toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
     }
   };
 
-  const handleDeleteSchema = async (schemaId: string, displayName: string) => {
-    if (!user) return;
-
-    if (!confirm(`確定要刪除「${displayName}」嗎？${isNewWorld ? '' : '\n\n此操作無法復原！'}`)) {
-      return;
-    }
+  const handleDeleteSchema = async () => {
+    if (!user || !schemaToDelete) return;
 
     try {
       if (isNewWorld) {
-        // In new mode, just remove from local state
-        setSchemas(schemas.filter(s => s.schema_id !== schemaId));
+        setSchemas(schemas.filter(s => s.schema_id !== schemaToDelete.id));
       } else {
-        // In edit mode, delete from database
-        await deleteSchemaItem(schemaId, user.user_id);
+        await deleteSchemaItem(schemaToDelete.id, user.user_id);
         await reloadData();
       }
+      toast.success('已刪除狀態');
     } catch (err: any) {
       console.error('Failed to delete schema:', err);
       toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setSchemaToDelete(null);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              {isNewWorld ? '新建世界觀' : `編輯世界觀：${world?.name || ''}`}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              {isNewWorld
-                ? '建立一個新的故事世界觀，定義世界的基本設定和狀態種類'
-                : '管理世界觀的基本設定與狀態種類'}
-            </p>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 text-muted-foreground text-sm">
+            <Button variant="ghost" size="sm" onClick={() => router.push('/worlds')}>
+              <ArrowLeft className="mr-2 h-4 w-4" /> 返回列表
+            </Button>
           </div>
-          <button
-            onClick={() => router.push('/worlds')}
-            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-          >
-            ← 返回列表
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-          <nav className="flex space-x-8">
-            <button
-              onClick={() => setActiveTab('basic')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeTab === 'basic'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-            >
-              📝 基本設定
-            </button>
-            <button
-              onClick={() => setActiveTab('states')}
-              className={`pb-4 px-1 border-b-2 font-medium text-sm transition ${activeTab === 'states'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-            >
-              🎯 狀態種類 ({schemas.length})
-            </button>
-          </nav>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'basic' ? (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-              基本設定
-            </h2>
-
-            {/* Name */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                世界觀名稱 *
-              </label>
-              <input
-                type="text"
-                value={basicFormData.name}
-                onChange={(e) => setBasicFormData({ ...basicFormData, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-              />
-              {basicErrors.name && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{basicErrors.name}</p>
-              )}
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                {isNewWorld ? '新建世界觀' : `編輯世界觀：${world?.name || ''}`}
+              </h1>
+              <p className="text-muted-foreground">
+                {isNewWorld
+                  ? '建立一個新的故事世界觀，定義世界的基本設定和狀態種類'
+                  : '管理世界觀的基本設定與狀態種類'}
+              </p>
             </div>
-
-            {/* Description */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                世界描述 *
-              </label>
-              <textarea
-                value={basicFormData.description}
-                onChange={(e) =>
-                  setBasicFormData({ ...basicFormData, description: e.target.value })
-                }
-                rows={4}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-              />
-              {basicErrors.description && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {basicErrors.description}
-                </p>
-              )}
-            </div>
-
-            {/* Rules Text */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                世界規則 *
-              </label>
-              <textarea
-                value={basicFormData.rules_text}
-                onChange={(e) =>
-                  setBasicFormData({ ...basicFormData, rules_text: e.target.value })
-                }
-                rows={8}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white font-mono text-sm"
-              />
-              {basicErrors.rules_text && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                  {basicErrors.rules_text}
-                </p>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div>
-            {/* Add Button */}
-            {!showSchemaForm && (
-              <button
-                onClick={() => setShowSchemaForm(true)}
-                className="mb-6 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-              >
-                + 新增狀態種類
-              </button>
+            {isNewWorld && (
+              <Button onClick={handleCreateWorld} disabled={creatingWorld}>
+                {creatingWorld && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                ✨ 建立世界觀
+              </Button>
             )}
+            {!isNewWorld && (
+              <Button onClick={handleSaveBasic} disabled={savingBasic}>
+                {savingBasic && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Save className="mr-2 h-4 w-4" /> 儲存變更
+              </Button>
+            )}
+          </div>
+        </div>
 
-            {/* Schema Form */}
-            {showSchemaForm && (
-              <form
-                onSubmit={handleSubmitSchema}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6"
-              >
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                  {editingSchemaId ? '編輯' : '新增'}狀態種類
-                </h2>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="basic">基本設定</TabsTrigger>
+            <TabsTrigger value="states">
+              狀態種類
+              <Badge variant="secondary" className="ml-2">{schemas.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
 
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  {/* Schema Key */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      狀態 Key * <span className="text-gray-500">(小寫+底線)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={schemaFormData.schema_key}
-                      onChange={(e) =>
-                        setSchemaFormData({
-                          ...schemaFormData,
-                          schema_key: e.target.value.toLowerCase(),
-                        })
-                      }
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white font-mono"
-                      placeholder="health_points"
-                    />
-                    {schemaErrors.schema_key && (
-                      <p className="mt-1 text-sm text-red-600">{schemaErrors.schema_key}</p>
-                    )}
-                  </div>
-
-                  {/* Display Name */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      顯示名稱 *
-                    </label>
-                    <input
-                      type="text"
-                      value={schemaFormData.display_name}
-                      onChange={(e) =>
-                        setSchemaFormData({ ...schemaFormData, display_name: e.target.value })
-                      }
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                      placeholder="生命值"
-                    />
-                    {schemaErrors.display_name && (
-                      <p className="mt-1 text-sm text-red-600">{schemaErrors.display_name}</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Type */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    資料類型 *
-                  </label>
-                  <select
-                    value={schemaFormData.type}
-                    onChange={(e) =>
-                      setSchemaFormData({
-                        ...schemaFormData,
-                        type: e.target.value as SchemaFieldType,
-                      })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                  >
-                    <option value="text">文字 (text) - 單行文字</option>
-                    <option value="number">數字 (number) - 數值型態</option>
-                    <option value="bool">布林 (bool) - 真/假值</option>
-                    <option value="enum">列舉 (enum) - 多選一</option>
-                    <option value="list_text">文字列表 (list_text) - 多項文字</option>
-                  </select>
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    {schemaFormData.type === 'text' && '適合：名稱、描述等單行文字'}
-                    {schemaFormData.type === 'number' && '適合：生命值、金錢、等級等數值'}
-                    {schemaFormData.type === 'bool' && '適合：是否存活、是否完成任務等真假值'}
-                    {schemaFormData.type === 'enum' && '適合：職業、陣營等固定選項'}
-                    {schemaFormData.type === 'list_text' && '適合：背包物品、已學技能等多項文字列表'}
-                  </p>
-                </div>
-
-                {/* AI Description */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    AI 描述 * <span className="text-gray-500">(給 AI 看的說明)</span>
-                  </label>
-                  <textarea
-                    value={schemaFormData.ai_description}
-                    onChange={(e) =>
-                      setSchemaFormData({ ...schemaFormData, ai_description: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
-                    placeholder="描述這個欄位的意義、如何變化、範圍等..."
+          <TabsContent value="basic" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>基本資訊</CardTitle>
+                <CardDescription>設定世界觀的名稱、背景故事與核心規則。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="world-name">世界觀名稱</Label>
+                  <Input
+                    id="world-name"
+                    placeholder="例如：賽博龐克 2077"
+                    value={basicFormData.name}
+                    onChange={(e) => setBasicFormData({ ...basicFormData, name: e.target.value })}
                   />
-                  {schemaErrors.ai_description && (
-                    <p className="mt-1 text-sm text-red-600">{schemaErrors.ai_description}</p>
+                  {basicErrors.name && <p className="text-sm text-destructive">{basicErrors.name}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="world-desc">世界描述</Label>
+                  <Textarea
+                    id="world-desc"
+                    placeholder="描述這個世界的主要特徵..."
+                    rows={4}
+                    value={basicFormData.description}
+                    onChange={(e) => setBasicFormData({ ...basicFormData, description: e.target.value })}
+                  />
+                  {basicErrors.description && <p className="text-sm text-destructive">{basicErrors.description}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="world-rules">世界規則</Label>
+                  <Textarea
+                    id="world-rules"
+                    placeholder="詳細定義這個世界的運作規則..."
+                    rows={8}
+                    className="font-mono text-sm"
+                    value={basicFormData.rules_text}
+                    onChange={(e) => setBasicFormData({ ...basicFormData, rules_text: e.target.value })}
+                  />
+                  {basicErrors.rules_text && <p className="text-sm text-destructive">{basicErrors.rules_text}</p>}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="states" className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold">狀態種類列表</h2>
+              <Button onClick={() => {
+                resetSchemaForm();
+                setShowSchemaForm(true);
+              }}>
+                <Plus className="mr-2 h-4 w-4" /> 新增狀態種類
+              </Button>
+            </div>
+
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[150px]">Key</TableHead>
+                    <TableHead className="w-[150px]">名稱</TableHead>
+                    <TableHead className="w-[100px]">類型</TableHead>
+                    <TableHead>AI 描述</TableHead>
+                    <TableHead className="w-[120px] text-right">動作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {schemas.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        還沒有設定任何狀態種類
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    schemas.map((schema) => (
+                      <TableRow key={schema.schema_id}>
+                        <TableCell className="font-mono text-xs">{schema.schema_key}</TableCell>
+                        <TableCell>{schema.display_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{schema.type}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-md truncate">
+                          {schema.ai_description}
+                        </TableCell>
+                        <TableCell className="text-right space-x-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditSchema(schema)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setSchemaToDelete({ id: schema.schema_id, name: schema.display_name })}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
                   )}
+                </TableBody>
+              </Table>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Schema Editor Dialog */}
+        <Dialog open={showSchemaForm} onOpenChange={setShowSchemaForm}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingSchemaId ? '編輯' : '新增'}狀態種類</DialogTitle>
+              <DialogDescription>
+                定義角色的屬性、物品或其他狀態。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>狀態 Key (小寫+底線)</Label>
+                  <Input
+                    value={schemaFormData.schema_key}
+                    onChange={(e) => setSchemaFormData({ ...schemaFormData, schema_key: e.target.value.toLowerCase() })}
+                    placeholder="health_points"
+                    className="font-mono"
+                  />
+                  {schemaErrors.schema_key && <p className="text-sm text-destructive">{schemaErrors.schema_key}</p>}
                 </div>
-
-                {/* Default Value (not for list_text) */}
-                {schemaFormData.type !== 'list_text' && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      預設值
-                    </label>
-                    {schemaFormData.type === 'bool' ? (
-                      <select
-                        value={schemaFormData.default_value}
-                        onChange={(e) =>
-                          setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                      >
-                        <option value="">（不設定）</option>
-                        <option value="true">真 (true)</option>
-                        <option value="false">假 (false)</option>
-                      </select>
-                    ) : schemaFormData.type === 'enum' ? (
-                      <select
-                        value={schemaFormData.default_value}
-                        onChange={(e) =>
-                          setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                        disabled={schemaFormData.enum_options.length === 0}
-                      >
-                        <option value="">（不設定）</option>
-                        {schemaFormData.enum_options.map((option, index) => (
-                          <option key={index} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={schemaFormData.default_value}
-                        onChange={(e) =>
-                          setSchemaFormData({ ...schemaFormData, default_value: e.target.value })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                        placeholder={
-                          schemaFormData.type === 'number'
-                            ? '100'
-                            : '預設文字'
-                        }
-                      />
-                    )}
-                    {schemaFormData.type === 'enum' && schemaFormData.enum_options.length === 0 && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        請先在上方新增列舉選項
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Number Constraints */}
-                {schemaFormData.type === 'number' && (
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        最小值
-                      </label>
-                      <input
-                        type="number"
-                        value={schemaFormData.number_min ?? ''}
-                        onChange={(e) =>
-                          setSchemaFormData({
-                            ...schemaFormData,
-                            number_min: e.target.value ? Number(e.target.value) : undefined,
-                          })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        最大值
-                      </label>
-                      <input
-                        type="number"
-                        value={schemaFormData.number_max ?? ''}
-                        onChange={(e) =>
-                          setSchemaFormData({
-                            ...schemaFormData,
-                            number_max: e.target.value ? Number(e.target.value) : undefined,
-                          })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        步進值
-                      </label>
-                      <input
-                        type="number"
-                        value={schemaFormData.number_step ?? 1}
-                        onChange={(e) =>
-                          setSchemaFormData({
-                            ...schemaFormData,
-                            number_step: e.target.value ? Number(e.target.value) : 1,
-                          })
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Enum Options */}
-                {schemaFormData.type === 'enum' && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      列舉選項 * <span className="text-gray-500">(至少兩個)</span>
-                    </label>
-                    {schemaFormData.enum_options.map((option, index) => (
-                      <div key={index} className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          value={option}
-                          onChange={(e) => {
-                            const newOptions = [...schemaFormData.enum_options];
-                            newOptions[index] = e.target.value;
-                            setSchemaFormData({ ...schemaFormData, enum_options: newOptions });
-                          }}
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          placeholder={`選項 ${index + 1}`}
-                        />
-                        {index > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newOptions = schemaFormData.enum_options.filter(
-                                (_, i) => i !== index
-                              );
-                              setSchemaFormData({ ...schemaFormData, enum_options: newOptions });
-                            }}
-                            className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                          >
-                            刪除
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSchemaFormData({
-                          ...schemaFormData,
-                          enum_options: [...schemaFormData.enum_options, ''],
-                        })
-                      }
-                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
-                    >
-                      + 新增選項
-                    </button>
-                    {schemaErrors.enum_options && (
-                      <p className="mt-1 text-sm text-red-600">{schemaErrors.enum_options}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* List Text Items */}
-                {schemaFormData.type === 'list_text' && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      預設項目 <span className="text-gray-500">(可選，可新增多個)</span>
-                    </label>
-                    {schemaFormData.list_text_items.map((item, index) => (
-                      <div key={index} className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          value={item}
-                          onChange={(e) => {
-                            const newItems = [...schemaFormData.list_text_items];
-                            newItems[index] = e.target.value;
-                            setSchemaFormData({ ...schemaFormData, list_text_items: newItems });
-                          }}
-                          className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                          placeholder={`項目 ${index + 1}`}
-                        />
-                        {schemaFormData.list_text_items.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newItems = schemaFormData.list_text_items.filter(
-                                (_, i) => i !== index
-                              );
-                              setSchemaFormData({ ...schemaFormData, list_text_items: newItems });
-                            }}
-                            className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                          >
-                            刪除
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSchemaFormData({
-                          ...schemaFormData,
-                          list_text_items: [...schemaFormData.list_text_items, ''],
-                        })
-                      }
-                      className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
-                    >
-                      + 新增項目
-                    </button>
-                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      提示：例如設定「長劍」、「治療藥水」等預設物品
-                    </p>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-4">
-                  <button
-                    type="button"
-                    onClick={resetSchemaForm}
-                    className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    {editingSchemaId ? '儲存變更' : '新增'}
-                  </button>
+                <div className="space-y-2">
+                  <Label>顯示名稱</Label>
+                  <Input
+                    value={schemaFormData.display_name}
+                    onChange={(e) => setSchemaFormData({ ...schemaFormData, display_name: e.target.value })}
+                    placeholder="生命值"
+                  />
+                  {schemaErrors.display_name && <p className="text-sm text-destructive">{schemaErrors.display_name}</p>}
                 </div>
-              </form>
-            )}
-
-            {/* Schema List */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  已設定的狀態種類
-                </h2>
               </div>
 
-              {schemas.length === 0 ? (
-                <div className="p-12 text-center text-gray-500 dark:text-gray-400">
-                  還沒有設定任何狀態種類
-                  <br />
-                  <span className="text-sm">
-                    狀態種類用於追蹤角色、物品等在故事中的各種狀態
-                  </span>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {schemas.map((schema) => (
-                    <div
-                      key={schema.schema_id}
-                      className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="font-mono text-sm bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                              {schema.schema_key}
-                            </span>
-                            <span className="font-semibold text-gray-900 dark:text-white">
-                              {schema.display_name}
-                            </span>
-                            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
-                              {schema.type === 'text'
-                                ? '文字'
-                                : schema.type === 'number'
-                                  ? '數字'
-                                  : schema.type === 'bool'
-                                    ? '布林'
-                                    : schema.type === 'enum'
-                                      ? '列舉'
-                                      : '文字列表'}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                            {schema.ai_description}
-                          </p>
-                          {schema.default_value_json && (
-                            <p className="text-xs text-gray-500 dark:text-gray-500">
-                              預設值：{schema.default_value_json}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEditSchema(schema)}
-                            className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
-                          >
-                            編輯
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleDeleteSchema(schema.schema_id, schema.display_name)
-                            }
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                          >
-                            刪除
-                          </button>
-                        </div>
-                      </div>
+              <div className="space-y-2">
+                <Label>資料類型</Label>
+                <Select
+                  value={schemaFormData.type}
+                  onValueChange={(val: SchemaFieldType) => setSchemaFormData({ ...schemaFormData, type: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">文字 (text)</SelectItem>
+                    <SelectItem value="number">數字 (number)</SelectItem>
+                    <SelectItem value="bool">布林 (bool)</SelectItem>
+                    <SelectItem value="enum">列舉 (enum)</SelectItem>
+                    <SelectItem value="list_text">文字列表 (list_text)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>AI 描述</Label>
+                <Textarea
+                  value={schemaFormData.ai_description}
+                  onChange={(e) => setSchemaFormData({ ...schemaFormData, ai_description: e.target.value })}
+                  placeholder="描述這個欄位的意義..."
+                />
+                {schemaErrors.ai_description && <p className="text-sm text-destructive">{schemaErrors.ai_description}</p>}
+              </div>
+
+              {/* Dynamic Fields based on Type */}
+              {schemaFormData.type === 'enum' && (
+                <div className="space-y-2 border p-4 rounded-md">
+                  <Label>列舉選項</Label>
+                  {schemaFormData.enum_options.map((opt, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <Input
+                        value={opt}
+                        onChange={(e) => {
+                          const newOpts = [...schemaFormData.enum_options];
+                          newOpts[idx] = e.target.value;
+                          setSchemaFormData({ ...schemaFormData, enum_options: newOpts });
+                        }}
+                      />
+                      <Button variant="outline" size="icon" onClick={() => {
+                        const newOpts = schemaFormData.enum_options.filter((_, i) => i !== idx);
+                        setSchemaFormData({ ...schemaFormData, enum_options: newOpts });
+                      }}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
+                  <Button variant="secondary" size="sm" onClick={() => setSchemaFormData({ ...schemaFormData, enum_options: [...schemaFormData.enum_options, ''] })}>
+                    + 新增選項
+                  </Button>
+                  {schemaErrors.enum_options && <p className="text-sm text-destructive">{schemaErrors.enum_options}</p>}
+                </div>
+              )}
+
+              {/* Number Constraint Fields */}
+              {schemaFormData.type === 'number' && (
+                <div className="grid grid-cols-3 gap-2 border p-4 rounded-md">
+                  <div className="space-y-1">
+                    <Label>最小值</Label>
+                    <Input type="number" value={schemaFormData.number_min ?? ''} onChange={(e) => setSchemaFormData({ ...schemaFormData, number_min: e.target.value ? Number(e.target.value) : undefined })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>最大值</Label>
+                    <Input type="number" value={schemaFormData.number_max ?? ''} onChange={(e) => setSchemaFormData({ ...schemaFormData, number_max: e.target.value ? Number(e.target.value) : undefined })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>步進</Label>
+                    <Input type="number" value={schemaFormData.number_step ?? 1} onChange={(e) => setSchemaFormData({ ...schemaFormData, number_step: e.target.value ? Number(e.target.value) : 1 })} />
+                  </div>
+                </div>
+              )}
+
+              {schemaFormData.type !== 'list_text' && (
+                <div className="space-y-2">
+                  <Label>預設值</Label>
+                  <Input
+                    value={schemaFormData.default_value}
+                    onChange={(e) => setSchemaFormData({ ...schemaFormData, default_value: e.target.value })}
+                    placeholder={schemaFormData.type === 'number' ? '100' : '預設內容'}
+                  />
                 </div>
               )}
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowSchemaForm(false)}>取消</Button>
+              <Button onClick={handleSubmitSchema}>{editingSchemaId ? '儲存' : '新增'}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Save/Cancel Buttons (only in edit mode) */}
-        {!isNewWorld && (
-          <div className="mt-6 flex justify-end gap-4">
-            <button
-              onClick={() => router.push('/worlds')}
-              className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-            >
-              取消
-            </button>
-            <button
-              onClick={handleSaveBasic}
-              disabled={savingBasic}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400"
-            >
-              {savingBasic ? '儲存中...' : '儲存變更'}
-            </button>
-          </div>
-        )}
+        {/* Delete Schema Alert */}
+        <AlertDialog open={!!schemaToDelete} onOpenChange={(open) => !open && setSchemaToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>確定要刪除此狀態種類嗎？</AlertDialogTitle>
+              <AlertDialogDescription>
+                您正在刪除「{schemaToDelete?.name}」。
+                此操作無法復原。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteSchema} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                確認刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-        {/* Create World Button (only in new mode) */}
-        {isNewWorld && (
-          <div className="mt-8 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                  準備好建立世界觀了嗎？
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {schemas.length > 0
-                    ? `已設定 ${schemas.length} 個狀態種類，點擊建立按鈕即可完成！`
-                    : '您可以先設定狀態種類，也可以稍後再添加。'}
-                </p>
-              </div>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => router.push('/worlds')}
-                  className="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleCreateWorld}
-                  disabled={creatingWorld}
-                  className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 font-semibold"
-                >
-                  {creatingWorld ? '建立中...' : '✨ 建立世界觀'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 

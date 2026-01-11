@@ -2,12 +2,29 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Story } from '@/types';
 import { getStories, deleteStory } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
 import { toast } from 'sonner';
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, BookOpen, Play, Trash2, Calendar, Globe } from 'lucide-react';
 
 interface StoryWithWorld extends Story {
   world_name?: string;
@@ -18,7 +35,9 @@ function StoriesPageContent() {
   const router = useRouter();
   const [stories, setStories] = useState<StoryWithWorld[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'ended'>('all');
+  const [filter, setFilter] = useState<string>('all');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [storyToDelete, setStoryToDelete] = useState<{ id: string, title: string } | null>(null);
 
   // Load stories with cancellation support to prevent race conditions
   useEffect(() => {
@@ -105,20 +124,24 @@ function StoriesPageContent() {
     }
   };
 
-  const handleDelete = async (storyId: string, title: string) => {
-    if (!user) return;
+  const confirmDelete = (storyId: string, title: string) => {
+    setStoryToDelete({ id: storyId, title });
+  };
 
-    if (!confirm(`確定要刪除故事「${title}」嗎？\n\n刪除後將無法復原，包含所有回合記錄、角色狀態和關係數據。`)) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!user || !storyToDelete) return;
 
     try {
-      await deleteStory(storyId, user.user_id);
+      setDeletingId(storyToDelete.id);
+      await deleteStory(storyToDelete.id, user.user_id);
+      await loadStories();
       toast.success('刪除成功！');
-      loadStories();
     } catch (err: any) {
       console.error('Failed to delete story:', err);
       toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setDeletingId(null);
+      setStoryToDelete(null);
     }
   };
 
@@ -130,7 +153,7 @@ function StoriesPageContent() {
   const getStoryModeLabel = (mode: string) => {
     switch (mode) {
       case 'PLAYER_CHARACTER':
-        return '玩家角色模式';
+        return '角色扮演';
       case 'DIRECTOR':
         return '導演模式';
       default:
@@ -138,190 +161,147 @@ function StoriesPageContent() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    if (status === 'active') {
-      return (
-        <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 rounded">
-          進行中
-        </span>
-      );
-    } else {
-      return (
-        <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 rounded">
-          已結束
-        </span>
-      );
-    }
-  };
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Back Button */}
-        <div className="mb-6">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-          >
-            ← 返回主選單
-          </button>
-        </div>
+    <div className="min-h-screen bg-background">
+      <AppHeader />
 
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">我的故事</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight">我的故事</h1>
+            <p className="text-muted-foreground">
               管理你的互動故事，開始新的冒險
             </p>
           </div>
-          <button
-            onClick={() => router.push('/stories/new')}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
-          >
-            ✨ 創建新故事
-          </button>
+          <Link href="/stories/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              創建新故事
+            </Button>
+          </Link>
         </div>
 
-        {/* Filter */}
-        {stories.length > 0 && (
-          <div className="mb-6 flex gap-2">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg transition ${filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-            >
-              全部 ({stories.length})
-            </button>
-            <button
-              onClick={() => setFilter('active')}
-              className={`px-4 py-2 rounded-lg transition ${filter === 'active'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-            >
-              進行中 ({stories.filter((s) => s.status === 'active').length})
-            </button>
-            <button
-              onClick={() => setFilter('ended')}
-              className={`px-4 py-2 rounded-lg transition ${filter === 'ended'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-            >
-              已結束 ({stories.filter((s) => s.status === 'ended').length})
-            </button>
-          </div>
-        )}
+        {/* Filters */}
+        <Tabs defaultValue="all" value={filter} onValueChange={setFilter} className="w-full">
+          <TabsList>
+            <TabsTrigger value="all">全部 ({stories.length})</TabsTrigger>
+            <TabsTrigger value="active">進行中 ({stories.filter(s => s.status === 'active').length})</TabsTrigger>
+            <TabsTrigger value="ended">已結束 ({stories.filter(s => s.status === 'ended').length})</TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         {/* Stories List */}
         {filteredStories.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
-            <div className="text-6xl mb-4">📖</div>
-            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              {filter === 'all' ? '還沒有故事' : `沒有${filter === 'active' ? '進行中' : '已結束'}的故事`}
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+            <div className="p-4 rounded-full bg-primary/10 mb-4">
+              <BookOpen className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-2">
+              {filter === 'all' ? '還沒有故事' : `沒有${filter === 'active' ? '進行' : '結束'}的故事`}
+            </h2>
+            <p className="text-muted-foreground mb-6 max-w-sm">
               {filter === 'all'
                 ? '點擊「創建新故事」按鈕開始你的第一個互動故事'
                 : '試試切換到其他篩選條件'}
             </p>
             {filter === 'all' && (
-              <button
-                onClick={() => router.push('/stories/new')}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
-              >
-                ✨ 創建新故事
-              </button>
+              <Link href="/stories/new">
+                <Button>開始冒險</Button>
+              </Link>
             )}
-          </div>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredStories.map((story) => (
-              <div
-                key={story.story_id}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden"
-              >
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex-1 pr-2">
-                      {story.title}
-                    </h3>
-                    {getStatusBadge(story.status)}
+              <Card key={story.story_id} className="flex flex-col hover:shadow-lg transition-shadow overflow-hidden">
+                <CardHeader>
+                  <div className="flex justify-between items-start gap-2">
+                    <CardTitle className="line-clamp-1 leading-tight">{story.title}</CardTitle>
+                    <Badge variant={story.status === 'active' ? 'default' : 'secondary'} className={story.status === 'active' ? 'bg-green-600 hover:bg-green-700' : ''}>
+                      {story.status === 'active' ? '進行中' : '已結束'}
+                    </Badge>
                   </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                      <span className="font-medium mr-2">世界觀:</span>
-                      <span>{story.world_name}</span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                      <span className="font-medium mr-2">模式:</span>
-                      <span>{getStoryModeLabel(story.story_mode)}</span>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                      <span className="font-medium mr-2">回合數:</span>
-                      <span>{story.turn_count || 0}</span>
-                    </div>
-                  </div>
-
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                  <CardDescription className="flex items-center gap-2 text-xs mt-1">
+                    <span className="flex items-center">
+                      <Globe className="mr-1 h-3 w-3" />
+                      {story.world_name}
+                    </span>
+                    <span>•</span>
+                    <span>{getStoryModeLabel(story.story_mode)}</span>
+                    <span>•</span>
+                    <span>{story.turn_count || 0} 回合</span>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  <p className="text-sm text-muted-foreground line-clamp-3">
                     {story.premise_text}
                   </p>
-
-                  <div className="flex gap-2">
-                    {story.status === 'active' && (
-                      <button
-                        onClick={() => router.push(`/stories/${story.story_id}/play`)}
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-                      >
-                        繼續遊玩
-                      </button>
+                </CardContent>
+                <CardFooter className="flex gap-2 pt-4 border-t bg-muted/20">
+                  {story.status === 'active' && (
+                    <Link href={`/stories/${story.story_id}/play`} className="flex-1">
+                      <Button className="w-full">
+                        <Play className="mr-2 h-4 w-4" />
+                        繼續
+                      </Button>
+                    </Link>
+                  )}
+                  <Link href={`/stories/${story.story_id}`} className={story.status === 'active' ? '' : 'flex-1'}>
+                    <Button variant="outline" className="w-full">
+                      詳情
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => confirmDelete(story.story_id, story.title)}
+                    disabled={deletingId === story.story_id}
+                  >
+                    {deletingId === story.story_id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
                     )}
-                    <button
-                      onClick={() => router.push(`/stories/${story.story_id}`)}
-                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                    >
-                      查看詳情
-                    </button>
-                    <button
-                      onClick={() => handleDelete(story.story_id, story.title)}
-                      className="px-4 py-2 border border-red-300 dark:border-red-600 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-                      title="刪除故事"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-
-                <div className="px-6 py-3 bg-gray-50 dark:bg-gray-700/50 text-xs text-gray-500 dark:text-gray-400">
-                  最後更新: {new Date(story.updated_at).toLocaleDateString('zh-TW', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </div>
-              </div>
+                  </Button>
+                </CardFooter>
+              </Card>
             ))}
           </div>
         )}
-      </div>
-    </main>
+
+        <AlertDialog open={!!storyToDelete} onOpenChange={(open) => !open && setStoryToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>確定要刪除故事嗎？</AlertDialogTitle>
+              <AlertDialogDescription>
+                您正在刪除「{storyToDelete?.title}」。
+                刪除後將無法復原，包含所有回合記錄、角色狀態和關係數據。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                確認刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+      </main>
+    </div>
   );
 }
 

@@ -2,11 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { World } from '@/types';
 import { getWorldsByUserId, deleteWorld } from '@/services/supabase/worlds';
 import { toast } from 'sonner';
+import { AppHeader } from '@/components/app-header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, Globe, Edit, Trash2, Calendar } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 function WorldsPageContent() {
   const { user } = useAuth();
@@ -15,13 +31,13 @@ function WorldsPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [worldToDelete, setWorldToDelete] = useState<{ id: string, name: string } | null>(null);
 
   // Load worlds with cancellation support to prevent race conditions
   useEffect(() => {
     let cancelled = false;
 
     const fetchWorlds = async () => {
-      // 如果沒有 user_id，設定 loading = false 並返回
       if (!user?.user_id) {
         setLoading(false);
         return;
@@ -51,7 +67,6 @@ function WorldsPageContent() {
     };
   }, [user?.user_id]);
 
-  // Reload worlds function for use after updates
   const loadWorlds = async () => {
     if (!user?.user_id) return;
 
@@ -68,144 +83,143 @@ function WorldsPageContent() {
     }
   };
 
-  const handleDelete = async (worldId: string, worldName: string) => {
-    if (!user) return;
+  const confirmDelete = (worldId: string, worldName: string) => {
+    setWorldToDelete({ id: worldId, name: worldName });
+  };
 
-    if (!confirm(`確定要刪除世界觀「${worldName}」嗎？\n\n此操作將同時刪除該世界的所有 Schema 設定、相關故事和資料。\n\n此操作無法復原！`)) {
-      return;
-    }
+  const handleDelete = async () => {
+    if (!user || !worldToDelete) return;
 
     try {
-      setDeletingId(worldId);
-      await deleteWorld(worldId, user.user_id);
+      setDeletingId(worldToDelete.id);
+      await deleteWorld(worldToDelete.id, user.user_id);
       await loadWorlds();
+      toast.success(`已刪除世界觀「${worldToDelete.name}」`);
     } catch (err: any) {
       console.error('Failed to delete world:', err);
       toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setDeletingId(null);
+      setWorldToDelete(null);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">載入中...</p>
-        </div>
+      <div className="min-h-screen bg-background">
+        <AppHeader />
+        <main className="container mx-auto px-4 py-8 flex justify-center items-center h-[calc(100vh-4rem)]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+
+      <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition"
-            >
-              ← 返回主選單
-            </button>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold tracking-tight">我的世界觀</h1>
+            <p className="text-muted-foreground">
+              管理您的故事世界觀設定
+            </p>
           </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                我的世界觀
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                管理您的故事世界觀設定
-              </p>
-            </div>
-            <button
-              onClick={() => router.push('/worlds/new')}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-            >
-              + 新建世界觀
-            </button>
-          </div>
+          <Link href="/worlds/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              新建世界觀
+            </Button>
+          </Link>
         </div>
 
         {/* Error Message */}
         {error && (
-          <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <p className="text-red-800 dark:text-red-300">{error}</p>
-          </div>
+          <Alert variant="destructive">
+            <AlertTitle>錯誤</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
         {/* Worlds List */}
         {worlds.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
-            <div className="text-6xl mb-4">🌍</div>
-            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2">
-              還沒有世界觀
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+            <div className="p-4 rounded-full bg-primary/10 mb-4">
+              <Globe className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-2xl font-semibold mb-2">還沒有世界觀</h2>
+            <p className="text-muted-foreground mb-6 max-w-sm">
               建立您的第一個世界觀，開始創作故事吧！
             </p>
-            <button
-              onClick={() => router.push('/worlds/new')}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-            >
-              開始建立
-            </button>
-          </div>
+            <Link href="/worlds/new">
+              <Button>開始建立</Button>
+            </Link>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {worlds.map((world) => (
-              <div
-                key={world.world_id}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden hover:shadow-lg transition"
-              >
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                    {world.name}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">
+              <Card key={world.world_id} className="flex flex-col hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <CardTitle className="line-clamp-1">{world.name}</CardTitle>
+                  <CardDescription className="line-clamp-3 h-[4.5em]">
                     {world.description || '尚無描述'}
-                  </p>
-
-                  {/* Stats */}
-                  <div className="text-sm text-gray-500 dark:text-gray-500 mb-4">
-                    <div>建立時間：{new Date(world.created_at).toLocaleDateString()}</div>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  <div className="flex items-center text-xs text-muted-foreground" suppressHydrationWarning>
+                    <Calendar className="mr-1 h-3 w-3" />
+                    建立於 {new Date(world.created_at).toLocaleDateString()}
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => router.push(`/worlds/${world.world_id}`)}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                      編輯設定
-                    </button>
-                    <button
-                      onClick={() => handleDelete(world.world_id, world.name)}
-                      disabled={deletingId === world.world_id}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-gray-400"
-                    >
-                      {deletingId === world.world_id ? '...' : '刪除'}
-                    </button>
-                  </div>
-                </div>
-              </div>
+                </CardContent>
+                <CardFooter className="flex gap-2 pt-4 border-t">
+                  <Link href={`/worlds/${world.world_id}`} className="flex-1">
+                    <Button variant="outline" className="w-full">
+                      <Edit className="mr-2 h-4 w-4" />
+                      編輯
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={() => confirmDelete(world.world_id, world.name)}
+                    disabled={deletingId === world.world_id}
+                  >
+                    {deletingId === world.world_id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
             ))}
           </div>
         )}
 
-        {/* Back to Dashboard */}
-        <div className="mt-8 text-center">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            ← 返回 Dashboard
-          </button>
-        </div>
-      </div>
-    </main>
+        <AlertDialog open={!!worldToDelete} onOpenChange={(open) => !open && setWorldToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>確定要刪除世界觀嗎？</AlertDialogTitle>
+              <AlertDialogDescription>
+                您正在刪除「{worldToDelete?.name}」。
+                此操作將同時刪除該世界的所有 Schema 設定、相關故事和資料。
+                此操作無法復原！
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                確認刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+      </main>
+    </div>
   );
 }
 

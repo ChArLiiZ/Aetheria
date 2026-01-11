@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import Button from '@/components/ui/Button';
+import Button from '@/components/ui-legacy/Button';
 
 export interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   isOpen: boolean;
@@ -81,8 +81,8 @@ const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
             isMobile && mobileBehavior === 'overlay'
               ? 'fixed inset-y-0 z-50'
               : isMobile && mobileBehavior === 'push'
-              ? 'fixed inset-y-0 z-50'
-              : '',
+                ? 'fixed inset-y-0 z-50'
+                : '',
             // Desktop
             !isMobile && 'relative',
             // Position
@@ -91,8 +91,8 @@ const Sidebar = React.forwardRef<HTMLDivElement, SidebarProps>(
                 ? 'right-0 border-l'
                 : 'border-l'
               : isMobile
-              ? 'left-0 border-r'
-              : 'border-r',
+                ? 'left-0 border-r'
+                : 'border-r',
             // Width
             isMobile ? 'w-full sm:w-80' : widths[width],
             className
