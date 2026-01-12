@@ -179,3 +179,15 @@ export interface TokenUsage {
   completion_tokens?: number;
   total_tokens?: number;
 }
+
+// ==================== Story Summary ====================
+
+export interface StorySummary {
+  summary_id: string;
+  story_id: string;
+  user_id: string;
+  generated_at_turn: number;
+  summary_text: string;
+  created_at: string;
+}
+

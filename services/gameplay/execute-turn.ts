@@ -23,6 +23,7 @@ import type {
 } from '@/types/api/agents';
 
 import { callStoryAgent } from '@/services/agents/story-agent';
+import { callSummaryAgent } from '@/services/agents/summary-agent';
 import { getStoryTurns, createStoryTurn, markTurnAsError } from '@/services/supabase/story-turns';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
@@ -31,6 +32,7 @@ import { getWorldById } from '@/services/supabase/worlds';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 import { updateStory } from '@/services/supabase/stories';
 import { createChangeLogs, ChangeLogInsert } from '@/services/supabase/change-log';
+import { getLatestSummaryForTurn, createStorySummary } from '@/services/supabase/story-summaries';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
@@ -60,20 +62,23 @@ async function buildStoryAgentInput(
   story: Story,
   userInput: string,
   userId: string,
-  contextTurns: number
+  contextTurns: number,
+  currentTurnIndex: number
 ): Promise<StoryAgentInput> {
   console.log('[buildStoryAgentInput] 開始取得所有必要資料...');
 
-  // Fetch all required data in parallel
-  const [world, storyCharacters, recentTurns, stateValues, worldSchema] =
+  // Fetch all required data in parallel (including applicable summary)
+  const [world, storyCharacters, recentTurns, stateValues, worldSchema, applicableSummary] =
     await Promise.all([
       getWorldById(story.world_id, userId),
       getStoryCharacters(story.story_id, userId),
       getStoryTurns(story.story_id, userId),
       getAllStateValuesForStory(story.story_id, userId),
       getSchemaByWorldId(story.world_id, userId),
+      getLatestSummaryForTurn(story.story_id, currentTurnIndex, userId),
     ]);
   console.log('[buildStoryAgentInput] 所有平行查詢完成');
+  console.log('[buildStoryAgentInput] 適用摘要:', applicableSummary ? `回合 ${applicableSummary.generated_at_turn}` : '無');
 
   if (!world) {
     throw new Error('World not found');
@@ -158,6 +163,7 @@ async function buildStoryAgentInput(
   console.log('  - 角色數量:', characters.length);
   console.log('  - 狀態 Schema 數量:', schemaContexts.length);
   console.log('  - 最近回合數:', recentTurnContexts.length);
+  console.log('  - 摘要:', applicableSummary ? '有' : '無');
 
   if (characters.length === 0) {
     console.warn('[buildStoryAgentInput] 警告：沒有角色！');
@@ -176,6 +182,7 @@ async function buildStoryAgentInput(
     current_states: currentStates,
     recent_turns: recentTurnContexts,
     user_input: userInput,
+    story_summary: applicableSummary?.summary_text,
   };
 }
 
@@ -327,7 +334,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
 
   // Step 1: Build and call story agent (單次 API 呼叫)
   console.log('[executeTurn] 步驟 1: 建構 Story Agent 輸入...');
-  const storyAgentInput = await buildStoryAgentInput(story, userInput, userId, effectiveContextTurns);
+  const storyAgentInput = await buildStoryAgentInput(story, userInput, userId, effectiveContextTurns, nextTurnIndex);
   console.log('[executeTurn] 步驟 1a 完成: 輸入已建構');
 
   console.log('[executeTurn] 步驟 1b: 呼叫 Story Agent...');
@@ -368,6 +375,55 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
   await updateStory(story.story_id, userId, {
     turn_count: nextTurnIndex,
   });
+
+  // Step 6: Check if we need to generate a new summary
+  // 在回合數達到上下文窗口倍數時觸發摘要生成
+  const shouldGenerateSummary = nextTurnIndex > 0 && nextTurnIndex % effectiveContextTurns === 0;
+
+  if (shouldGenerateSummary) {
+    console.log(`[executeTurn] 步驟 6: 觸發摘要生成（回合 ${nextTurnIndex}）...`);
+    try {
+      // 取得需要摘要的回合（上一次摘要之後到現在的所有回合）
+      const latestSummary = await getLatestSummaryForTurn(story.story_id, nextTurnIndex + 1, userId);
+      const summaryStartTurn = latestSummary ? latestSummary.generated_at_turn : 0;
+
+      // 篩選需要摘要的回合
+      const turnsToSummarize = currentTurns
+        .filter(t => t.turn_index > summaryStartTurn && t.turn_index <= nextTurnIndex)
+        .map(t => ({
+          turn_index: t.turn_index,
+          user_input: t.user_input_text,
+          narrative: t.narrative_text,
+        }));
+
+      // 加入剛完成的這個回合
+      turnsToSummarize.push({
+        turn_index: nextTurnIndex,
+        user_input: userInput,
+        narrative: agentOutput.narrative,
+      });
+
+      if (turnsToSummarize.length > 0) {
+        const newSummary = await callSummaryAgent(
+          apiKey,
+          selectedModel,
+          latestSummary?.summary_text,
+          turnsToSummarize
+        );
+
+        await createStorySummary(userId, {
+          story_id: story.story_id,
+          generated_at_turn: nextTurnIndex,
+          summary_text: newSummary,
+        });
+
+        console.log(`[executeTurn] 步驟 6 完成: 摘要已生成並儲存`);
+      }
+    } catch (summaryError) {
+      // 摘要生成失敗不應該中斷主流程
+      console.error('[executeTurn] 摘要生成失敗（不影響主流程）:', summaryError);
+    }
+  }
 
   console.log('[executeTurn] 回合執行完成！');
 

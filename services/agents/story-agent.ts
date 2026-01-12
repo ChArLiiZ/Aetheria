@@ -29,6 +29,11 @@ ${world_rules}
 # Story Prompt
 ${story_prompt}
 
+${input.story_summary ? `# 故事摘要（前情提要）
+以下是故事至今的摘要，請參考以保持劇情連貫性：
+
+${input.story_summary}
+` : ''}
 # Story Mode
 ${story_mode === 'PLAYER_CHARACTER'
             ? `Player Character Mode: The player controls one specific character${playerCharacter ? ` (${playerCharacter.display_name})` : ''}. 

@@ -14,6 +14,8 @@ export interface StoryAgentInput {
   current_states: CurrentStateContext[];
   recent_turns: RecentTurnContext[];
   user_input: string;
+  /** 滾動摘要（前情提要） */
+  story_summary?: string;
 }
 
 /**
