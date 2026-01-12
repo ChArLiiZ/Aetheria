@@ -48,3 +48,6 @@ next-env.d.ts
 **/public/worker-*.js.map
 
 /.agent
+
+# Test account
+test_account.txt
