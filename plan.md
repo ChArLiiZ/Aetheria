@@ -21,7 +21,6 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - **Story（故事）**：一次遊玩實例，綁定 1 個世界觀 + 多個角色
 - **StoryCharacter（故事角色）**：角色在特定故事中的實例
 - **Turn（回合）**：玩家輸入 → AI 生成敘述 → 狀態變更的最小單位
-- **Relationship（關係）**：角色間的關係狀態（分數 + 標籤）
  
 ### 遊戲模式
 - **PLAYER_CHARACTER 模式**：玩家控制一個特定角色
@@ -133,74 +132,52 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
   - 預填預設值
   - 支援所有狀態類型的編輯
  
-#### ✅ 關係系統
-- [x] 關係 CRUD（`services/supabase/story-relationships.ts`）
-  - 設定角色間關係
-  - 更新關係分數
-  - 更新關係標籤
-  - 刪除關係
- 
 ---
  
 ### 🟢 Phase 3: 核心遊戲迴圈 [100%]
  
-#### ✅ AI Agent 系統
- 
-**Narrative Agent**（`services/agents/narrative-agent.ts`）
-- [x] 生成故事敘述與角色對話
+#### ✅ AI Agent 系統（簡化版本 v0.9.2）
+
+**Story Agent**（`services/agents/story-agent.ts`）
+- [x] 合併版 Agent - 單次 API 呼叫處理敘事和狀態變更
+- [x] 生成故事敘述與角色對話（對話使用 Markdown 引用區塊格式）
+- [x] 分析敘述並決定狀態變更
 - [x] System Prompt 包含：
   - 世界規則
   - 故事設定
   - 遊戲模式（PLAYER_CHARACTER / DIRECTOR）
   - 所有角色資訊（核心設定 + 當前狀態 + `is_player` 標記）
-  - 角色關係
-- [x] 玩家角色識別：使用 `story_characters.is_player` 欄位
-- [x] 對話歷史上下文（最近 5 回合）
+  - 世界狀態 Schema
+  - 當前狀態值
+- [x] 對話歷史上下文（可設定回合數，預設 5 回合）
 - [x] 繁體中文輸出
 - [x] JSON 格式輸出：
   ```json
   {
-    "narrative": "敘述文字",
-    "dialogue": [{"speaker_story_character_id": "xxx", "text": "對話"}],
-    "scene_tags": ["標籤"],
-    "system_notes": ["狀態變更提示"]
+    "narrative": "敘述文字（對話使用 > **角色名**：「對話」格式）",
+    "state_changes": [{"target_story_character_id": "xxx", "schema_key": "hp", "op": "set"|"inc", "value": 10, "reason": "原因"}],
+    "list_ops": [{"target_story_character_id": "xxx", "schema_key": "inventory", "op": "push"|"remove"|"set", "value": "物品", "reason": "原因"}]
   }
   ```
-- [x] 參數：temperature: 0.8（較高創造力）
- 
-**State Delta Agent**（`services/agents/state-delta-agent.ts`）
-- [x] 分析敘述並決定狀態變更
-- [x] System Prompt 包含：
-  - 世界狀態 Schema 定義
-  - 當前所有狀態值
-  - 當前關係
-- [x] 讀取 Narrative Agent 的 system_notes
-- [x] JSON 格式輸出：
-  ```json
-  {
-    "changes": [{"target_story_character_id": "xxx", "schema_key": "hp", "op": "inc", "value": -10, "reason": "原因"}],
-    "list_ops": [{"target_story_character_id": "xxx", "schema_key": "inventory", "op": "push", "value": "物品", "reason": "原因"}],
-    "relationship_changes": [...]
-  }
-  ```
-- [x] 參數：temperature: 0.3（較低溫度，更確定性）
- 
+- [x] 參數：temperature: 0.7（可在設定面板調整）
+
+> [!NOTE]
+> 舊版 Narrative Agent 和 State Delta Agent 已於 v0.9.2 合併為單一 Story Agent，減少 API 呼叫次數。
+
 **回合執行協調**（`services/gameplay/execute-turn.ts`）
-- [x] 完整的回合執行流程：
-  1. 收集上下文（世界、角色、狀態、關係、歷史）
-  2. 呼叫 Narrative Agent
-  3. 呼叫 State Delta Agent
-  4. 套用狀態變更
-  5. 儲存回合記錄
+- [x] 簡化的回合執行流程：
+  1. 收集上下文（世界、角色、狀態、歷史）
+  2. 呼叫 Story Agent（單次 API 呼叫）
+  3. 套用狀態變更
+  4. 儲存回合記錄
 - [x] 狀態變更套用：
   - 數字：set（設定）、inc（增減）
   - 文字/布林/列舉：set
   - 列表：push（新增）、remove（移除）、set（替換）
-  - 關係：set_score、inc_score、add/remove tags
 - [x] 自動約束檢查：
   - 數字限制在 min/max 範圍
-  - 關係分數限制在 -100 到 100
 - [x] 並行資料載入優化
+- [x] 可設定的上下文回合數（預設 5，每個故事可覆寫）
  
 #### ✅ 回合記錄系統
 - [x] 回合 CRUD（`services/supabase/story-turns.ts`）
@@ -214,7 +191,8 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
 - [x] 聊天式介面
   - 故事前提顯示（回合 0）
   - 回合歷史（玩家輸入 + AI 回應）
-  - 對話氣泡顯示
+  - **Markdown 對話格式**（`> **角色名**：「對話」`，自然穿插於敘事中）
+  - 對話區塊特殊樣式（左側主色邊框 + 淡色背景）
   - 自動滾動到最新回合
 - [x] 玩家輸入區
   - 多行文字輸入
@@ -222,20 +200,18 @@ Aetheria 是一款基於 AI 的互動式小說遊戲平台，讓玩家能夠：
   - 提交中狀態顯示
 - [x] **即時反饋系統**
   - 用戶輸入後立即顯示訊息（樂觀 UI）
-  - AI 思考中動畫（跳動點點）
+  - AI 思考中動畫
   - 錯誤訊息區塊（含重試按鈕）
+- [x] **設定面板**（右側抽屜）
+  - API 供應商選擇（OpenRouter / OpenAI）
+  - 模型選擇（預設選項 / 手動輸入）
+  - Temperature 調整
+  - Max Tokens 設定
+  - 上下文回合數設定
 - [x] **狀態面板**（右側側邊欄）
-  - 「顯示狀態」/「隱藏狀態」切換按鈕
   - 所有角色的當前狀態值
   - 玩家角色標記
-  - 狀態類型智能顯示：
-    - 數字：顯示單位
-    - 布林：顯示「是」/「否」
-    - 列表：逗號分隔顯示
-  - 角色關係顯示：
-    - 關係方向（A → B）
-    - 分數顏色標示（正數綠色、負數紅色）
-    - 關係標籤
+  - 狀態類型智能顯示
 - [x] 狀態即時更新（每回合後自動重新載入）
 - [x] 錯誤處理與友善提示（中文錯誤訊息）
  
@@ -694,6 +670,6 @@ supabase.auth.onAuthStateChange((event, session) => {
  
 ---
  
-**最後更新**：2026-01-11
-**當前版本**：v0.9.1-alpha
-**專案狀態**：✅ 核心功能完成，修復 Supabase 載入死鎖問題，進入優化階段
+**最後更新**：2026-01-12
+**當前版本**：v0.9.2-alpha
+**專案狀態**：✅ 故事流程簡化重構完成（合併 AI Agent、Markdown 對話、移除 Relationship、新增設定面板）
