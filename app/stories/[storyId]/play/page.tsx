@@ -200,10 +200,12 @@ function StoryPlayPageContent() {
     return loadCharacterStatesInternal(worldId, false);
   };
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom (也在初次載入完成時滾動)
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [turns, pendingUserInput, submitError]);
+    if (!loading) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [loading, turns, pendingUserInput, submitError]);
 
   // Auto-resize textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -501,65 +503,93 @@ function StoryPlayPageContent() {
                   <SheetTitle>角色狀態</SheetTitle>
                 </SheetHeader>
                 <div className="py-6 space-y-4">
-                  {storyCharacters.map((sc) => {
-                    const char = characters.get(sc.story_character_id);
-                    if (!char) return null;
-                    const charStates = stateValues.filter(
-                      (sv) => sv.story_character_id === sc.story_character_id
-                    );
+                  {[...storyCharacters]
+                    .sort((a, b) => (b.is_player ? 1 : 0) - (a.is_player ? 1 : 0))
+                    .map((sc) => {
+                      const char = characters.get(sc.story_character_id);
+                      if (!char) return null;
+                      const charStates = stateValues.filter(
+                        (sv) => sv.story_character_id === sc.story_character_id
+                      );
 
-                    return (
-                      <Card key={sc.story_character_id}>
-                        <CardHeader className="p-4 pb-2">
-                          <div className="flex items-center justify-between">
-                            <div className="font-semibold flex items-center gap-2">
-                              {sc.display_name_override || char.canonical_name}
-                              {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5">玩家</Badge>}
+                      return (
+                        <Card key={sc.story_character_id}>
+                          <CardHeader className="p-4 pb-2">
+                            <div className="flex items-center justify-between">
+                              <div className="font-semibold flex items-center gap-2">
+                                {sc.display_name_override || char.canonical_name}
+                                {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5">玩家</Badge>}
+                              </div>
                             </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="p-4 pt-0">
-                          {charStates.length > 0 ? (
-                            <div className="space-y-1 text-sm">
-                              {charStates.map((sv) => {
-                                const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
-                                if (!schema) return null;
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            {charStates.length > 0 ? (
+                              <div className="space-y-2 text-sm">
+                                {charStates
+                                  .sort((a, b) => {
+                                    const schemaA = worldSchema.find(s => s.schema_key === a.schema_key);
+                                    const schemaB = worldSchema.find(s => s.schema_key === b.schema_key);
+                                    return (schemaA?.sort_order ?? 999) - (schemaB?.sort_order ?? 999);
+                                  })
+                                  .map((sv) => {
+                                    const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
+                                    if (!schema) return null;
 
-                                let displayValue;
-                                try {
-                                  const value = JSON.parse(sv.value_json);
-                                  if (schema.type === 'list_text') {
-                                    displayValue = Array.isArray(value) ? value.join(', ') : value;
-                                  } else if (typeof value === 'boolean') {
-                                    displayValue = value ? '是' : '否';
-                                  } else {
-                                    displayValue = String(value);
-                                  }
-                                } catch {
-                                  displayValue = sv.value_json;
-                                }
+                                    let displayValue;
+                                    let isLongText = false;
+                                    try {
+                                      const value = JSON.parse(sv.value_json);
+                                      if (schema.type === 'list_text') {
+                                        displayValue = Array.isArray(value) ? value.join(', ') : value;
+                                        isLongText = true;
+                                      } else if (typeof value === 'boolean') {
+                                        displayValue = value ? '是' : '否';
+                                      } else if (schema.type === 'text') {
+                                        displayValue = String(value);
+                                        isLongText = String(value).length > 10;
+                                      } else {
+                                        displayValue = String(value);
+                                      }
+                                    } catch {
+                                      displayValue = sv.value_json;
+                                    }
 
-                                return (
-                                  <div key={sv.schema_key} className="flex justify-between border-b last:border-0 py-1 border-muted">
-                                    <span className="text-muted-foreground">{schema.display_name}</span>
-                                    <span className="font-medium text-right">
-                                      {displayValue}
-                                      {schema.type === 'number' && schema.number_constraints_json && (() => {
-                                        const constraints = JSON.parse(schema.number_constraints_json);
-                                        return constraints.unit ? ` ${constraints.unit}` : '';
-                                      })()}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">尚無狀態</span>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                                    const unit = schema.type === 'number' && schema.number_constraints_json
+                                      ? (() => {
+                                        try {
+                                          const constraints = JSON.parse(schema.number_constraints_json);
+                                          return constraints.unit || '';
+                                        } catch { return ''; }
+                                      })()
+                                      : '';
+
+                                    return (
+                                      <div key={sv.schema_key} className="border-b last:border-0 py-1.5 border-muted">
+                                        <div className={cn(
+                                          "flex gap-3",
+                                          isLongText ? "flex-col" : "items-center justify-between"
+                                        )}>
+                                          <span className="text-muted-foreground shrink-0 whitespace-nowrap">
+                                            {schema.display_name}
+                                          </span>
+                                          <span className={cn(
+                                            "font-medium",
+                                            isLongText ? "text-foreground leading-relaxed" : "text-right"
+                                          )}>
+                                            {displayValue}{unit && ` ${unit}`}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">尚無狀態</span>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                 </div>
               </SheetContent>
             </Sheet>

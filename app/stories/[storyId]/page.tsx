@@ -125,6 +125,7 @@ function StoryDetailPageContent() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [characterPage, setCharacterPage] = useState(1);
   const [showCharacterSelector, setShowCharacterSelector] = useState(false);
+  const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
 
   // Load data with cancellation support to prevent race conditions
   useEffect(() => {
@@ -319,6 +320,20 @@ function StoryDetailPageContent() {
   }, [filteredCharacters, characterPage]);
 
   const characterTotalPages = Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE);
+
+  // 玩家角色查找：編輯模式下 player_character_id 是 story_character_id，需透過 storyCharacters 轉換
+  const playerCharacter = useMemo(() => {
+    if (isNewStory) {
+      // 新建故事：直接用 character_id 查找
+      return characters.find((c) => c.character_id === formData.player_character_id);
+    }
+    // 編輯故事：先找到對應的 storyCharacter，再找 character
+    const playerStoryChar = storyCharacters.find((sc) => sc.story_character_id === formData.player_character_id);
+    if (playerStoryChar) {
+      return characters.find((c) => c.character_id === playerStoryChar.character_id);
+    }
+    return undefined;
+  }, [isNewStory, characters, storyCharacters, formData.player_character_id]);
 
   const validateForm = async (): Promise<boolean> => {
     const newErrors: Record<string, string> = {};
@@ -630,7 +645,6 @@ function StoryDetailPageContent() {
   }
 
   const selectedWorld = worlds.find((w) => w.world_id === formData.world_id);
-  const playerCharacter = characters.find((c) => c.character_id === formData.player_character_id);
 
   return (
     <div className="min-h-screen bg-background">
@@ -1093,17 +1107,112 @@ function StoryDetailPageContent() {
 
               {/* Add Character Section */}
               <div className="border-t pt-6">
-                <h4 className="font-medium mb-4">新增角色到故事</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {characters.filter(c => !storyCharacters.some(sc => sc.character_id === c.character_id)).map(char => (
-                    <Button key={char.character_id} variant="outline" className="justify-start h-auto py-3 px-4" onClick={() => handleAddCharacter(char.character_id)}>
-                      <div className="text-left">
-                        <div className="font-medium text-sm">{char.canonical_name}</div>
-                        <div className="text-xs text-muted-foreground font-normal line-clamp-1">{char.core_profile_text}</div>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-muted-foreground"
+                  onClick={() => setShowAddCharacterDialog(true)}
+                >
+                  <Plus className="mr-2 h-4 w-4" /> 新增角色到故事
+                </Button>
+
+                <Dialog open={showAddCharacterDialog} onOpenChange={setShowAddCharacterDialog}>
+                  <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>新增角色到故事</DialogTitle>
+                      <DialogDescription>選擇要加入故事的角色</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="搜尋角色..."
+                          className="pl-8"
+                          value={characterSearch}
+                          onChange={(e) => {
+                            setCharacterSearch(e.target.value);
+                            setCharacterPage(1);
+                          }}
+                        />
                       </div>
-                    </Button>
-                  ))}
-                </div>
+                      {/* Tag Filters */}
+                      {allTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {allTags.map(tag => (
+                            <Badge
+                              key={tag}
+                              variant={selectedTags.includes(tag) ? 'default' : 'outline'}
+                              className="cursor-pointer"
+                              onClick={() => toggleTag(tag)}
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      {/* Character List */}
+                      {(() => {
+                        // 先過濾可新增的角色，再分頁
+                        const availableChars = filteredCharacters.filter(
+                          c => !storyCharacters.some(sc => sc.character_id === c.character_id)
+                        );
+                        const totalPages = Math.ceil(availableChars.length / ITEMS_PER_PAGE);
+                        const start = (characterPage - 1) * ITEMS_PER_PAGE;
+                        const paginatedAvailableChars = availableChars.slice(start, start + ITEMS_PER_PAGE);
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {paginatedAvailableChars.map(char => {
+                                const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+                                return (
+                                  <div
+                                    key={char.character_id}
+                                    className="border rounded-lg p-3 cursor-pointer hover:bg-muted/50 transition"
+                                    onClick={async () => {
+                                      await handleAddCharacter(char.character_id);
+                                      setShowAddCharacterDialog(false);
+                                      setCharacterSearch('');
+                                      setSelectedTags([]);
+                                      setCharacterPage(1);
+                                    }}
+                                  >
+                                    <h5 className="font-medium text-sm">{char.canonical_name}</h5>
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
+                                    {charTags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {charTags.slice(0, 3).map((tag: string, i: number) => (
+                                          <Badge key={i} variant="secondary" className="text-[10px]">{tag}</Badge>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Pagination */}
+                            {totalPages > 1 && (
+                              <div className="flex justify-center gap-2">
+                                <Button variant="outline" size="sm" onClick={() => setCharacterPage(p => Math.max(1, p - 1))} disabled={characterPage === 1}>
+                                  <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <span className="py-1 text-sm">{characterPage} / {totalPages}</span>
+                                <Button variant="outline" size="sm" onClick={() => setCharacterPage(p => Math.min(totalPages, p + 1))} disabled={characterPage === totalPages}>
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                            {/* Empty State */}
+                            {availableChars.length === 0 && (
+                              <div className="text-center py-8 text-muted-foreground">
+                                {characterSearch || selectedTags.length > 0 ? '沒有符合條件的角色' : '沒有可新增的角色'}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
           </Card>
