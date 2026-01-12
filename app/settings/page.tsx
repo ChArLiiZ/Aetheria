@@ -380,7 +380,7 @@ function SettingsPageContent() {
                           className={`flex items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50 ${isActive ? 'bg-muted border-l-4 border-l-primary' : 'border-l-4 border-l-transparent'
                             }`}
                         >
-                          <span className="text-xl">{info.icon}</span>
+
                           <div className="flex-1 min-w-0">
                             <div className="font-medium">{info.name}</div>
                             {settings && settings.api_key && (
@@ -403,7 +403,7 @@ function SettingsPageContent() {
               <Card className="md:col-span-3">
                 <CardHeader>
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl">{PROVIDER_INFO[selectedProvider].icon}</span>
+
                     <div>
                       <CardTitle>{PROVIDER_INFO[selectedProvider].name}</CardTitle>
                       <CardDescription>{PROVIDER_INFO[selectedProvider].description}</CardDescription>

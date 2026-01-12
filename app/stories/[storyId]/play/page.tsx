@@ -391,7 +391,7 @@ function StoryPlayPageContent() {
                       <SelectContent>
                         {PROVIDERS.map((p) => (
                           <SelectItem key={p} value={p}>
-                            {PROVIDER_INFO[p].icon} {PROVIDER_INFO[p].name}
+                            {PROVIDER_INFO[p].name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -751,7 +751,7 @@ function StoryPlayPageContent() {
             </Button>
           </form>
           <p className="text-[10px] text-muted-foreground text-center mt-2">
-            {PROVIDER_INFO[tempProvider].icon} {tempUsePreset === 'preset' ? tempModel : tempCustomModel} | 上下文: {tempContextTurns} 回合
+            {PROVIDER_INFO[tempProvider].name}: {tempUsePreset === 'preset' ? tempModel : tempCustomModel} | 上下文: {tempContextTurns} 回合
           </p>
         </div>
       </div>

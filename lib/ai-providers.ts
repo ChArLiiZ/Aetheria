@@ -7,7 +7,6 @@ export type Provider = 'openrouter' | 'openai';
 
 export interface ProviderInfo {
     name: string;
-    icon: string;
     description: string;
 }
 
@@ -17,12 +16,10 @@ export interface ProviderInfo {
 export const PROVIDER_INFO: Record<Provider, ProviderInfo> = {
     openrouter: {
         name: 'OpenRouter',
-        icon: '🚀',
         description: '統一多個 AI 模型的接入平台',
     },
     openai: {
         name: 'OpenAI',
-        icon: '🤖',
         description: 'GPT 系列模型提供商',
     },
 };
@@ -32,16 +29,29 @@ export const PROVIDER_INFO: Record<Provider, ProviderInfo> = {
  */
 export const MODEL_PRESETS: Record<Provider, string[]> = {
     openrouter: [
+        'anthropic/claude-sonnet-4.5',
+        'anthropic/claude-opus-4.5',
+        'anthropic/claude-haiku-4.5',
         'anthropic/claude-3.5-sonnet',
         'anthropic/claude-3-opus',
         'anthropic/claude-3-haiku',
+        'deepseek/deepseek-v3.2',
+        'openai/gpt-5.2',
+        'openai/gpt-5.1',
         'openai/gpt-4o',
         'openai/gpt-4-turbo',
         'openai/gpt-3.5-turbo',
+        'google/gemini-3-pro-preview',
+        'google/gemini-3-flash-preview',
+        'google/gemini-2.5-flash',
         'google/gemini-pro-1.5',
         'google/gemini-flash-1.5',
+        'x-ai/grok-4.1-fast',
+        'xiaomi/mimo-v2-flash:free'
     ],
     openai: [
+        'gpt-5.2',
+        'gpt-5.1',
         'gpt-4o',
         'gpt-4-turbo',
         'gpt-3.5-turbo',
