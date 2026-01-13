@@ -120,3 +120,26 @@ export interface OpenRouterResponse {
     total_tokens: number;
   };
 }
+
+// ==================== Suggestion Agent ====================
+
+/**
+ * Suggestion Agent 輸入 - 生成行動建議
+ */
+export interface SuggestionAgentInput {
+  story_mode: StoryMode;
+  world_rules: string;
+  story_prompt: string;
+  characters: StoryCharacterContext[];
+  recent_turns: RecentTurnContext[];
+  /** 滾動摘要（前情提要） */
+  story_summary?: string;
+}
+
+/**
+ * Suggestion Agent 輸出 - 三個建議行動
+ */
+export interface SuggestionAgentOutput {
+  /** 三個建議的行動 */
+  suggestions: string[];
+}

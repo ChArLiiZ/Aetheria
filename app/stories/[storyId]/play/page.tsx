@@ -35,7 +35,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescri
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings } from 'lucide-react';
+import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -60,6 +60,10 @@ function StoryPlayPageContent() {
 
   // UX 改進：即時反饋狀態
   const [pendingUserInput, setPendingUserInput] = useState<string | null>(null);
+
+  // Suggestion 功能
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Character states
@@ -292,6 +296,104 @@ function StoryPlayPageContent() {
       e.preventDefault();
       handleSubmit();
     }
+  };
+
+  const handleGenerateSuggestions = async () => {
+    if (!user || !story || !providerSettings || loadingSuggestions) return;
+
+    try {
+      setLoadingSuggestions(true);
+      setSuggestions([]);
+
+      // 動態 import 來避免循環依賴
+      const { callSuggestionAgent } = await import('@/services/agents/suggestion-agent');
+      const { getStoryCharacters } = await import('@/services/supabase/story-characters');
+      const { getCharacterById } = await import('@/services/supabase/characters');
+      const { getWorldById } = await import('@/services/supabase/worlds');
+      const { getAllStateValuesForStory } = await import('@/services/supabase/story-state-values');
+      const { getLatestSummaryForTurn } = await import('@/services/supabase/story-summaries');
+
+      // 取得必要資料
+      const [world, storyChars, stateValues, latestSummary] = await Promise.all([
+        getWorldById(story.world_id, user.user_id),
+        getStoryCharacters(storyId, user.user_id),
+        getAllStateValuesForStory(storyId, user.user_id),
+        getLatestSummaryForTurn(storyId, turns.length + 1, user.user_id),
+      ]);
+
+      if (!world) throw new Error('World not found');
+
+      // 取得角色詳情
+      const charDetails = await Promise.all(
+        storyChars.map((sc) => getCharacterById(sc.character_id, user.user_id))
+      );
+
+      // 建構角色上下文
+      const characterContexts = storyChars.map((sc, index) => {
+        const char = charDetails[index];
+        const charStates = stateValues.filter(
+          (sv) => sv.story_character_id === sc.story_character_id
+        );
+        const stateSummary = charStates
+          .map((sv) => {
+            const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
+            if (!schema) return '';
+            try {
+              const value = JSON.parse(sv.value_json);
+              return `${schema.display_name}: ${JSON.stringify(value)}`;
+            } catch {
+              return '';
+            }
+          })
+          .filter(Boolean)
+          .join(', ');
+
+        return {
+          story_character_id: sc.story_character_id,
+          display_name: sc.display_name_override || char?.canonical_name || 'Unknown',
+          core_profile: char?.core_profile_text || '',
+          current_state_summary: stateSummary || 'No state set',
+          is_player: sc.is_player,
+        };
+      });
+
+      // 建構最近回合上下文
+      const recentTurnContexts = turns.slice(-tempContextTurns).map((turn) => ({
+        turn_index: turn.turn_index,
+        user_input: turn.user_input_text,
+        narrative: turn.narrative_text,
+      }));
+
+      const selectedModel = tempUsePreset === 'preset' ? tempModel : tempCustomModel;
+
+      const result = await callSuggestionAgent(
+        providerSettings.api_key,
+        selectedModel,
+        {
+          story_mode: story.story_mode,
+          world_rules: world.rules_text,
+          story_prompt: story.story_prompt,
+          characters: characterContexts,
+          recent_turns: recentTurnContexts,
+          story_summary: latestSummary?.summary_text,
+        },
+        { temperature: 0.8 }
+      );
+
+      setSuggestions(result.suggestions);
+    } catch (err: any) {
+      console.error('Failed to generate suggestions:', err);
+      toast.error(`生成建議失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion: string) => {
+    setUserInput(suggestion);
+    setSuggestions([]);
+    // 聚焦到輸入框
+    textareaRef.current?.focus();
   };
 
   const handleSaveSettings = async () => {
@@ -730,8 +832,42 @@ function StoryPlayPageContent() {
 
       {/* Input Area */}
       <div className="flex-none p-4 bg-background border-t">
-        <div className="max-w-3xl mx-auto relative">
+        <div className="max-w-3xl mx-auto relative space-y-2">
+          {/* Suggestions Display */}
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((suggestion, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => handleSelectSuggestion(suggestion)}
+                  className="text-left px-3 py-2 text-sm bg-muted hover:bg-muted/80 border rounded-lg transition-colors max-w-full"
+                >
+                  <span className="line-clamp-2">{suggestion}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input Form */}
           <form onSubmit={handleSubmit} className="relative flex items-end gap-2 p-2 border rounded-xl bg-muted/30 focus-within:ring-2 focus-within:ring-ring focus-within:border-primary">
+            {/* Suggestion Button */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={handleGenerateSuggestions}
+              disabled={loadingSuggestions || submitting}
+              className="mb-0.5 shrink-0"
+              title="生成行動建議"
+            >
+              {loadingSuggestions ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Lightbulb className="h-4 w-4" />
+              )}
+            </Button>
+
             <Textarea
               ref={textareaRef}
               value={userInput}
