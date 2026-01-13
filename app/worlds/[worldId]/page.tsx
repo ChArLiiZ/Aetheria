@@ -61,8 +61,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Loader2, Plus, ArrowLeft, Save, Trash2, Edit } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, Save, Trash2, Edit, Sparkles } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
+import { AIGenerationDialog } from '@/components/ai-generation-dialog';
+import type { WorldGenerationOutput, SchemaGenerationData } from '@/types/api/agents';
 
 type Tab = 'basic' | 'states';
 
@@ -90,6 +92,9 @@ function WorldEditorPageContent() {
   const [schemas, setSchemas] = useState<WorldStateSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingWorld, setCreatingWorld] = useState(false);
+
+  // AI 生成對話框
+  const [showAIDialog, setShowAIDialog] = useState(false);
 
   // Basic info form
   const [basicFormData, setBasicFormData] = useState({
@@ -498,6 +503,39 @@ function WorldEditorPageContent() {
     }
   };
 
+  // AI 生成結果處理
+  const handleAIGenerated = (data: WorldGenerationOutput) => {
+    // 填入基本資訊
+    setBasicFormData({
+      name: data.name || basicFormData.name,
+      description: data.description || basicFormData.description,
+      rules_text: data.rules_text || basicFormData.rules_text,
+    });
+
+    // 填入 Schemas
+    if (data.schemas && data.schemas.length > 0) {
+      const newSchemas: WorldStateSchema[] = data.schemas.map((s, index) => ({
+        schema_id: `temp-${Date.now()}-${index}`,
+        world_id: isNewWorld ? 'temp' : worldId,
+        user_id: user?.user_id || '',
+        schema_key: s.schema_key,
+        display_name: s.display_name,
+        type: s.type as SchemaFieldType,
+        ai_description: s.ai_description,
+        default_value_json: s.default_value || '',
+        enum_options_json: s.enum_options ? JSON.stringify(s.enum_options) : '',
+        number_constraints_json: (s.number_min !== undefined || s.number_max !== undefined)
+          ? JSON.stringify({ min: s.number_min, max: s.number_max })
+          : '',
+        sort_order: index + 1,
+        updated_at: new Date().toISOString(),
+      }));
+      setSchemas(newSchemas);
+    }
+
+    toast.success('AI 生成完成！請檢查並調整內容。');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -532,18 +570,24 @@ function WorldEditorPageContent() {
                   : '管理世界觀的基本設定與狀態種類'}
               </p>
             </div>
-            {isNewWorld && (
-              <Button onClick={handleCreateWorld} disabled={creatingWorld}>
-                {creatingWorld && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                ✨ 建立世界觀
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowAIDialog(true)}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                AI 生成
               </Button>
-            )}
-            {!isNewWorld && (
-              <Button onClick={handleSaveBasic} disabled={savingBasic}>
-                {savingBasic && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Save className="mr-2 h-4 w-4" /> 儲存變更
-              </Button>
-            )}
+              {isNewWorld && (
+                <Button onClick={handleCreateWorld} disabled={creatingWorld}>
+                  {creatingWorld && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  建立世界觀
+                </Button>
+              )}
+              {!isNewWorld && (
+                <Button onClick={handleSaveBasic} disabled={savingBasic}>
+                  {savingBasic && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Save className="mr-2 h-4 w-4" /> 儲存變更
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -801,6 +845,29 @@ function WorldEditorPageContent() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* AI 生成對話框 */}
+        <AIGenerationDialog
+          open={showAIDialog}
+          onOpenChange={setShowAIDialog}
+          type="world"
+          currentData={{
+            name: basicFormData.name,
+            description: basicFormData.description,
+            rules_text: basicFormData.rules_text,
+            schemas: schemas.map(s => ({
+              schema_key: s.schema_key,
+              display_name: s.display_name,
+              type: s.type,
+              ai_description: s.ai_description,
+              default_value: s.default_value_json,
+              enum_options: s.enum_options_json ? JSON.parse(s.enum_options_json) : undefined,
+              number_min: s.number_constraints_json ? JSON.parse(s.number_constraints_json).min : undefined,
+              number_max: s.number_constraints_json ? JSON.parse(s.number_constraints_json).max : undefined,
+            })),
+          }}
+          onGenerated={(data) => handleAIGenerated(data as WorldGenerationOutput)}
+        />
 
       </main>
     </div>

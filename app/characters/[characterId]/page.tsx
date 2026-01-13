@@ -18,7 +18,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles } from 'lucide-react';
+import { AIGenerationDialog } from '@/components/ai-generation-dialog';
+import type { CharacterGenerationOutput } from '@/types/api/agents';
 
 function CharacterEditorPageContent() {
   const { user } = useAuth();
@@ -36,6 +38,9 @@ function CharacterEditorPageContent() {
     tags: [''],
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // AI 生成對話框
+  const [showAIDialog, setShowAIDialog] = useState(false);
 
   const isNewCharacter = characterId === 'new';
 
@@ -166,6 +171,16 @@ function CharacterEditorPageContent() {
     }
   };
 
+  // AI 生成結果處理
+  const handleAIGenerated = (data: CharacterGenerationOutput) => {
+    setFormData({
+      canonical_name: data.canonical_name || formData.canonical_name,
+      core_profile_text: data.core_profile_text || formData.core_profile_text,
+      tags: data.tags && data.tags.length > 0 ? data.tags : formData.tags,
+    });
+    toast.success('AI 生成完成！請檢查並調整內容。');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -200,10 +215,16 @@ function CharacterEditorPageContent() {
                   : '修改角色的核心資料'}
               </p>
             </div>
-            <Button onClick={handleSubmit} disabled={saving}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <Save className="mr-2 h-4 w-4" /> 儲存變更
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowAIDialog(true)}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                AI 生成
+              </Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Save className="mr-2 h-4 w-4" /> 儲存變更
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -276,6 +297,19 @@ function CharacterEditorPageContent() {
             </Button>
           </CardFooter>
         </Card>
+
+        {/* AI 生成對話框 */}
+        <AIGenerationDialog
+          open={showAIDialog}
+          onOpenChange={setShowAIDialog}
+          type="character"
+          currentData={{
+            canonical_name: formData.canonical_name,
+            core_profile_text: formData.core_profile_text,
+            tags: formData.tags.filter(t => t.trim()),
+          }}
+          onGenerated={(data) => handleAIGenerated(data as CharacterGenerationOutput)}
+        />
       </main>
     </div>
   );

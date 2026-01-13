@@ -143,3 +143,57 @@ export interface SuggestionAgentOutput {
   /** 三個建議的行動 */
   suggestions: string[];
 }
+
+// ==================== Generation Assistant ====================
+
+/** 生成類型 */
+export type GenerationType = 'world' | 'character';
+
+/** Schema 狀態種類資料（用於生成） */
+export interface SchemaGenerationData {
+  schema_key: string;
+  display_name: string;
+  type: 'text' | 'number' | 'bool' | 'enum' | 'list_text';
+  ai_description: string;
+  default_value?: string;
+  enum_options?: string[];
+  number_min?: number;
+  number_max?: number;
+}
+
+/** 世界觀生成輸入 */
+export interface WorldGenerationInput {
+  currentData: {
+    name?: string;
+    description?: string;
+    rules_text?: string;
+    schemas?: SchemaGenerationData[];
+  };
+  userPrompt: string;
+}
+
+/** 世界觀生成輸出 */
+export interface WorldGenerationOutput {
+  name: string;
+  description: string;
+  rules_text: string;
+  schemas: SchemaGenerationData[];
+}
+
+/** 角色生成輸入 */
+export interface CharacterGenerationInput {
+  currentData: {
+    canonical_name?: string;
+    core_profile_text?: string;
+    tags?: string[];
+  };
+  userPrompt: string;
+}
+
+/** 角色生成輸出 */
+export interface CharacterGenerationOutput {
+  canonical_name: string;
+  core_profile_text: string;
+  tags: string[];
+}
+

@@ -122,7 +122,7 @@ Aetheria/
 │   ├── supabase/          # Supabase 客戶端
 │   └── theme/             # 主題設定
 ├── services/
-│   ├── agents/            # AI Agent (story-agent.ts)
+│   ├── agents/            # AI Agent (story-agent, generation-agent)
 │   ├── ai/                # AI API 封裝 (openrouter.ts)
 │   ├── gameplay/          # 遊戲邏輯 (execute-turn.ts)
 │   └── supabase/          # 資料庫服務 (11 個檔案)
@@ -141,6 +141,7 @@ Aetheria/
 - [x] **故事系統**：建立、編輯、角色初始狀態設定
 - [x] **遊戲核心迴圈**：Story Agent、狀態追蹤、即時更新
 - [x] **AI 整合**：OpenRouter/OpenAI、模型選擇、參數調整
+- [x] **AI 生成助手**：一鍵生成世界觀、角色設定（含 Schema）
 - [x] **UI 系統**：深色/淺色主題、響應式設計、Toast 通知
 
 ### 遊戲頁面功能
@@ -226,6 +227,6 @@ supabase.auth.onAuthStateChange((event, session) => {
 
 ---
 
-**最後更新**：2026-01-12  
-**當前版本**：v0.9.2-alpha  
-**專案狀態**：✅ 核心功能完成（合併版 Story Agent、Markdown 對話、雙 AI 供應商）
+**最後更新**：2026-01-13  
+**當前版本**：v0.9.3-alpha  
+**專案狀態**：✅ 核心功能完成（AI 生成助手、合併版 Story Agent、Markdown 對話、雙 AI 供應商）
