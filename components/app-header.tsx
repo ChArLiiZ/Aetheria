@@ -23,9 +23,9 @@ export function AppHeader() {
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-14 items-center mx-auto px-4">
-                <div className="mr-4 hidden md:flex">
+                <div className="mr-4 flex">
                     <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
-                        <span className="hidden font-bold sm:inline-block">
+                        <span className="font-bold inline-block">
                             Aetheria
                         </span>
                     </Link>

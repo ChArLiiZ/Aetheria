@@ -1,7 +1,6 @@
 // ==================== Enums ====================
 
 export type StoryMode = 'PLAYER_CHARACTER' | 'DIRECTOR';
-export type StoryStatus = 'active' | 'ended';
 export type UserStatus = 'active' | 'disabled';
 export type SchemaFieldType = 'number' | 'text' | 'bool' | 'enum' | 'list_text';
 export type EntityType = 'state';
@@ -102,7 +101,6 @@ export interface Story {
   params_override_json?: string; // JSON string
   context_turns_override?: number; // 上下文回合數覆蓋
   tags_json?: string; // JSON array string
-  status: StoryStatus;
   turn_count?: number;
   created_at: string;
   updated_at: string;

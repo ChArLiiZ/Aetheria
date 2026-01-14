@@ -1,20 +1,20 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Story } from '@/types';
+import { Story, Character, StoryCharacter } from '@/types';
 import { getStories, deleteStory, deleteStories } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
+import { getCharacters } from '@/services/supabase/characters';
+import { getStoryCharactersForStories } from '@/services/supabase/story-characters';
 import { Tag, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, BookOpen, Play, Trash2, Globe, Edit } from 'lucide-react';
+import { Loader2, Plus, BookOpen, Play, Trash2, Globe } from 'lucide-react';
 import {
   ListToolbar,
   ListItemCheckbox,
@@ -35,9 +35,15 @@ import {
   collectTagsFromItems,
 } from '@/components/list-toolbar';
 
+interface StoryCharacterInfo {
+  name: string;
+  isPlayer: boolean;
+}
+
 interface StoryWithWorld extends Story {
   world_name?: string;
   tags?: Tag[];
+  characters?: StoryCharacterInfo[];
 }
 
 const SORT_OPTIONS = [
@@ -49,10 +55,8 @@ const SORT_OPTIONS = [
 
 function StoriesPageContent() {
   const { user } = useAuth();
-  const router = useRouter();
   const [stories, setStories] = useState<StoryWithWorld[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [storyToDelete, setStoryToDelete] = useState<{ id: string, title: string } | null>(null);
 
@@ -79,9 +83,10 @@ function StoriesPageContent() {
       try {
         setLoading(true);
 
-        const [storiesData, worldsData] = await Promise.all([
+        const [storiesData, worldsData, charactersData] = await Promise.all([
           getStories(user.user_id),
           getWorldsByUserId(user.user_id),
+          getCharacters(user.user_id),
         ]);
 
         if (cancelled) return;
@@ -90,16 +95,32 @@ function StoriesPageContent() {
           worldsData.map((world) => [world.world_id, world.name])
         );
 
+        const characterMap = new Map(
+          charactersData.map((char) => [char.character_id, char.canonical_name])
+        );
+
         const storyIds = storiesData.map((s) => s.story_id);
-        const tagsMap = await getTagsForEntities('story', storyIds, user.user_id);
+        const [tagsMap, storyCharsMap] = await Promise.all([
+          getTagsForEntities('story', storyIds, user.user_id),
+          getStoryCharactersForStories(storyIds, user.user_id),
+        ]);
 
         if (cancelled) return;
 
-        const storiesWithData = storiesData.map((story) => ({
-          ...story,
-          world_name: worldMap.get(story.world_id) || '未知世界觀',
-          tags: tagsMap.get(story.story_id) || [],
-        }));
+        const storiesWithData = storiesData.map((story) => {
+          const storyChars = storyCharsMap.get(story.story_id) || [];
+          const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
+            name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
+            isPlayer: sc.is_player,
+          }));
+
+          return {
+            ...story,
+            world_name: worldMap.get(story.world_id) || '未知世界觀',
+            tags: tagsMap.get(story.story_id) || [],
+            characters,
+          };
+        });
 
         setStories(storiesWithData);
       } catch (err: any) {
@@ -126,23 +147,40 @@ function StoriesPageContent() {
     try {
       setLoading(true);
 
-      const [storiesData, worldsData] = await Promise.all([
+      const [storiesData, worldsData, charactersData] = await Promise.all([
         getStories(user.user_id),
         getWorldsByUserId(user.user_id),
+        getCharacters(user.user_id),
       ]);
 
       const worldMap = new Map(
         worldsData.map((world) => [world.world_id, world.name])
       );
 
-      const storyIds = storiesData.map((s) => s.story_id);
-      const tagsMap = await getTagsForEntities('story', storyIds, user.user_id);
+      const characterMap = new Map(
+        charactersData.map((char) => [char.character_id, char.canonical_name])
+      );
 
-      const storiesWithData = storiesData.map((story) => ({
-        ...story,
-        world_name: worldMap.get(story.world_id) || '未知世界觀',
-        tags: tagsMap.get(story.story_id) || [],
-      }));
+      const storyIds = storiesData.map((s) => s.story_id);
+      const [tagsMap, storyCharsMap] = await Promise.all([
+        getTagsForEntities('story', storyIds, user.user_id),
+        getStoryCharactersForStories(storyIds, user.user_id),
+      ]);
+
+      const storiesWithData = storiesData.map((story) => {
+        const storyChars = storyCharsMap.get(story.story_id) || [];
+        const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
+          name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
+          isPlayer: sc.is_player,
+        }));
+
+        return {
+          ...story,
+          world_name: worldMap.get(story.world_id) || '未知世界觀',
+          tags: tagsMap.get(story.story_id) || [],
+          characters,
+        };
+      });
 
       setStories(storiesWithData);
     } catch (err: any) {
@@ -156,15 +194,9 @@ function StoriesPageContent() {
   // 從目前項目收集所有標籤名稱用於篩選
   const allTagNames = useMemo(() => collectTagsFromItems(stories), [stories]);
 
-  // 狀態篩選
-  const statusFilteredStories = useMemo(() => {
-    if (statusFilter === 'all') return stories;
-    return stories.filter((story) => story.status === statusFilter);
-  }, [stories, statusFilter]);
-
   // 搜尋和標籤篩選 + 排序
   const filteredAndSortedStories = useMemo(() => {
-    let filtered = statusFilteredStories;
+    let filtered = stories;
 
     if (searchValue) {
       const searchLower = searchValue.toLowerCase();
@@ -200,7 +232,7 @@ function StoriesPageContent() {
           return story.title;
       }
     });
-  }, [statusFilteredStories, searchValue, selectedTagNames, tagFilterMode, sortField, sortDirection]);
+  }, [stories, searchValue, selectedTagNames, tagFilterMode, sortField, sortDirection]);
 
   const handleToggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -316,17 +348,6 @@ function StoriesPageContent() {
           </Link>
         </div>
 
-        {/* 狀態篩選 */}
-        {stories.length > 0 && (
-          <Tabs defaultValue="all" value={statusFilter} onValueChange={setStatusFilter} className="w-full">
-            <TabsList>
-              <TabsTrigger value="all">全部 ({stories.length})</TabsTrigger>
-              <TabsTrigger value="active">進行中 ({stories.filter(s => s.status === 'active').length})</TabsTrigger>
-              <TabsTrigger value="ended">已結束 ({stories.filter(s => s.status === 'ended').length})</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
-
         {/* 工具列 */}
         {stories.length > 0 && (
           <ListToolbar
@@ -372,9 +393,7 @@ function StoriesPageContent() {
             <div className="p-4 rounded-full bg-muted mb-4">
               <BookOpen className="h-10 w-10 text-muted-foreground" />
             </div>
-            <h2 className="text-xl font-semibold mb-2">
-              {statusFilter === 'all' ? '沒有符合條件的故事' : `沒有${statusFilter === 'active' ? '進行中' : '已結束'}的故事`}
-            </h2>
+            <h2 className="text-xl font-semibold mb-2">沒有符合條件的故事</h2>
             <p className="text-muted-foreground mb-4">
               嘗試調整搜尋條件或清除篩選
             </p>
@@ -395,9 +414,6 @@ function StoriesPageContent() {
                 <CardHeader className={isSelectMode ? 'pl-12' : ''}>
                   <div className="flex justify-between items-start gap-2">
                     <CardTitle className="line-clamp-1 leading-tight">{story.title}</CardTitle>
-                    <Badge variant={story.status === 'active' ? 'default' : 'secondary'} className={story.status === 'active' ? 'bg-green-600 hover:bg-green-700' : ''}>
-                      {story.status === 'active' ? '進行中' : '已結束'}
-                    </Badge>
                   </div>
                   <CardDescription className="flex items-center gap-2 text-xs mt-1">
                     <span className="flex items-center">
@@ -411,21 +427,32 @@ function StoriesPageContent() {
                   </CardDescription>
                   {renderStoryTags(story)}
                 </CardHeader>
-                <CardContent className="flex-1">
-                  <p className="text-sm text-muted-foreground line-clamp-3">
+                <CardContent className="flex-1 space-y-3">
+                  <p className="text-sm text-muted-foreground line-clamp-2">
                     {story.premise_text}
                   </p>
+                  {story.characters && story.characters.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
+                      <span className="text-xs text-muted-foreground mr-1">角色:</span>
+                      {story.characters.map((char, idx) => (
+                        <span
+                          key={idx}
+                          className={`text-xs px-1.5 py-0.5 rounded ${char.isPlayer ? 'bg-primary/15 text-primary font-medium' : 'bg-muted text-muted-foreground'}`}
+                        >
+                          {char.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t bg-muted/20" onClick={(e) => e.stopPropagation()}>
-                  {story.status === 'active' && (
-                    <Link href={`/stories/${story.story_id}/play`} className="flex-1">
-                      <Button className="w-full">
-                        <Play className="mr-2 h-4 w-4" />
-                        繼續
-                      </Button>
-                    </Link>
-                  )}
-                  <Link href={`/stories/${story.story_id}`} className={story.status === 'active' ? '' : 'flex-1'}>
+                  <Link href={`/stories/${story.story_id}/play`} className="flex-1">
+                    <Button className="w-full">
+                      <Play className="mr-2 h-4 w-4" />
+                      繼續
+                    </Button>
+                  </Link>
+                  <Link href={`/stories/${story.story_id}`}>
                     <Button variant="outline" className="w-full">
                       詳情
                     </Button>

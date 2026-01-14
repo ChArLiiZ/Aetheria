@@ -153,3 +153,43 @@ export async function isCharacterInStory(
     return (data?.length || 0) > 0;
   });
 }
+
+/**
+ * Get characters for multiple stories at once
+ * Returns a Map where key is story_id and value is array of StoryCharacters
+ */
+export async function getStoryCharactersForStories(
+  storyIds: string[],
+  userId: string
+): Promise<Map<string, StoryCharacter[]>> {
+  if (storyIds.length === 0) {
+    return new Map();
+  }
+
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('story_characters')
+      .select('*')
+      .in('story_id', storyIds)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw new Error('Failed to fetch story characters: ' + error.message);
+    }
+
+    const result = new Map<string, StoryCharacter[]>();
+    
+    // 初始化所有 storyIds
+    storyIds.forEach(id => result.set(id, []));
+    
+    // 填入資料
+    (data || []).forEach((sc: StoryCharacter) => {
+      const existing = result.get(sc.story_id) || [];
+      existing.push(sc);
+      result.set(sc.story_id, existing);
+    });
+
+    return result;
+  });
+}

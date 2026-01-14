@@ -5,7 +5,7 @@
 
 import { supabase } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
-import type { Story, StoryMode, StoryStatus } from '@/types';
+import type { Story, StoryMode } from '@/types';
 
 /**
  * Get all stories for a user
@@ -80,7 +80,6 @@ export async function createStory(
     model_override: data.model_override,
     params_override_json: data.params_override_json,
     tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
-    status: 'active' as StoryStatus,
     turn_count: 0,
   };
 
@@ -105,7 +104,7 @@ export async function createStory(
 export async function updateStory(
   storyId: string,
   userId: string,
-  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'status' | 'turn_count' | 'player_character_id' | 'context_turns_override'>> & { tags?: string[] }
+  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'turn_count' | 'player_character_id' | 'context_turns_override'>> & { tags?: string[] }
 ): Promise<void> {
   return withRetry(async () => {
     const payload: any = { ...updates };
@@ -191,16 +190,6 @@ export async function incrementTurnCount(
       }
     }
   });
-}
-
-/**
- * End a story (change status to 'ended')
- */
-export async function endStory(
-  storyId: string,
-  userId: string
-): Promise<void> {
-  await updateStory(storyId, userId, { status: 'ended' });
 }
 
 /**
