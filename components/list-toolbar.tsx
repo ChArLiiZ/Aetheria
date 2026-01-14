@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     Select,
     SelectContent,
@@ -12,13 +13,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import {
     Search,
     X,
@@ -26,13 +24,22 @@ import {
     ArrowUpDown,
     CheckSquare,
     Square,
-    LayoutGrid,
-    List,
     Trash2,
+    Check,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+// 從項目中收集所有唯一標籤的輔助函數
+export function collectTagsFromItems<T extends { tags?: { name: string }[] }>(items: T[]): string[] {
+    const tagSet = new Set<string>();
+    items.forEach((item) => {
+        (item.tags || []).forEach((tag) => tagSet.add(tag.name));
+    });
+    return Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-TW'));
+}
 
 export type SortDirection = 'asc' | 'desc';
-export type ViewMode = 'grid' | 'list';
+export type TagFilterMode = 'and' | 'or';
 
 export interface SortOption {
     value: string;
@@ -49,6 +56,8 @@ export interface ListToolbarProps {
     allTags: string[];
     selectedTags: string[];
     onTagsChange: (tags: string[]) => void;
+    tagFilterMode?: TagFilterMode;
+    onTagFilterModeChange?: (mode: TagFilterMode) => void;
 
     // 排序
     sortField: string;
@@ -62,10 +71,6 @@ export interface ListToolbarProps {
     selectedCount: number;
     onDeleteSelected: () => void;
     totalCount: number;
-
-    // 檢視模式
-    viewMode: ViewMode;
-    onViewModeChange: (mode: ViewMode) => void;
 }
 
 export function ListToolbar({
@@ -75,6 +80,8 @@ export function ListToolbar({
     allTags,
     selectedTags,
     onTagsChange,
+    tagFilterMode = 'and',
+    onTagFilterModeChange,
     sortField,
     sortDirection,
     onSortChange,
@@ -84,10 +91,18 @@ export function ListToolbar({
     selectedCount,
     onDeleteSelected,
     totalCount,
-    viewMode,
-    onViewModeChange,
 }: ListToolbarProps) {
+    const [tagSearchValue, setTagSearchValue] = useState('');
+    const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+    
     const hasActiveFilters = searchValue || selectedTags.length > 0;
+
+    // 篩選標籤列表
+    const filteredTags = useMemo(() => {
+        if (!tagSearchValue.trim()) return allTags;
+        const searchLower = tagSearchValue.toLowerCase();
+        return allTags.filter(tag => tag.toLowerCase().includes(searchLower));
+    }, [allTags, tagSearchValue]);
 
     const handleTagToggle = (tag: string) => {
         if (selectedTags.includes(tag)) {
@@ -137,32 +152,143 @@ export function ListToolbar({
                 <div className="flex flex-wrap gap-2">
                     {/* Tag 篩選 */}
                     {allTags.length > 0 && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm">
-                                    <Tag className="mr-2 h-4 w-4" />
-                                    標籤
-                                    {selectedTags.length > 0 && (
-                                        <Badge variant="secondary" className="ml-2">
-                                            {selectedTags.length}
-                                        </Badge>
-                                    )}
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48 max-h-64 overflow-y-auto">
-                                <DropdownMenuLabel>篩選標籤</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                {allTags.map((tag) => (
-                                    <DropdownMenuCheckboxItem
-                                        key={tag}
-                                        checked={selectedTags.includes(tag)}
-                                        onCheckedChange={() => handleTagToggle(tag)}
+                        <div className="flex">
+                            <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        className={selectedTags.length > 0 && onTagFilterModeChange ? "rounded-r-none border-r-0" : ""}
                                     >
-                                        {tag}
-                                    </DropdownMenuCheckboxItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                                        <Tag className="mr-2 h-4 w-4" />
+                                        標籤
+                                        {selectedTags.length > 0 && (
+                                            <Badge variant="secondary" className="ml-2">
+                                                {selectedTags.length}
+                                            </Badge>
+                                        )}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64 p-0" align="start">
+                                    {/* 標籤搜尋 */}
+                                    {allTags.length > 8 && (
+                                        <div className="p-2 border-b">
+                                            <div className="relative">
+                                                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                                <Input
+                                                    value={tagSearchValue}
+                                                    onChange={(e) => setTagSearchValue(e.target.value)}
+                                                    placeholder="搜尋標籤..."
+                                                    className="h-8 pl-7 text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {/* 標籤列表 */}
+                                    <ScrollArea className={allTags.length > 10 ? "h-64" : ""}>
+                                        <div className="p-2 space-y-1">
+                                            {filteredTags.length === 0 ? (
+                                                <div className="text-sm text-muted-foreground text-center py-4">
+                                                    沒有符合的標籤
+                                                </div>
+                                            ) : (
+                                                filteredTags.map((tag) => {
+                                                    const isSelected = selectedTags.includes(tag);
+                                                    return (
+                                                        <div
+                                                            key={tag}
+                                                            className={cn(
+                                                                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors",
+                                                                "hover:bg-accent hover:text-accent-foreground",
+                                                                isSelected && "bg-accent"
+                                                            )}
+                                                            onClick={() => handleTagToggle(tag)}
+                                                        >
+                                                            <div className={cn(
+                                                                "flex h-4 w-4 items-center justify-center rounded border",
+                                                                isSelected 
+                                                                    ? "bg-primary border-primary text-primary-foreground" 
+                                                                    : "border-muted-foreground/30"
+                                                            )}>
+                                                                {isSelected && <Check className="h-3 w-3" />}
+                                                            </div>
+                                                            <span className="flex-1 truncate">{tag}</span>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                    
+                                    {/* 底部操作 */}
+                                    {selectedTags.length > 0 && (
+                                        <div className="p-2 border-t">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="w-full h-8 text-xs"
+                                                onClick={() => {
+                                                    onTagsChange([]);
+                                                    setTagSearchValue('');
+                                                }}
+                                            >
+                                                <X className="mr-1 h-3 w-3" />
+                                                清除全部 ({selectedTags.length})
+                                            </Button>
+                                        </div>
+                                    )}
+                                </PopoverContent>
+                            </Popover>
+                            {/* 篩選模式切換 */}
+                            {selectedTags.length > 0 && onTagFilterModeChange && (
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" size="sm" className="rounded-l-none text-xs px-2">
+                                            {tagFilterMode === 'and' ? '全部符合' : '任一符合'}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-40 p-1" align="start">
+                                        <div
+                                            className={cn(
+                                                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer",
+                                                "hover:bg-accent",
+                                                tagFilterMode === 'and' && "bg-accent"
+                                            )}
+                                            onClick={() => onTagFilterModeChange('and')}
+                                        >
+                                            <div className={cn(
+                                                "flex h-4 w-4 items-center justify-center rounded-full border",
+                                                tagFilterMode === 'and' 
+                                                    ? "bg-primary border-primary text-primary-foreground" 
+                                                    : "border-muted-foreground/30"
+                                            )}>
+                                                {tagFilterMode === 'and' && <Check className="h-3 w-3" />}
+                                            </div>
+                                            <span>全部符合</span>
+                                        </div>
+                                        <div
+                                            className={cn(
+                                                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer",
+                                                "hover:bg-accent",
+                                                tagFilterMode === 'or' && "bg-accent"
+                                            )}
+                                            onClick={() => onTagFilterModeChange('or')}
+                                        >
+                                            <div className={cn(
+                                                "flex h-4 w-4 items-center justify-center rounded-full border",
+                                                tagFilterMode === 'or' 
+                                                    ? "bg-primary border-primary text-primary-foreground" 
+                                                    : "border-muted-foreground/30"
+                                            )}>
+                                                {tagFilterMode === 'or' && <Check className="h-3 w-3" />}
+                                            </div>
+                                            <span>任一符合</span>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+                        </div>
                     )}
 
                     {/* 排序 */}
@@ -213,26 +339,6 @@ export function ListToolbar({
                             刪除 ({selectedCount})
                         </Button>
                     )}
-
-                    {/* 檢視模式切換 */}
-                    <div className="flex border rounded-md">
-                        <Button
-                            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                            size="icon"
-                            className="rounded-r-none border-0"
-                            onClick={() => onViewModeChange('grid')}
-                        >
-                            <LayoutGrid className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                            size="icon"
-                            className="rounded-l-none border-0"
-                            onClick={() => onViewModeChange('list')}
-                        >
-                            <List className="h-4 w-4" />
-                        </Button>
-                    </div>
                 </div>
             </div>
 
@@ -246,8 +352,8 @@ export function ListToolbar({
                         </span>
                     )}
 
-                    {/* 活動篩選標籤 */}
-                    {selectedTags.map((tag) => (
+                    {/* 活動篩選標籤 - 最多顯示 5 個，超過的摺疊 */}
+                    {selectedTags.slice(0, 5).map((tag) => (
                         <Badge key={tag} variant="secondary" className="gap-1">
                             {tag}
                             <X
@@ -256,9 +362,27 @@ export function ListToolbar({
                             />
                         </Badge>
                     ))}
+                    {selectedTags.length > 5 && (
+                        <Badge variant="outline" className="text-muted-foreground">
+                            +{selectedTags.length - 5} 個標籤
+                        </Badge>
+                    )}
 
-                    {/* 清除篩選 */}
-                    {hasActiveFilters && (
+                    {/* 清除所有標籤 */}
+                    {selectedTags.length > 1 && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-muted-foreground"
+                            onClick={() => onTagsChange([])}
+                        >
+                            <X className="mr-1 h-3 w-3" />
+                            清除標籤
+                        </Button>
+                    )}
+
+                    {/* 清除所有篩選 */}
+                    {searchValue && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -266,7 +390,7 @@ export function ListToolbar({
                             onClick={handleClearFilters}
                         >
                             <X className="mr-1 h-3 w-3" />
-                            清除篩選
+                            清除全部
                         </Button>
                     )}
                 </div>
@@ -345,7 +469,8 @@ export function filterItems<T extends { tags_json?: string | null }>(
     items: T[],
     searchValue: string,
     selectedTags: string[],
-    getSearchableText: (item: T) => string
+    getSearchableText: (item: T) => string,
+    tagFilterMode: TagFilterMode = 'and'
 ): T[] {
     return items.filter((item) => {
         // 搜尋篩選
@@ -360,9 +485,18 @@ export function filterItems<T extends { tags_json?: string | null }>(
         // 標籤篩選
         if (selectedTags.length > 0) {
             const itemTags = parseTags(item.tags_json);
-            const hasMatchingTag = selectedTags.some((tag) => itemTags.includes(tag));
-            if (!hasMatchingTag) {
-                return false;
+            if (tagFilterMode === 'and') {
+                // AND 模式：所有選取的標籤都必須存在
+                const hasAllTags = selectedTags.every((tag) => itemTags.includes(tag));
+                if (!hasAllTags) {
+                    return false;
+                }
+            } else {
+                // OR 模式：只要有任一標籤匹配就通過
+                const hasMatchingTag = selectedTags.some((tag) => itemTags.includes(tag));
+                if (!hasMatchingTag) {
+                    return false;
+                }
             }
         }
 

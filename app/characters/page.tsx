@@ -7,20 +7,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Character } from '@/types';
 import { getCharacters, deleteCharacter, deleteCharacters } from '@/services/supabase/characters';
-import { Tag, getAllTagsForType, getTagsForEntities } from '@/services/supabase/tags';
+import { Tag, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,8 +28,9 @@ import {
   ListToolbar,
   ListItemCheckbox,
   SortDirection,
-  ViewMode,
+  TagFilterMode,
   sortItems,
+  collectTagsFromItems,
 } from '@/components/list-toolbar';
 
 interface CharacterWithTags extends Character {
@@ -54,7 +46,6 @@ const SORT_OPTIONS = [
 function CharactersListPageContent() {
   const { user } = useAuth();
   const [characters, setCharacters] = useState<CharacterWithTags[]>([]);
-  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [characterToDelete, setCharacterToDelete] = useState<{ id: string, name: string } | null>(null);
@@ -62,11 +53,11 @@ function CharactersListPageContent() {
   // QOL 功能狀態
   const [searchValue, setSearchValue] = useState('');
   const [selectedTagNames, setSelectedTagNames] = useState<string[]>([]);
+  const [tagFilterMode, setTagFilterMode] = useState<TagFilterMode>('and');
   const [sortField, setSortField] = useState('created_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
 
   // Load characters
@@ -82,10 +73,7 @@ function CharactersListPageContent() {
       try {
         setLoading(true);
 
-        const [charactersData, tagsData] = await Promise.all([
-          getCharacters(user.user_id),
-          getAllTagsForType(user.user_id, 'character'),
-        ]);
+        const charactersData = await getCharacters(user.user_id);
 
         if (cancelled) return;
 
@@ -100,7 +88,6 @@ function CharactersListPageContent() {
         }));
 
         setCharacters(charactersWithTags);
-        setAllTags(tagsData);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load characters:', err);
@@ -125,10 +112,7 @@ function CharactersListPageContent() {
     try {
       setLoading(true);
 
-      const [charactersData, tagsData] = await Promise.all([
-        getCharacters(user.user_id),
-        getAllTagsForType(user.user_id, 'character'),
-      ]);
+      const charactersData = await getCharacters(user.user_id);
 
       const characterIds = charactersData.map((c) => c.character_id);
       const tagsMap = await getTagsForEntities('character', characterIds, user.user_id);
@@ -139,7 +123,6 @@ function CharactersListPageContent() {
       }));
 
       setCharacters(charactersWithTags);
-      setAllTags(tagsData);
     } catch (err: any) {
       console.error('Failed to load characters:', err);
       toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
@@ -148,7 +131,8 @@ function CharactersListPageContent() {
     }
   };
 
-  const allTagNames = useMemo(() => allTags.map((t) => t.name).sort(), [allTags]);
+  // 從目前項目收集所有標籤名稱用於篩選
+  const allTagNames = useMemo(() => collectTagsFromItems(characters), [characters]);
 
   // 篩選和排序
   const filteredAndSortedCharacters = useMemo(() => {
@@ -165,7 +149,11 @@ function CharactersListPageContent() {
     if (selectedTagNames.length > 0) {
       filtered = filtered.filter((char) => {
         const charTagNames = (char.tags || []).map((t) => t.name);
-        return selectedTagNames.some((tag) => charTagNames.includes(tag));
+        if (tagFilterMode === 'and') {
+          return selectedTagNames.every((tag) => charTagNames.includes(tag));
+        } else {
+          return selectedTagNames.some((tag) => charTagNames.includes(tag));
+        }
       });
     }
 
@@ -181,7 +169,7 @@ function CharactersListPageContent() {
           return char.canonical_name;
       }
     });
-  }, [characters, searchValue, selectedTagNames, sortField, sortDirection]);
+  }, [characters, searchValue, selectedTagNames, tagFilterMode, sortField, sortDirection]);
 
   const handleToggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -191,14 +179,6 @@ function CharactersListPageContent() {
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
-  };
-
-  const handleSelectAll = () => {
-    if (selectedIds.size === filteredAndSortedCharacters.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredAndSortedCharacters.map((c) => c.character_id)));
-    }
   };
 
   const handleSelectModeChange = (enabled: boolean) => {
@@ -303,6 +283,8 @@ function CharactersListPageContent() {
             allTags={allTagNames}
             selectedTags={selectedTagNames}
             onTagsChange={setSelectedTagNames}
+            tagFilterMode={tagFilterMode}
+            onTagFilterModeChange={setTagFilterMode}
             sortField={sortField}
             sortDirection={sortDirection}
             onSortChange={(field, dir) => {
@@ -315,8 +297,6 @@ function CharactersListPageContent() {
             selectedCount={selectedIds.size}
             onDeleteSelected={() => setShowBatchDeleteDialog(true)}
             totalCount={filteredAndSortedCharacters.length}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
           />
         )}
 
@@ -344,13 +324,13 @@ function CharactersListPageContent() {
               嘗試調整搜尋條件或清除篩選
             </p>
           </Card>
-        ) : viewMode === 'grid' ? (
+        ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredAndSortedCharacters.map((character) => (
               <Card
                 key={character.character_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''
-                  }`}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : ''}`}
+                onClick={isSelectMode ? () => handleToggleSelect(character.character_id) : undefined}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(character.character_id)}
@@ -370,7 +350,7 @@ function CharactersListPageContent() {
                     建立於 {new Date(character.created_at).toLocaleDateString('zh-TW')}
                   </div>
                 </CardContent>
-                <CardFooter className="flex gap-2 pt-4 border-t">
+                <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
                   <Link href={`/characters/${character.character_id}`} className="flex-1">
                     <Button variant="outline" className="w-full">
                       <Edit className="mr-2 h-4 w-4" />
@@ -393,86 +373,6 @@ function CharactersListPageContent() {
               </Card>
             ))}
           </div>
-        ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {isSelectMode && (
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedIds.size === filteredAndSortedCharacters.length && filteredAndSortedCharacters.length > 0}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                  )}
-                  <TableHead>名稱</TableHead>
-                  <TableHead className="hidden md:table-cell">標籤</TableHead>
-                  <TableHead className="hidden md:table-cell">建立日期</TableHead>
-                  <TableHead className="w-24 text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedCharacters.map((character) => (
-                  <TableRow
-                    key={character.character_id}
-                    className={selectedIds.has(character.character_id) ? 'bg-muted/50' : ''}
-                  >
-                    {isSelectMode && (
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.has(character.character_id)}
-                          onCheckedChange={() => handleToggleSelect(character.character_id)}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{character.canonical_name}</div>
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {character.core_profile_text}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex flex-wrap gap-1">
-                        {(character.tags || []).map((tag) => (
-                          <Badge key={tag.tag_id} variant="secondary" className="text-xs">
-                            {tag.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground" suppressHydrationWarning>
-                      {new Date(character.created_at).toLocaleDateString('zh-TW')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Link href={`/characters/${character.character_id}`}>
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => confirmDelete(character.character_id, character.canonical_name)}
-                          disabled={deletingId === character.character_id}
-                        >
-                          {deletingId === character.character_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
         )}
 
         {/* 單個刪除確認 */}

@@ -7,21 +7,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { World } from '@/types';
 import { getWorldsByUserId, deleteWorld, deleteWorlds } from '@/services/supabase/worlds';
-import { Tag, getAllTagsForType, getTagsForEntities } from '@/services/supabase/tags';
+import { Tag, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,8 +29,9 @@ import {
   ListToolbar,
   ListItemCheckbox,
   SortDirection,
-  ViewMode,
+  TagFilterMode,
   sortItems,
+  collectTagsFromItems,
 } from '@/components/list-toolbar';
 
 interface WorldWithTags extends World {
@@ -56,7 +48,6 @@ function WorldsPageContent() {
   const { user } = useAuth();
   const router = useRouter();
   const [worlds, setWorlds] = useState<WorldWithTags[]>([]);
-  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -65,11 +56,11 @@ function WorldsPageContent() {
   // QOL 功能狀態
   const [searchValue, setSearchValue] = useState('');
   const [selectedTagNames, setSelectedTagNames] = useState<string[]>([]);
+  const [tagFilterMode, setTagFilterMode] = useState<TagFilterMode>('and');
   const [sortField, setSortField] = useState('created_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
 
   // Load worlds with cancellation support
@@ -86,11 +77,8 @@ function WorldsPageContent() {
         setLoading(true);
         setError('');
 
-        // 載入世界觀和所有標籤
-        const [worldsData, tagsData] = await Promise.all([
-          getWorldsByUserId(user.user_id),
-          getAllTagsForType(user.user_id, 'world'),
-        ]);
+        // 載入世界觀
+        const worldsData = await getWorldsByUserId(user.user_id);
 
         if (cancelled) return;
 
@@ -107,7 +95,6 @@ function WorldsPageContent() {
         }));
 
         setWorlds(worldsWithTags);
-        setAllTags(tagsData);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load worlds:', err);
@@ -133,10 +120,7 @@ function WorldsPageContent() {
       setLoading(true);
       setError('');
 
-      const [worldsData, tagsData] = await Promise.all([
-        getWorldsByUserId(user.user_id),
-        getAllTagsForType(user.user_id, 'world'),
-      ]);
+      const worldsData = await getWorldsByUserId(user.user_id);
 
       const worldIds = worldsData.map((w) => w.world_id);
       const tagsMap = await getTagsForEntities('world', worldIds, user.user_id);
@@ -147,7 +131,6 @@ function WorldsPageContent() {
       }));
 
       setWorlds(worldsWithTags);
-      setAllTags(tagsData);
     } catch (err: any) {
       console.error('Failed to load worlds:', err);
       setError(err.message || '載入世界觀失敗');
@@ -156,8 +139,8 @@ function WorldsPageContent() {
     }
   };
 
-  // 收集所有標籤名稱用於篩選
-  const allTagNames = useMemo(() => allTags.map((t) => t.name).sort(), [allTags]);
+  // 從目前項目收集所有標籤名稱用於篩選
+  const allTagNames = useMemo(() => collectTagsFromItems(worlds), [worlds]);
 
   // 篩選和排序
   const filteredAndSortedWorlds = useMemo(() => {
@@ -176,7 +159,11 @@ function WorldsPageContent() {
     if (selectedTagNames.length > 0) {
       filtered = filtered.filter((world) => {
         const worldTagNames = (world.tags || []).map((t) => t.name);
-        return selectedTagNames.some((tag) => worldTagNames.includes(tag));
+        if (tagFilterMode === 'and') {
+          return selectedTagNames.every((tag) => worldTagNames.includes(tag));
+        } else {
+          return selectedTagNames.some((tag) => worldTagNames.includes(tag));
+        }
       });
     }
 
@@ -193,7 +180,7 @@ function WorldsPageContent() {
           return world.name;
       }
     });
-  }, [worlds, searchValue, selectedTagNames, sortField, sortDirection]);
+  }, [worlds, searchValue, selectedTagNames, tagFilterMode, sortField, sortDirection]);
 
   // 選取功能
   const handleToggleSelect = (id: string) => {
@@ -204,14 +191,6 @@ function WorldsPageContent() {
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
-  };
-
-  const handleSelectAll = () => {
-    if (selectedIds.size === filteredAndSortedWorlds.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredAndSortedWorlds.map((w) => w.world_id)));
-    }
   };
 
   const handleSelectModeChange = (enabled: boolean) => {
@@ -316,6 +295,8 @@ function WorldsPageContent() {
             allTags={allTagNames}
             selectedTags={selectedTagNames}
             onTagsChange={setSelectedTagNames}
+            tagFilterMode={tagFilterMode}
+            onTagFilterModeChange={setTagFilterMode}
             sortField={sortField}
             sortDirection={sortDirection}
             onSortChange={(field, dir) => {
@@ -328,8 +309,6 @@ function WorldsPageContent() {
             selectedCount={selectedIds.size}
             onDeleteSelected={() => setShowBatchDeleteDialog(true)}
             totalCount={filteredAndSortedWorlds.length}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
           />
         )}
 
@@ -364,13 +343,13 @@ function WorldsPageContent() {
               嘗試調整搜尋條件或清除篩選
             </p>
           </Card>
-        ) : viewMode === 'grid' ? (
+        ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredAndSortedWorlds.map((world) => (
               <Card
                 key={world.world_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''
-                  }`}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : ''}`}
+                onClick={isSelectMode ? () => handleToggleSelect(world.world_id) : undefined}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(world.world_id)}
@@ -390,7 +369,7 @@ function WorldsPageContent() {
                     建立於 {new Date(world.created_at).toLocaleDateString('zh-TW')}
                   </div>
                 </CardContent>
-                <CardFooter className="flex gap-2 pt-4 border-t">
+                <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
                   <Link href={`/worlds/${world.world_id}`} className="flex-1">
                     <Button variant="outline" className="w-full">
                       <Edit className="mr-2 h-4 w-4" />
@@ -413,86 +392,6 @@ function WorldsPageContent() {
               </Card>
             ))}
           </div>
-        ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {isSelectMode && (
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedIds.size === filteredAndSortedWorlds.length && filteredAndSortedWorlds.length > 0}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                  )}
-                  <TableHead>名稱</TableHead>
-                  <TableHead className="hidden md:table-cell">標籤</TableHead>
-                  <TableHead className="hidden md:table-cell">建立日期</TableHead>
-                  <TableHead className="w-24 text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedWorlds.map((world) => (
-                  <TableRow
-                    key={world.world_id}
-                    className={selectedIds.has(world.world_id) ? 'bg-muted/50' : ''}
-                  >
-                    {isSelectMode && (
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.has(world.world_id)}
-                          onCheckedChange={() => handleToggleSelect(world.world_id)}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{world.name}</div>
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {world.description}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex flex-wrap gap-1">
-                        {(world.tags || []).map((tag) => (
-                          <Badge key={tag.tag_id} variant="secondary" className="text-xs">
-                            {tag.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground" suppressHydrationWarning>
-                      {new Date(world.created_at).toLocaleDateString('zh-TW')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Link href={`/worlds/${world.world_id}`}>
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => confirmDelete(world.world_id, world.name)}
-                          disabled={deletingId === world.world_id}
-                        >
-                          {deletingId === world.world_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
         )}
 
         {/* 單個刪除確認 */}

@@ -8,22 +8,13 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Story } from '@/types';
 import { getStories, deleteStory, deleteStories } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
-import { Tag, getAllTagsForType, getTagsForEntities } from '@/services/supabase/tags';
+import { Tag, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,8 +30,9 @@ import {
   ListToolbar,
   ListItemCheckbox,
   SortDirection,
-  ViewMode,
+  TagFilterMode,
   sortItems,
+  collectTagsFromItems,
 } from '@/components/list-toolbar';
 
 interface StoryWithWorld extends Story {
@@ -59,7 +51,6 @@ function StoriesPageContent() {
   const { user } = useAuth();
   const router = useRouter();
   const [stories, setStories] = useState<StoryWithWorld[]>([]);
-  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -68,11 +59,11 @@ function StoriesPageContent() {
   // QOL 功能狀態
   const [searchValue, setSearchValue] = useState('');
   const [selectedTagNames, setSelectedTagNames] = useState<string[]>([]);
+  const [tagFilterMode, setTagFilterMode] = useState<TagFilterMode>('and');
   const [sortField, setSortField] = useState('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
 
   // Load stories
@@ -88,10 +79,9 @@ function StoriesPageContent() {
       try {
         setLoading(true);
 
-        const [storiesData, worldsData, tagsData] = await Promise.all([
+        const [storiesData, worldsData] = await Promise.all([
           getStories(user.user_id),
           getWorldsByUserId(user.user_id),
-          getAllTagsForType(user.user_id, 'story'),
         ]);
 
         if (cancelled) return;
@@ -112,7 +102,6 @@ function StoriesPageContent() {
         }));
 
         setStories(storiesWithData);
-        setAllTags(tagsData);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load stories:', err);
@@ -137,10 +126,9 @@ function StoriesPageContent() {
     try {
       setLoading(true);
 
-      const [storiesData, worldsData, tagsData] = await Promise.all([
+      const [storiesData, worldsData] = await Promise.all([
         getStories(user.user_id),
         getWorldsByUserId(user.user_id),
-        getAllTagsForType(user.user_id, 'story'),
       ]);
 
       const worldMap = new Map(
@@ -157,7 +145,6 @@ function StoriesPageContent() {
       }));
 
       setStories(storiesWithData);
-      setAllTags(tagsData);
     } catch (err: any) {
       console.error('Failed to load stories:', err);
       toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
@@ -166,7 +153,8 @@ function StoriesPageContent() {
     }
   };
 
-  const allTagNames = useMemo(() => allTags.map((t) => t.name).sort(), [allTags]);
+  // 從目前項目收集所有標籤名稱用於篩選
+  const allTagNames = useMemo(() => collectTagsFromItems(stories), [stories]);
 
   // 狀態篩選
   const statusFilteredStories = useMemo(() => {
@@ -190,7 +178,11 @@ function StoriesPageContent() {
     if (selectedTagNames.length > 0) {
       filtered = filtered.filter((story) => {
         const storyTagNames = (story.tags || []).map((t) => t.name);
-        return selectedTagNames.some((tag) => storyTagNames.includes(tag));
+        if (tagFilterMode === 'and') {
+          return selectedTagNames.every((tag) => storyTagNames.includes(tag));
+        } else {
+          return selectedTagNames.some((tag) => storyTagNames.includes(tag));
+        }
       });
     }
 
@@ -208,7 +200,7 @@ function StoriesPageContent() {
           return story.title;
       }
     });
-  }, [statusFilteredStories, searchValue, selectedTagNames, sortField, sortDirection]);
+  }, [statusFilteredStories, searchValue, selectedTagNames, tagFilterMode, sortField, sortDirection]);
 
   const handleToggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
@@ -218,14 +210,6 @@ function StoriesPageContent() {
       newSelected.add(id);
     }
     setSelectedIds(newSelected);
-  };
-
-  const handleSelectAll = () => {
-    if (selectedIds.size === filteredAndSortedStories.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredAndSortedStories.map((s) => s.story_id)));
-    }
   };
 
   const handleSelectModeChange = (enabled: boolean) => {
@@ -352,6 +336,8 @@ function StoriesPageContent() {
             allTags={allTagNames}
             selectedTags={selectedTagNames}
             onTagsChange={setSelectedTagNames}
+            tagFilterMode={tagFilterMode}
+            onTagFilterModeChange={setTagFilterMode}
             sortField={sortField}
             sortDirection={sortDirection}
             onSortChange={(field, dir) => {
@@ -364,8 +350,6 @@ function StoriesPageContent() {
             selectedCount={selectedIds.size}
             onDeleteSelected={() => setShowBatchDeleteDialog(true)}
             totalCount={filteredAndSortedStories.length}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
           />
         )}
 
@@ -395,13 +379,13 @@ function StoriesPageContent() {
               嘗試調整搜尋條件或清除篩選
             </p>
           </Card>
-        ) : viewMode === 'grid' ? (
+        ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredAndSortedStories.map((story) => (
               <Card
                 key={story.story_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow overflow-hidden ${selectedIds.has(story.story_id) ? 'ring-2 ring-primary' : ''
-                  }`}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow overflow-hidden ${selectedIds.has(story.story_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : ''}`}
+                onClick={isSelectMode ? () => handleToggleSelect(story.story_id) : undefined}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(story.story_id)}
@@ -432,7 +416,7 @@ function StoriesPageContent() {
                     {story.premise_text}
                   </p>
                 </CardContent>
-                <CardFooter className="flex gap-2 pt-4 border-t bg-muted/20">
+                <CardFooter className="flex gap-2 pt-4 border-t bg-muted/20" onClick={(e) => e.stopPropagation()}>
                   {story.status === 'active' && (
                     <Link href={`/stories/${story.story_id}/play`} className="flex-1">
                       <Button className="w-full">
@@ -463,100 +447,6 @@ function StoriesPageContent() {
               </Card>
             ))}
           </div>
-        ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {isSelectMode && (
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={selectedIds.size === filteredAndSortedStories.length && filteredAndSortedStories.length > 0}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                  )}
-                  <TableHead>標題</TableHead>
-                  <TableHead className="hidden md:table-cell">世界觀</TableHead>
-                  <TableHead className="hidden md:table-cell">狀態</TableHead>
-                  <TableHead className="hidden md:table-cell">回合</TableHead>
-                  <TableHead className="w-32 text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedStories.map((story) => (
-                  <TableRow
-                    key={story.story_id}
-                    className={selectedIds.has(story.story_id) ? 'bg-muted/50' : ''}
-                  >
-                    {isSelectMode && (
-                      <TableCell>
-                        <Checkbox
-                          checked={selectedIds.has(story.story_id)}
-                          onCheckedChange={() => handleToggleSelect(story.story_id)}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{story.title}</div>
-                        <div className="text-sm text-muted-foreground line-clamp-1">
-                          {story.premise_text}
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {(story.tags || []).map((tag) => (
-                            <Badge key={tag.tag_id} variant="outline" className="text-xs">
-                              {tag.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {story.world_name}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <Badge variant={story.status === 'active' ? 'default' : 'secondary'} className={story.status === 'active' ? 'bg-green-600' : ''}>
-                        {story.status === 'active' ? '進行中' : '已結束'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">
-                      {story.turn_count || 0}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {story.status === 'active' && (
-                          <Link href={`/stories/${story.story_id}/play`}>
-                            <Button variant="ghost" size="icon">
-                              <Play className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        )}
-                        <Link href={`/stories/${story.story_id}`}>
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => confirmDelete(story.story_id, story.title)}
-                          disabled={deletingId === story.story_id}
-                        >
-                          {deletingId === story.story_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
         )}
 
         {/* 單個刪除確認 */}
