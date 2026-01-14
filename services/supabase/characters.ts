@@ -137,6 +137,26 @@ export async function deleteCharacter(
 }
 
 /**
+ * Delete multiple characters
+ */
+export async function deleteCharacters(
+  characterIds: string[],
+  userId: string
+): Promise<void> {
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('characters')
+      .delete()
+      .in('character_id', characterIds)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to delete characters: ' + error.message);
+    }
+  });
+}
+
+/**
  * Check if a character name already exists for this user
  */
 export async function characterNameExists(

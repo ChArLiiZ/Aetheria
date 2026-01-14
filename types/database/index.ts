@@ -48,6 +48,7 @@ export interface World {
   name: string;
   description: string;
   rules_text: string;
+  tags_json?: string; // JSON array string
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +101,7 @@ export interface Story {
   model_override?: string;
   params_override_json?: string; // JSON string
   context_turns_override?: number; // 上下文回合數覆蓋
+  tags_json?: string; // JSON array string
   status: StoryStatus;
   turn_count?: number;
   created_at: string;

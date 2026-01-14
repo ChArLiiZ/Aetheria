@@ -62,6 +62,7 @@ export async function createWorld(
     name: string;
     description: string;
     rules_text: string;
+    tags?: string[];
   }
 ): Promise<World> {
   return withRetry(async () => {
@@ -72,6 +73,7 @@ export async function createWorld(
         name: data.name,
         description: data.description,
         rules_text: data.rules_text,
+        tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
       })
       .select()
       .single();
@@ -90,12 +92,20 @@ export async function createWorld(
 export async function updateWorld(
   worldId: string,
   userId: string,
-  updates: Partial<Pick<World, 'name' | 'description' | 'rules_text'>>
+  updates: Partial<Pick<World, 'name' | 'description' | 'rules_text'>> & { tags?: string[] }
 ): Promise<void> {
   return withRetry(async () => {
+    const payload: any = { ...updates };
+
+    // Handle tags separately
+    if (updates.tags !== undefined) {
+      payload.tags_json = updates.tags.length > 0 ? JSON.stringify(updates.tags) : '';
+      delete payload.tags;
+    }
+
     const { error } = await supabase
       .from('worlds')
-      .update(updates)
+      .update(payload)
       .eq('world_id', worldId)
       .eq('user_id', userId);
 
@@ -126,6 +136,26 @@ export async function deleteWorld(
 }
 
 /**
+ * Delete multiple worlds
+ */
+export async function deleteWorlds(
+  worldIds: string[],
+  userId: string
+): Promise<void> {
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('worlds')
+      .delete()
+      .in('world_id', worldIds)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to delete worlds: ' + error.message);
+    }
+  });
+}
+
+/**
  * Check if world name already exists for user
  */
 export async function worldNameExists(
@@ -149,3 +179,4 @@ export async function worldNameExists(
     return (data?.length || 0) > 0;
   });
 }
+

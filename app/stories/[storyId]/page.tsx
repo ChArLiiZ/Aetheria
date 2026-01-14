@@ -20,6 +20,7 @@ import {
   getStateValues,
   setMultipleStateValues
 } from '@/services/supabase/story-state-values';
+import { Tag, getAllTagsForType, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 
 import { AppHeader } from '@/components/app-header';
@@ -119,6 +120,9 @@ function StoryDetailPageContent() {
   const [worldSearch, setWorldSearch] = useState('');
   const [worldPage, setWorldPage] = useState(1);
   const [showWorldSelector, setShowWorldSelector] = useState(false);
+  const [worldTags, setWorldTags] = useState<Tag[]>([]);
+  const [worldTagsMap, setWorldTagsMap] = useState<Map<string, Tag[]>>(new Map());
+  const [selectedWorldTags, setSelectedWorldTags] = useState<string[]>([]);
 
   // Character selection state
   const [characterSearch, setCharacterSearch] = useState('');
@@ -126,6 +130,8 @@ function StoryDetailPageContent() {
   const [characterPage, setCharacterPage] = useState(1);
   const [showCharacterSelector, setShowCharacterSelector] = useState(false);
   const [showAddCharacterDialog, setShowAddCharacterDialog] = useState(false);
+  const [characterTags, setCharacterTags] = useState<Tag[]>([]);
+  const [characterTagsMap, setCharacterTagsMap] = useState<Map<string, Tag[]>>(new Map());
 
   // Load data with cancellation support to prevent race conditions
   useEffect(() => {
@@ -142,9 +148,11 @@ function StoryDetailPageContent() {
         setLoading(true);
 
         // Load worlds and characters
-        const [worldsData, charactersData] = await Promise.all([
+        const [worldsData, charactersData, worldTagsData, charTagsData] = await Promise.all([
           getWorldsByUserId(user.user_id),
           getCharacters(user.user_id),
+          getAllTagsForType(user.user_id, 'world'),
+          getAllTagsForType(user.user_id, 'character'),
         ]);
 
         // Check if this request was cancelled
@@ -152,6 +160,21 @@ function StoryDetailPageContent() {
 
         setWorlds(worldsData);
         setCharacters(charactersData);
+        setWorldTags(worldTagsData);
+        setCharacterTags(charTagsData);
+
+        // 批次載入世界觀和角色的標籤
+        const worldIds = worldsData.map((w) => w.world_id);
+        const charIds = charactersData.map((c) => c.character_id);
+        const [worldTagsMapData, charTagsMapData] = await Promise.all([
+          getTagsForEntities('world', worldIds, user.user_id),
+          getTagsForEntities('character', charIds, user.user_id),
+        ]);
+
+        if (cancelled) return;
+
+        setWorldTagsMap(worldTagsMapData);
+        setCharacterTagsMap(charTagsMapData);
 
         // Load schema if creating new story and world is selected
         if (isNewStory && formData.world_id) {
@@ -258,30 +281,28 @@ function StoryDetailPageContent() {
     }
   };
 
-  // Get all available tags from characters
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    characters.forEach((char) => {
-      if (char.tags_json) {
-        try {
-          const tags = JSON.parse(char.tags_json) as string[];
-          tags.forEach((tag) => tagSet.add(tag));
-        } catch { }
-      }
-    });
-    return Array.from(tagSet).sort();
-  }, [characters]);
+  // Get all available tag names from loaded tags
+  const allCharacterTagNames = useMemo(() => characterTags.map((t) => t.name).sort(), [characterTags]);
+  const allWorldTagNames = useMemo(() => worldTags.map((t) => t.name).sort(), [worldTags]);
 
-  // Filtered worlds
+  // Filtered worlds - 支援標籤篩選
   const filteredWorlds = useMemo(() => {
     return worlds.filter((world) => {
       const searchLower = worldSearch.toLowerCase();
-      return (
+      const matchesSearch =
         world.name.toLowerCase().includes(searchLower) ||
-        world.description.toLowerCase().includes(searchLower)
-      );
+        world.description.toLowerCase().includes(searchLower);
+
+      // 標籤篩選
+      if (selectedWorldTags.length > 0) {
+        const worldTagNames = (worldTagsMap.get(world.world_id) || []).map((t) => t.name);
+        const hasMatchingTag = selectedWorldTags.some((tag) => worldTagNames.includes(tag));
+        return matchesSearch && hasMatchingTag;
+      }
+
+      return matchesSearch;
     });
-  }, [worlds, worldSearch]);
+  }, [worlds, worldSearch, selectedWorldTags, worldTagsMap]);
 
   const paginatedWorlds = useMemo(() => {
     const start = (worldPage - 1) * ITEMS_PER_PAGE;
@@ -290,7 +311,7 @@ function StoryDetailPageContent() {
 
   const worldTotalPages = Math.ceil(filteredWorlds.length / ITEMS_PER_PAGE);
 
-  // Filtered characters
+  // Filtered characters - 支援標籤篩選
   const filteredCharacters = useMemo(() => {
     return characters.filter((char) => {
       // Search filter
@@ -301,18 +322,14 @@ function StoryDetailPageContent() {
 
       // Tag filter
       if (selectedTags.length > 0) {
-        try {
-          const charTags = char.tags_json ? (JSON.parse(char.tags_json) as string[]) : [];
-          const hasAllTags = selectedTags.every((tag) => charTags.includes(tag));
-          return matchesSearch && hasAllTags;
-        } catch {
-          return false;
-        }
+        const charTagNames = (characterTagsMap.get(char.character_id) || []).map((t) => t.name);
+        const hasMatchingTag = selectedTags.some((tag) => charTagNames.includes(tag));
+        return matchesSearch && hasMatchingTag;
       }
 
       return matchesSearch;
     });
-  }, [characters, characterSearch, selectedTags]);
+  }, [characters, characterSearch, selectedTags, characterTagsMap]);
 
   const paginatedCharacters = useMemo(() => {
     const start = (characterPage - 1) * ITEMS_PER_PAGE;
@@ -733,16 +750,48 @@ function StoryDetailPageContent() {
                                 }}
                               />
                             </div>
+                            {/* World Tag Filters */}
+                            {allWorldTagNames.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {allWorldTagNames.map((tag: string) => (
+                                  <Badge
+                                    key={tag}
+                                    variant={selectedWorldTags.includes(tag) ? 'default' : 'outline'}
+                                    className="cursor-pointer"
+                                    onClick={() => {
+                                      setSelectedWorldTags((prev) =>
+                                        prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+                                      );
+                                      setWorldPage(1);
+                                    }}
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {paginatedWorlds.map((world) => (
-                                <div key={world.world_id}
-                                  className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition"
-                                  onClick={() => handleWorldSelect(world.world_id)}
-                                >
-                                  <h4 className="font-semibold">{world.name}</h4>
-                                  <p className="text-sm text-muted-foreground line-clamp-2">{world.description}</p>
-                                </div>
-                              ))}
+                              {paginatedWorlds.map((world) => {
+                                const wTags = worldTagsMap.get(world.world_id) || [];
+                                return (
+                                  <div key={world.world_id}
+                                    className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition"
+                                    onClick={() => handleWorldSelect(world.world_id)}
+                                  >
+                                    <h4 className="font-semibold">{world.name}</h4>
+                                    <p className="text-sm text-muted-foreground line-clamp-2">{world.description}</p>
+                                    {wTags.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {wTags.slice(0, 3).map((tag) => (
+                                          <Badge key={tag.tag_id} variant="secondary" className="text-xs">
+                                            {tag.name}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                             {worldTotalPages > 1 && (
                               <div className="flex justify-center gap-2">
@@ -841,9 +890,9 @@ function StoryDetailPageContent() {
                                 />
                               </div>
                               {/* Tag Filters */}
-                              {allTags.length > 0 && (
+                              {allCharacterTagNames.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
-                                  {allTags.map(tag => (
+                                  {allCharacterTagNames.map((tag: string) => (
                                     <Badge
                                       key={tag}
                                       variant={selectedTags.includes(tag) ? 'default' : 'outline'}
@@ -857,7 +906,7 @@ function StoryDetailPageContent() {
                               )}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {paginatedCharacters.map((char) => {
-                                  const charTags = char.tags_json ? JSON.parse(char.tags_json) : [];
+                                  const charTags = characterTagsMap.get(char.character_id) || [];
                                   return (
                                     <div key={char.character_id}
                                       className="border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition"
@@ -885,8 +934,8 @@ function StoryDetailPageContent() {
                                     >
                                       <h4 className="font-semibold">{char.canonical_name}</h4>
                                       <div className="flex flex-wrap gap-1 mt-1">
-                                        {charTags.slice(0, 3).map((tag: string, i: number) => (
-                                          <Badge key={i} variant="secondary" className="text-xs">{tag}</Badge>
+                                        {charTags.slice(0, 3).map((tag) => (
+                                          <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
                                         ))}
                                       </div>
                                     </div>
@@ -1135,9 +1184,9 @@ function StoryDetailPageContent() {
                         />
                       </div>
                       {/* Tag Filters */}
-                      {allTags.length > 0 && (
+                      {allCharacterTagNames.length > 0 && (
                         <div className="flex flex-wrap gap-2">
-                          {allTags.map(tag => (
+                          {allCharacterTagNames.map((tag: string) => (
                             <Badge
                               key={tag}
                               variant={selectedTags.includes(tag) ? 'default' : 'outline'}

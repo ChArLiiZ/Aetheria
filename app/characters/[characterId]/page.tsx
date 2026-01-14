@@ -20,6 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles } from 'lucide-react';
 import { AIGenerationDialog } from '@/components/ai-generation-dialog';
+import { TagSelector } from '@/components/tag-selector';
+import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { CharacterGenerationOutput } from '@/types/api/agents';
 
 function CharacterEditorPageContent() {
@@ -35,8 +37,8 @@ function CharacterEditorPageContent() {
   const [formData, setFormData] = useState({
     canonical_name: '',
     core_profile_text: '',
-    tags: [''],
   });
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // AI 生成對話框
@@ -74,24 +76,14 @@ function CharacterEditorPageContent() {
 
         setCharacter(data);
 
-        // Parse tags
-        let tags: string[] = [''];
-        if (data.tags_json) {
-          try {
-            tags = JSON.parse(data.tags_json);
-            if (!Array.isArray(tags) || tags.length === 0) {
-              tags = [''];
-            }
-          } catch (e) {
-            tags = [''];
-          }
-        }
-
         setFormData({
           canonical_name: data.canonical_name,
           core_profile_text: data.core_profile_text,
-          tags,
         });
+
+        // 載入標籤
+        const tags = await getEntityTags('character', characterId, user.user_id);
+        setSelectedTags(tags);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load character:', err);
@@ -144,21 +136,25 @@ function CharacterEditorPageContent() {
     try {
       setSaving(true);
 
-      const validTags = formData.tags.filter((tag) => tag.trim());
-
       if (isNewCharacter) {
-        await createCharacter(user.user_id, {
+        const newChar = await createCharacter(user.user_id, {
           canonical_name: formData.canonical_name.trim(),
           core_profile_text: formData.core_profile_text.trim(),
-          tags: validTags.length > 0 ? validTags : undefined,
         });
+
+        // 設定標籤
+        if (selectedTags.length > 0) {
+          await setEntityTags('character', newChar.character_id, user.user_id, selectedTags.map(t => t.tag_id));
+        }
         toast.success('角色建立成功！');
       } else {
         await updateCharacter(characterId, user.user_id, {
           canonical_name: formData.canonical_name.trim(),
           core_profile_text: formData.core_profile_text.trim(),
-          tags: validTags.length > 0 ? validTags : undefined,
         });
+
+        // 更新標籤
+        await setEntityTags('character', characterId, user.user_id, selectedTags.map(t => t.tag_id));
         toast.success('儲存成功！');
       }
 
@@ -176,8 +172,8 @@ function CharacterEditorPageContent() {
     setFormData({
       canonical_name: data.canonical_name || formData.canonical_name,
       core_profile_text: data.core_profile_text || formData.core_profile_text,
-      tags: data.tags && data.tags.length > 0 ? data.tags : formData.tags,
     });
+    // AI 生成的 tags 保留現有選取
     toast.success('AI 生成完成！請檢查並調整內容。');
   };
 
@@ -261,33 +257,13 @@ function CharacterEditorPageContent() {
             </div>
 
             <div className="space-y-2">
-              <Label>標籤 (分類用)</Label>
-              <div className="space-y-2">
-                {formData.tags.map((tag, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <Input
-                      value={tag}
-                      placeholder={`標籤 ${idx + 1}`}
-                      onChange={(e) => {
-                        const newTags = [...formData.tags];
-                        newTags[idx] = e.target.value;
-                        setFormData({ ...formData, tags: newTags });
-                      }}
-                    />
-                    {formData.tags.length > 1 && (
-                      <Button variant="outline" size="icon" onClick={() => {
-                        const newTags = formData.tags.filter((_, i) => i !== idx);
-                        setFormData({ ...formData, tags: newTags });
-                      }}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <Button variant="secondary" size="sm" onClick={() => setFormData({ ...formData, tags: [...formData.tags, ''] })}>
-                  <Plus className="mr-2 h-4 w-4" /> 新增標籤
-                </Button>
-              </div>
+              <Label>標籤</Label>
+              <TagSelector
+                tagType="character"
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
+                placeholder="選擇或新增標籤..."
+              />
             </div>
           </CardContent>
           <CardFooter className="flex justify-end gap-4 border-t pt-4">
@@ -306,7 +282,7 @@ function CharacterEditorPageContent() {
           currentData={{
             canonical_name: formData.canonical_name,
             core_profile_text: formData.core_profile_text,
-            tags: formData.tags.filter(t => t.trim()),
+            tags: selectedTags.map(t => t.name),
           }}
           onGenerated={(data) => handleAIGenerated(data as CharacterGenerationOutput)}
         />

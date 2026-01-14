@@ -66,6 +66,7 @@ export async function createStory(
     story_prompt: string;
     model_override?: string;
     params_override_json?: string;
+    tags?: string[];
   }
 ): Promise<Story> {
   const payload = {
@@ -78,6 +79,7 @@ export async function createStory(
     story_prompt: data.story_prompt,
     model_override: data.model_override,
     params_override_json: data.params_override_json,
+    tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
     status: 'active' as StoryStatus,
     turn_count: 0,
   };
@@ -103,12 +105,20 @@ export async function createStory(
 export async function updateStory(
   storyId: string,
   userId: string,
-  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'status' | 'turn_count' | 'player_character_id' | 'context_turns_override'>>
+  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'status' | 'turn_count' | 'player_character_id' | 'context_turns_override'>> & { tags?: string[] }
 ): Promise<void> {
   return withRetry(async () => {
+    const payload: any = { ...updates };
+
+    // Handle tags separately
+    if (updates.tags !== undefined) {
+      payload.tags_json = updates.tags.length > 0 ? JSON.stringify(updates.tags) : '';
+      delete payload.tags;
+    }
+
     const { error } = await supabase
       .from('stories')
-      .update(updates)
+      .update(payload)
       .eq('story_id', storyId)
       .eq('user_id', userId);
 
@@ -134,6 +144,26 @@ export async function deleteStory(
 
     if (error) {
       throw new Error('Failed to delete story: ' + error.message);
+    }
+  });
+}
+
+/**
+ * Delete multiple stories
+ */
+export async function deleteStories(
+  storyIds: string[],
+  userId: string
+): Promise<void> {
+  return withRetry(async () => {
+    const { error } = await supabase
+      .from('stories')
+      .delete()
+      .in('story_id', storyIds)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to delete stories: ' + error.message);
     }
   });
 }

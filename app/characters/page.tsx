@@ -1,16 +1,26 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Character } from '@/types';
-import { getCharacters, deleteCharacter } from '@/services/supabase/characters';
+import { getCharacters, deleteCharacter, deleteCharacters } from '@/services/supabase/characters';
+import { Tag, getAllTagsForType, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,22 +33,47 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2, Plus, User, Edit, Trash2, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  ListToolbar,
+  ListItemCheckbox,
+  SortDirection,
+  ViewMode,
+  sortItems,
+} from '@/components/list-toolbar';
+
+interface CharacterWithTags extends Character {
+  tags?: Tag[];
+}
+
+const SORT_OPTIONS = [
+  { value: 'canonical_name', label: '名稱' },
+  { value: 'created_at', label: '建立日期' },
+  { value: 'updated_at', label: '更新日期' },
+];
 
 function CharactersListPageContent() {
   const { user } = useAuth();
-  const router = useRouter();
-  const [characters, setCharacters] = useState<Character[]>([]);
+  const [characters, setCharacters] = useState<CharacterWithTags[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [characterToDelete, setCharacterToDelete] = useState<{ id: string, name: string } | null>(null);
 
-  // Load characters with cancellation support to prevent race conditions
+  // QOL 功能狀態
+  const [searchValue, setSearchValue] = useState('');
+  const [selectedTagNames, setSelectedTagNames] = useState<string[]>([]);
+  const [sortField, setSortField] = useState('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
+
+  // Load characters
   useEffect(() => {
     let cancelled = false;
 
-    const fetchCharacters = async () => {
-      // 如果沒有 user_id，設定 loading = false 並返回
+    const fetchData = async () => {
       if (!user?.user_id) {
         setLoading(false);
         return;
@@ -46,9 +81,26 @@ function CharactersListPageContent() {
 
       try {
         setLoading(true);
-        const data = await getCharacters(user.user_id);
+
+        const [charactersData, tagsData] = await Promise.all([
+          getCharacters(user.user_id),
+          getAllTagsForType(user.user_id, 'character'),
+        ]);
+
         if (cancelled) return;
-        setCharacters(data);
+
+        const characterIds = charactersData.map((c) => c.character_id);
+        const tagsMap = await getTagsForEntities('character', characterIds, user.user_id);
+
+        if (cancelled) return;
+
+        const charactersWithTags = charactersData.map((char) => ({
+          ...char,
+          tags: tagsMap.get(char.character_id) || [],
+        }));
+
+        setCharacters(charactersWithTags);
+        setAllTags(tagsData);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load characters:', err);
@@ -60,26 +112,99 @@ function CharactersListPageContent() {
       }
     };
 
-    fetchCharacters();
+    fetchData();
 
     return () => {
       cancelled = true;
     };
   }, [user?.user_id]);
 
-  // Reload characters function for use after updates
   const loadCharacters = async () => {
     if (!user?.user_id) return;
 
     try {
       setLoading(true);
-      const data = await getCharacters(user.user_id);
-      setCharacters(data);
+
+      const [charactersData, tagsData] = await Promise.all([
+        getCharacters(user.user_id),
+        getAllTagsForType(user.user_id, 'character'),
+      ]);
+
+      const characterIds = charactersData.map((c) => c.character_id);
+      const tagsMap = await getTagsForEntities('character', characterIds, user.user_id);
+
+      const charactersWithTags = charactersData.map((char) => ({
+        ...char,
+        tags: tagsMap.get(char.character_id) || [],
+      }));
+
+      setCharacters(charactersWithTags);
+      setAllTags(tagsData);
     } catch (err: any) {
       console.error('Failed to load characters:', err);
       toast.error(`載入失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const allTagNames = useMemo(() => allTags.map((t) => t.name).sort(), [allTags]);
+
+  // 篩選和排序
+  const filteredAndSortedCharacters = useMemo(() => {
+    let filtered = characters;
+
+    if (searchValue) {
+      const searchLower = searchValue.toLowerCase();
+      filtered = filtered.filter((char) =>
+        char.canonical_name.toLowerCase().includes(searchLower) ||
+        char.core_profile_text.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (selectedTagNames.length > 0) {
+      filtered = filtered.filter((char) => {
+        const charTagNames = (char.tags || []).map((t) => t.name);
+        return selectedTagNames.some((tag) => charTagNames.includes(tag));
+      });
+    }
+
+    return sortItems(filtered, sortField, sortDirection, (char, field) => {
+      switch (field) {
+        case 'canonical_name':
+          return char.canonical_name;
+        case 'created_at':
+          return new Date(char.created_at);
+        case 'updated_at':
+          return new Date(char.updated_at);
+        default:
+          return char.canonical_name;
+      }
+    });
+  }, [characters, searchValue, selectedTagNames, sortField, sortDirection]);
+
+  const handleToggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredAndSortedCharacters.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredAndSortedCharacters.map((c) => c.character_id)));
+    }
+  };
+
+  const handleSelectModeChange = (enabled: boolean) => {
+    setIsSelectMode(enabled);
+    if (!enabled) {
+      setSelectedIds(new Set());
     }
   };
 
@@ -104,12 +229,22 @@ function CharactersListPageContent() {
     }
   };
 
-  const parseTags = (tagsJson?: string): string[] => {
-    if (!tagsJson) return [];
+  const handleBatchDelete = async () => {
+    if (!user || selectedIds.size === 0) return;
+
     try {
-      return JSON.parse(tagsJson);
-    } catch (e) {
-      return [];
+      setLoading(true);
+      await deleteCharacters(Array.from(selectedIds), user.user_id);
+      await loadCharacters();
+      toast.success(`已刪除 ${selectedIds.size} 個角色`);
+      setSelectedIds(new Set());
+      setIsSelectMode(false);
+    } catch (err: any) {
+      console.error('Failed to delete characters:', err);
+      toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setLoading(false);
+      setShowBatchDeleteDialog(false);
     }
   };
 
@@ -124,11 +259,25 @@ function CharactersListPageContent() {
     );
   }
 
+  const renderCharacterTags = (character: CharacterWithTags) => {
+    const tags = character.tags || [];
+    if (tags.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-1 mt-2">
+        {tags.map((tag) => (
+          <Badge key={tag.tag_id} variant="secondary" className="text-xs font-normal">
+            {tag.name}
+          </Badge>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
 
-      <main className="container mx-auto px-4 py-8 space-y-8">
+      <main className="container mx-auto px-4 py-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -145,6 +294,32 @@ function CharactersListPageContent() {
           </Link>
         </div>
 
+        {/* 工具列 */}
+        {characters.length > 0 && (
+          <ListToolbar
+            searchValue={searchValue}
+            onSearchChange={setSearchValue}
+            searchPlaceholder="搜尋角色..."
+            allTags={allTagNames}
+            selectedTags={selectedTagNames}
+            onTagsChange={setSelectedTagNames}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={(field, dir) => {
+              setSortField(field);
+              setSortDirection(dir);
+            }}
+            sortOptions={SORT_OPTIONS}
+            isSelectMode={isSelectMode}
+            onSelectModeChange={handleSelectModeChange}
+            selectedCount={selectedIds.size}
+            onDeleteSelected={() => setShowBatchDeleteDialog(true)}
+            totalCount={filteredAndSortedCharacters.length}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
+        )}
+
         {/* Characters List */}
         {characters.length === 0 ? (
           <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
@@ -159,58 +334,148 @@ function CharactersListPageContent() {
               <Button>建立第一個角色</Button>
             </Link>
           </Card>
-        ) : (
+        ) : filteredAndSortedCharacters.length === 0 ? (
+          <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+            <div className="p-4 rounded-full bg-muted mb-4">
+              <User className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h2 className="text-xl font-semibold mb-2">沒有符合條件的角色</h2>
+            <p className="text-muted-foreground mb-4">
+              嘗試調整搜尋條件或清除篩選
+            </p>
+          </Card>
+        ) : viewMode === 'grid' ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {characters.map((character) => {
-              const tags = parseTags(character.tags_json);
-              return (
-                <Card key={character.character_id} className="flex flex-col hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {tags.map((tag, i) => (
-                        <Badge key={i} variant="secondary" className="text-xs font-normal">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="flex-1">
-                    <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
-                      {character.core_profile_text}
-                    </p>
-                    <div className="flex items-center text-xs text-muted-foreground mt-auto" suppressHydrationWarning>
-                      <Calendar className="mr-1 h-3 w-3" />
-                      建立於 {new Date(character.created_at).toLocaleDateString('zh-TW')}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex gap-2 pt-4 border-t">
-                    <Link href={`/characters/${character.character_id}`} className="flex-1">
-                      <Button variant="outline" className="w-full">
-                        <Edit className="mr-2 h-4 w-4" />
-                        編輯
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      onClick={() => confirmDelete(character.character_id, character.canonical_name)}
-                      disabled={deletingId === character.character_id}
-                    >
-                      {deletingId === character.character_id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
+            {filteredAndSortedCharacters.map((character) => (
+              <Card
+                key={character.character_id}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''
+                  }`}
+              >
+                <ListItemCheckbox
+                  checked={selectedIds.has(character.character_id)}
+                  onChange={() => handleToggleSelect(character.character_id)}
+                  isSelectMode={isSelectMode}
+                />
+                <CardHeader className={isSelectMode ? 'pl-12' : ''}>
+                  <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
+                  {renderCharacterTags(character)}
+                </CardHeader>
+                <CardContent className="flex-1">
+                  <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
+                    {character.core_profile_text}
+                  </p>
+                  <div className="flex items-center text-xs text-muted-foreground mt-auto" suppressHydrationWarning>
+                    <Calendar className="mr-1 h-3 w-3" />
+                    建立於 {new Date(character.created_at).toLocaleDateString('zh-TW')}
+                  </div>
+                </CardContent>
+                <CardFooter className="flex gap-2 pt-4 border-t">
+                  <Link href={`/characters/${character.character_id}`} className="flex-1">
+                    <Button variant="outline" className="w-full">
+                      <Edit className="mr-2 h-4 w-4" />
+                      編輯
                     </Button>
-                  </CardFooter>
-                </Card>
-              );
-            })}
+                  </Link>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={() => confirmDelete(character.character_id, character.canonical_name)}
+                    disabled={deletingId === character.character_id}
+                  >
+                    {deletingId === character.character_id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
           </div>
+        ) : (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {isSelectMode && (
+                    <TableHead className="w-12">
+                      <Checkbox
+                        checked={selectedIds.size === filteredAndSortedCharacters.length && filteredAndSortedCharacters.length > 0}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </TableHead>
+                  )}
+                  <TableHead>名稱</TableHead>
+                  <TableHead className="hidden md:table-cell">標籤</TableHead>
+                  <TableHead className="hidden md:table-cell">建立日期</TableHead>
+                  <TableHead className="w-24 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedCharacters.map((character) => (
+                  <TableRow
+                    key={character.character_id}
+                    className={selectedIds.has(character.character_id) ? 'bg-muted/50' : ''}
+                  >
+                    {isSelectMode && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(character.character_id)}
+                          onCheckedChange={() => handleToggleSelect(character.character_id)}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{character.canonical_name}</div>
+                        <div className="text-sm text-muted-foreground line-clamp-1">
+                          {character.core_profile_text}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="flex flex-wrap gap-1">
+                        {(character.tags || []).map((tag) => (
+                          <Badge key={tag.tag_id} variant="secondary" className="text-xs">
+                            {tag.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground" suppressHydrationWarning>
+                      {new Date(character.created_at).toLocaleDateString('zh-TW')}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Link href={`/characters/${character.character_id}`}>
+                          <Button variant="ghost" size="icon">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => confirmDelete(character.character_id, character.canonical_name)}
+                          disabled={deletingId === character.character_id}
+                        >
+                          {deletingId === character.character_id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
         )}
 
-        {/* Delete Alert */}
+        {/* 單個刪除確認 */}
         <AlertDialog open={!!characterToDelete} onOpenChange={(open) => !open && setCharacterToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -223,6 +488,24 @@ function CharactersListPageContent() {
             <AlertDialogFooter>
               <AlertDialogCancel>取消</AlertDialogCancel>
               <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                確認刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* 批次刪除確認 */}
+        <AlertDialog open={showBatchDeleteDialog} onOpenChange={setShowBatchDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>確定要刪除 {selectedIds.size} 個角色嗎？</AlertDialogTitle>
+              <AlertDialogDescription>
+                此操作無法復原！
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 確認刪除
               </AlertDialogAction>
             </AlertDialogFooter>

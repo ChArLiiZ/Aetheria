@@ -64,6 +64,8 @@ import {
 import { Loader2, Plus, ArrowLeft, Save, Trash2, Edit, Sparkles } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { AIGenerationDialog } from '@/components/ai-generation-dialog';
+import { TagSelector } from '@/components/tag-selector';
+import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { WorldGenerationOutput, SchemaGenerationData } from '@/types/api/agents';
 
 type Tab = 'basic' | 'states';
@@ -102,6 +104,7 @@ function WorldEditorPageContent() {
     description: '',
     rules_text: '',
   });
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [basicErrors, setBasicErrors] = useState<Record<string, string>>({});
   const [savingBasic, setSavingBasic] = useState(false);
 
@@ -158,11 +161,17 @@ function WorldEditorPageContent() {
         }
 
         setWorld(worldData);
+
         setBasicFormData({
           name: worldData.name,
           description: worldData.description,
           rules_text: worldData.rules_text,
         });
+
+        // 載入標籤
+        const tags = await getEntityTags('world', worldId, user.user_id);
+        setSelectedTags(tags);
+
         setSchemas(schemasData);
       } catch (err: any) {
         if (cancelled) return;
@@ -200,11 +209,17 @@ function WorldEditorPageContent() {
       }
 
       setWorld(worldData);
+
       setBasicFormData({
         name: worldData.name,
         description: worldData.description,
         rules_text: worldData.rules_text,
       });
+
+      // 載入標籤
+      const tags = await getEntityTags('world', worldId, user.user_id);
+      setSelectedTags(tags);
+
       setSchemas(schemasData);
     } catch (err: any) {
       console.error('Failed to load data:', err);
@@ -256,6 +271,11 @@ function WorldEditorPageContent() {
         rules_text: basicFormData.rules_text.trim(),
       });
 
+      // 設定標籤
+      if (selectedTags.length > 0) {
+        await setEntityTags('world', newWorld.world_id, user.user_id, selectedTags.map(t => t.tag_id));
+      }
+
       for (const schema of schemas) {
         await createSchemaItem(newWorld.world_id, user.user_id, {
           schema_key: schema.schema_key,
@@ -292,6 +312,9 @@ function WorldEditorPageContent() {
         description: basicFormData.description.trim(),
         rules_text: basicFormData.rules_text.trim(),
       });
+
+      // 更新標籤
+      await setEntityTags('world', worldId, user.user_id, selectedTags.map(t => t.tag_id));
 
       await reloadData();
       toast.success('儲存成功！');
@@ -639,6 +662,16 @@ function WorldEditorPageContent() {
                     onChange={(e) => setBasicFormData({ ...basicFormData, rules_text: e.target.value })}
                   />
                   {basicErrors.rules_text && <p className="text-sm text-destructive">{basicErrors.rules_text}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>標籤</Label>
+                  <TagSelector
+                    tagType="world"
+                    selectedTags={selectedTags}
+                    onTagsChange={setSelectedTags}
+                    placeholder="選擇或新增標籤..."
+                  />
                 </div>
               </CardContent>
             </Card>

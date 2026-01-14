@@ -80,6 +80,7 @@ export interface Database {
           world_name: string
           description: string
           core_setting: string
+          tags_json: string | null
           created_at: string
           updated_at: string
         }
@@ -89,6 +90,7 @@ export interface Database {
           world_name: string
           description: string
           core_setting: string
+          tags_json?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -98,6 +100,7 @@ export interface Database {
           world_name?: string
           description?: string
           core_setting?: string
+          tags_json?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -187,6 +190,7 @@ export interface Database {
           story_objective: string
           objective_progress_summary: string
           ending_summary: string | null
+          tags_json: string | null
           status: string
           created_at: string
           updated_at: string
@@ -199,6 +203,7 @@ export interface Database {
           story_objective: string
           objective_progress_summary?: string
           ending_summary?: string | null
+          tags_json?: string | null
           status?: string
           created_at?: string
           updated_at?: string
@@ -211,6 +216,7 @@ export interface Database {
           story_objective?: string
           objective_progress_summary?: string
           ending_summary?: string | null
+          tags_json?: string | null
           status?: string
           created_at?: string
           updated_at?: string
