@@ -7,7 +7,6 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { AppHeader } from '@/components/app-header';
 import { Globe, User, BookOpen, Settings, Book, AlertTriangle, Play, Loader2 } from 'lucide-react';
 import { Story } from '@/types';
@@ -191,15 +190,7 @@ function DashboardContent() {
                 {recentStories.map((story) => (
                   <Card key={story.story_id} className="flex flex-col hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <CardTitle className="text-base line-clamp-1">{story.title}</CardTitle>
-                        <Badge
-                          variant={story.status === 'active' ? 'default' : 'secondary'}
-                          className={story.status === 'active' ? 'bg-green-600 hover:bg-green-700 text-xs' : 'text-xs'}
-                        >
-                          {story.status === 'active' ? '進行中' : '已結束'}
-                        </Badge>
-                      </div>
+                      <CardTitle className="text-base line-clamp-1">{story.title}</CardTitle>
                       <CardDescription className="flex items-center gap-2 text-xs mt-1">
                         <span className="flex items-center">
                           <Globe className="mr-1 h-3 w-3" />
@@ -207,6 +198,8 @@ function DashboardContent() {
                         </span>
                         <span>•</span>
                         <span>{getStoryModeLabel(story.story_mode)}</span>
+                        <span>•</span>
+                        <span>{story.turn_count || 0} 回合</span>
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="flex-1 pb-2">
@@ -215,20 +208,12 @@ function DashboardContent() {
                       </p>
                     </CardContent>
                     <CardFooter className="pt-2 border-t">
-                      {story.status === 'active' ? (
-                        <Link href={`/stories/${story.story_id}/play`} className="w-full">
-                          <Button size="sm" className="w-full">
-                            <Play className="mr-2 h-3 w-3" />
-                            繼續遊玩
-                          </Button>
-                        </Link>
-                      ) : (
-                        <Link href={`/stories/${story.story_id}`} className="w-full">
-                          <Button variant="outline" size="sm" className="w-full">
-                            查看詳情
-                          </Button>
-                        </Link>
-                      )}
+                      <Link href={`/stories/${story.story_id}/play`} className="w-full">
+                        <Button size="sm" className="w-full">
+                          <Play className="mr-2 h-3 w-3" />
+                          繼續遊玩
+                        </Button>
+                      </Link>
                     </CardFooter>
                   </Card>
                 ))}
