@@ -111,7 +111,7 @@ export async function resetStory(
       .update({
         turn_count: 0,
         updated_at: new Date().toISOString()
-      })
+      } as any)
       .eq('story_id', storyId)
       .eq('user_id', userId);
 
