@@ -106,12 +106,12 @@ export async function resetStory(
 
     // 6. 將 story 的 turn_count 重置為 0
     console.log('[resetStory] 重置回合計數...');
-    const { error: updateError } = await supabase
-      .from('stories')
+    const { error: updateError } = await (supabase
+      .from('stories') as any)
       .update({
         turn_count: 0,
         updated_at: new Date().toISOString()
-      } as any)
+      })
       .eq('story_id', storyId)
       .eq('user_id', userId);
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Story Characters Service (Supabase)
  */
@@ -77,8 +76,8 @@ export async function addStoryCharacter(
   };
 
   return withRetry(async () => {
-    const { data: newStoryCharacter, error } = await supabase
-      .from('story_characters')
+    const { data: newStoryCharacter, error } = await (supabase
+      .from('story_characters') as any)
       .insert(payload)
       .select()
       .single();
@@ -102,8 +101,8 @@ export async function updateStoryCharacter(
   }
 ): Promise<void> {
   return withRetry(async () => {
-    const { error } = await supabase
-      .from('story_characters')
+    const { error } = await (supabase
+      .from('story_characters') as any)
       .update(updates)
       .eq('story_character_id', storyCharacterId)
       .eq('user_id', userId);

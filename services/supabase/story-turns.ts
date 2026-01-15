@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Story Turns Service (Supabase)
  */
@@ -80,8 +79,8 @@ export async function createStoryTurn(
   };
 
   return withRetry(async () => {
-    const { data: newTurn, error } = await supabase
-      .from('story_turns')
+    const { data: newTurn, error } = await (supabase
+      .from('story_turns') as any)
       .insert(payload)
       .select()
       .single();
@@ -102,8 +101,8 @@ export async function markTurnAsError(
   userId: string
 ): Promise<void> {
   return withRetry(async () => {
-    const { error } = await supabase
-      .from('story_turns')
+    const { error } = await (supabase
+      .from('story_turns') as any)
       .update({ error_flag: true })
       .eq('turn_id', turnId)
       .eq('user_id', userId);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Story State Values Service (Supabase)
  */
@@ -105,8 +104,8 @@ export async function setStateValue(
 
   return withRetry(async () => {
     // Upsert: insert if not exists, update if exists
-    const { data: stateValue, error } = await supabase
-      .from('story_state_values')
+    const { data: stateValue, error } = await (supabase
+      .from('story_state_values') as any)
       .upsert(payload, {
         onConflict: 'story_id,story_character_id,schema_key',
       })
@@ -139,8 +138,8 @@ export async function setMultipleStateValues(
   }));
 
   return withRetry(async () => {
-    const { data: stateValues, error } = await supabase
-      .from('story_state_values')
+    const { data: stateValues, error } = await (supabase
+      .from('story_state_values') as any)
       .upsert(payload, {
         onConflict: 'story_id,story_character_id,schema_key',
       })

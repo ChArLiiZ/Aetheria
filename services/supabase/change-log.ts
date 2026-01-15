@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Change Log Service (Supabase)
  */
@@ -16,8 +15,8 @@ export async function createChangeLogs(entries: ChangeLogInsert[]): Promise<void
   if (!entries.length) return;
 
   return withRetry(async () => {
-    const { error } = await supabase
-      .from('change_log')
+    const { error } = await (supabase
+      .from('change_log') as any)
       .insert(entries);
 
     if (error) {

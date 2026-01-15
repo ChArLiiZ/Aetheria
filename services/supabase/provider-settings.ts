@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * ProviderSettings Service (Supabase)
  */
@@ -74,8 +73,8 @@ export async function upsertProviderSettings(
   };
 
   return withRetry(async () => {
-    const { data: upsertedSettings, error } = await supabase
-      .from('provider_settings')
+    const { data: upsertedSettings, error } = await (supabase
+      .from('provider_settings') as any)
       .upsert(payload, { onConflict: 'user_id,provider' })
       .select()
       .single();

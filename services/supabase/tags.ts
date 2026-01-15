@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tags Service (Supabase)
  * 集中式標籤管理
@@ -91,8 +90,8 @@ export async function getOrCreateTag(
         }
 
         // 建立新標籤
-        const { data: newTag, error } = await supabase
-            .from('tags')
+        const { data: newTag, error } = await (supabase
+            .from('tags') as any)
             .insert({
                 user_id: userId,
                 tag_type: tagType,
@@ -218,8 +217,8 @@ export async function setEntityTags(
                 tag_id: tagId,
             }));
 
-            const { error: insertError } = await supabase
-                .from(config.table)
+            const { error: insertError } = await (supabase
+                .from(config.table) as any)
                 .insert(insertData);
 
             if (insertError) {
@@ -240,8 +239,8 @@ export async function addEntityTag(
     const config = entityConfig[entityType];
 
     return withRetry(async () => {
-        const { error } = await supabase
-            .from(config.table)
+        const { error } = await (supabase
+            .from(config.table) as any)
             .insert({
                 [config.idColumn]: entityId,
                 tag_id: tagId,

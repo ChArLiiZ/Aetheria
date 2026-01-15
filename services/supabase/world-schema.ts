@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * WorldStateSchema Service (Supabase)
  */
@@ -82,8 +81,8 @@ export async function createSchemaItem(
     : 0;
 
   return withRetry(async () => {
-    const { data: newSchema, error } = await supabase
-      .from('world_state_schema')
+    const { data: newSchema, error } = await (supabase
+      .from('world_state_schema') as any)
       .insert({
         world_id: worldId,
         user_id: userId,
@@ -128,8 +127,8 @@ export async function updateSchemaItem(
   >
 ): Promise<void> {
   return withRetry(async () => {
-    const { error } = await supabase
-      .from('world_state_schema')
+    const { error } = await (supabase
+      .from('world_state_schema') as any)
       .update(updates)
       .eq('schema_id', schemaId)
       .eq('user_id', userId);

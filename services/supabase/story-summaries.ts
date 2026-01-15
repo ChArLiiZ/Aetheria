@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Story Summaries Service (Supabase)
  * 管理滾動摘要歷史
@@ -27,8 +26,8 @@ export async function createStorySummary(
     };
 
     return withRetry(async () => {
-        const { data: newSummary, error } = await supabase
-            .from('story_summaries')
+        const { data: newSummary, error } = await (supabase
+            .from('story_summaries') as any)
             .insert(payload)
             .select()
             .single();

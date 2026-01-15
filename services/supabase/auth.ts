@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Authentication Service (Supabase Auth)
  *
@@ -35,8 +34,8 @@ async function tryCreateUserProfile(sessionUser: any): Promise<User | null> {
   const displayName =
     sessionUser?.user_metadata?.display_name || email.split('@')[0] || 'User';
 
-  const { data, error } = await supabase
-    .from('users')
+  const { data, error } = await (supabase
+    .from('users') as any)
     .insert({
       user_id: sessionUser.id,
       email,
@@ -148,9 +147,8 @@ export async function login(
     }
 
     // Update last login
-    await supabase
-      .from('users')
-      // @ts-ignore - Supabase type inference issue
+    await (supabase
+      .from('users') as any)
       .update({ last_login_at: new Date().toISOString() })
       .eq('user_id', authData.user.id);
 
@@ -213,9 +211,8 @@ export async function updateDisplayName(
   newDisplayName: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('users')
-      // @ts-ignore - Supabase type inference issue
+    const { error } = await (supabase
+      .from('users') as any)
       .update({ display_name: newDisplayName })
       .eq('user_id', userId);
 

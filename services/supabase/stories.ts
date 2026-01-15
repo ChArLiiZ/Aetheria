@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Stories Service (Supabase)
  */
@@ -84,8 +83,8 @@ export async function createStory(
   };
 
   return withRetry(async () => {
-    const { data: newStory, error } = await supabase
-      .from('stories')
+    const { data: newStory, error } = await (supabase
+      .from('stories') as any)
       .insert(payload)
       .select()
       .single();
@@ -115,8 +114,8 @@ export async function updateStory(
       delete payload.tags;
     }
 
-    const { error } = await supabase
-      .from('stories')
+    const { error } = await (supabase
+      .from('stories') as any)
       .update(payload)
       .eq('story_id', storyId)
       .eq('user_id', userId);
@@ -175,7 +174,7 @@ export async function incrementTurnCount(
   userId: string
 ): Promise<void> {
   return withRetry(async () => {
-    const { error } = await supabase.rpc('increment_story_turn_count', {
+    const { error } = await (supabase.rpc as any)('increment_story_turn_count', {
       p_story_id: storyId,
       p_user_id: userId,
     });

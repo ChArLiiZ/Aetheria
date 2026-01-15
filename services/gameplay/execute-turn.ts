@@ -311,8 +311,8 @@ async function applyStateChanges(
     }
   });
 
-  const serializeValue = (value: any): string | undefined =>
-    value === undefined ? undefined : JSON.stringify(value);
+  const serializeValue = (value: any): string | null =>
+    value === undefined ? null : JSON.stringify(value);
 
   // Apply state changes
   for (const change of agentOutput.state_changes) {

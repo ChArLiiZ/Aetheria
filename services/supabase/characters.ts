@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Characters Service (Supabase)
  */
@@ -64,8 +63,8 @@ export async function createCharacter(
   }
 ): Promise<Character> {
   return withRetry(async () => {
-    const { data: newCharacter, error } = await supabase
-      .from('characters')
+    const { data: newCharacter, error } = await (supabase
+      .from('characters') as any)
       .insert({
         user_id: userId,
         canonical_name: data.canonical_name,
@@ -96,8 +95,8 @@ export async function updateCharacter(
   }
 ): Promise<Character> {
   return withRetry(async () => {
-    const { data: updatedCharacter, error } = await supabase
-      .from('characters')
+    const { data: updatedCharacter, error } = await (supabase
+      .from('characters') as any)
       .update({
         canonical_name: data.canonical_name,
         core_profile_text: data.core_profile_text,

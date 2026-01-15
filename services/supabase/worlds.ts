@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Worlds Service (Supabase)
  */
@@ -66,8 +65,8 @@ export async function createWorld(
   }
 ): Promise<World> {
   return withRetry(async () => {
-    const { data: newWorld, error } = await supabase
-      .from('worlds')
+    const { data: newWorld, error } = await (supabase
+      .from('worlds') as any)
       .insert({
         user_id: userId,
         name: data.name,
@@ -103,8 +102,8 @@ export async function updateWorld(
       delete payload.tags;
     }
 
-    const { error } = await supabase
-      .from('worlds')
+    const { error } = await (supabase
+      .from('worlds') as any)
       .update(payload)
       .eq('world_id', worldId)
       .eq('user_id', userId);

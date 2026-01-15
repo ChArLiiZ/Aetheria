@@ -159,11 +159,11 @@ export interface ChangeLog {
   story_id: string;
   user_id: string;
   entity_type: EntityType;
-  target_story_character_id?: string;
-  schema_key?: string;
+  target_story_character_id: string | null;
+  schema_key: string | null;
   op: string;
-  before_value_json?: string;
-  after_value_json?: string;
+  before_value_json: string | null;
+  after_value_json: string | null;
   reason_text: string;
 }
 

@@ -77,9 +77,9 @@ export interface Database {
         Row: {
           world_id: string
           user_id: string
-          world_name: string
+          name: string
           description: string
-          core_setting: string
+          rules_text: string
           tags_json: string | null
           created_at: string
           updated_at: string
@@ -87,9 +87,9 @@ export interface Database {
         Insert: {
           world_id?: string
           user_id: string
-          world_name: string
+          name: string
           description: string
-          core_setting: string
+          rules_text: string
           tags_json?: string | null
           created_at?: string
           updated_at?: string
@@ -97,9 +97,9 @@ export interface Database {
         Update: {
           world_id?: string
           user_id?: string
-          world_name?: string
+          name?: string
           description?: string
-          core_setting?: string
+          rules_text?: string
           tags_json?: string | null
           created_at?: string
           updated_at?: string
@@ -110,45 +110,42 @@ export interface Database {
           schema_id: string
           world_id: string
           user_id: string
-          state_name: string
-          state_type: string
-          description: string
-          default_value: string | null
-          min_value: number | null
-          max_value: number | null
-          enum_options_json: string | null
-          list_text_items_json: string | null
-          created_at: string
+          schema_key: string
+          display_name: string
+          type: string
+          ai_description: string
+          default_value_json: string
+          enum_options_json: string
+          number_constraints_json: string
+          sort_order: number
           updated_at: string
         }
         Insert: {
           schema_id?: string
           world_id: string
           user_id: string
-          state_name: string
-          state_type: string
-          description: string
-          default_value?: string | null
-          min_value?: number | null
-          max_value?: number | null
-          enum_options_json?: string | null
-          list_text_items_json?: string | null
-          created_at?: string
+          schema_key: string
+          display_name: string
+          type: string
+          ai_description: string
+          default_value_json?: string
+          enum_options_json?: string
+          number_constraints_json?: string
+          sort_order?: number
           updated_at?: string
         }
         Update: {
           schema_id?: string
           world_id?: string
           user_id?: string
-          state_name?: string
-          state_type?: string
-          description?: string
-          default_value?: string | null
-          min_value?: number | null
-          max_value?: number | null
-          enum_options_json?: string | null
-          list_text_items_json?: string | null
-          created_at?: string
+          schema_key?: string
+          display_name?: string
+          type?: string
+          ai_description?: string
+          default_value_json?: string
+          enum_options_json?: string
+          number_constraints_json?: string
+          sort_order?: number
           updated_at?: string
         }
       }
@@ -156,8 +153,8 @@ export interface Database {
         Row: {
           character_id: string
           user_id: string
-          character_name: string
-          core_profile: string
+          canonical_name: string
+          core_profile_text: string
           tags_json: string
           created_at: string
           updated_at: string
@@ -165,8 +162,8 @@ export interface Database {
         Insert: {
           character_id?: string
           user_id: string
-          character_name: string
-          core_profile: string
+          canonical_name: string
+          core_profile_text: string
           tags_json?: string
           created_at?: string
           updated_at?: string
@@ -174,8 +171,8 @@ export interface Database {
         Update: {
           character_id?: string
           user_id?: string
-          character_name?: string
-          core_profile?: string
+          canonical_name?: string
+          core_profile_text?: string
           tags_json?: string
           created_at?: string
           updated_at?: string
@@ -186,12 +183,16 @@ export interface Database {
           story_id: string
           user_id: string
           world_id: string
-          story_title: string
-          story_objective: string
-          objective_progress_summary: string
-          ending_summary: string | null
+          title: string
+          premise_text: string
+          story_mode: string
+          player_character_id: string | null
+          story_prompt: string
+          model_override: string | null
+          params_override_json: string | null
+          context_turns_override: number | null
           tags_json: string | null
-          status: string
+          turn_count: number
           created_at: string
           updated_at: string
         }
@@ -199,12 +200,16 @@ export interface Database {
           story_id?: string
           user_id: string
           world_id: string
-          story_title: string
-          story_objective: string
-          objective_progress_summary?: string
-          ending_summary?: string | null
+          title: string
+          premise_text: string
+          story_mode: string
+          player_character_id?: string | null
+          story_prompt: string
+          model_override?: string | null
+          params_override_json?: string | null
+          context_turns_override?: number | null
           tags_json?: string | null
-          status?: string
+          turn_count?: number
           created_at?: string
           updated_at?: string
         }
@@ -212,105 +217,98 @@ export interface Database {
           story_id?: string
           user_id?: string
           world_id?: string
-          story_title?: string
-          story_objective?: string
-          objective_progress_summary?: string
-          ending_summary?: string | null
+          title?: string
+          premise_text?: string
+          story_mode?: string
+          player_character_id?: string | null
+          story_prompt?: string
+          model_override?: string | null
+          params_override_json?: string | null
+          context_turns_override?: number | null
           tags_json?: string | null
-          status?: string
+          turn_count?: number
           created_at?: string
           updated_at?: string
         }
       }
       story_characters: {
         Row: {
+          story_character_id: string
           story_id: string
-          character_id: string
           user_id: string
-          added_at: string
+          character_id: string
+          display_name_override: string | null
+          is_player: boolean
+          created_at: string
         }
         Insert: {
+          story_character_id?: string
           story_id: string
-          character_id: string
           user_id: string
-          added_at?: string
+          character_id: string
+          display_name_override?: string | null
+          is_player?: boolean
+          created_at?: string
         }
         Update: {
+          story_character_id?: string
           story_id?: string
-          character_id?: string
           user_id?: string
-          added_at?: string
+          character_id?: string
+          display_name_override?: string | null
+          is_player?: boolean
+          created_at?: string
         }
       }
       story_character_overrides: {
         Row: {
+          story_character_id: string
           story_id: string
-          character_id: string
           user_id: string
-          override_profile: string | null
+          override_profile_text: string | null
+          override_voice_style: string | null
           updated_at: string
         }
         Insert: {
+          story_character_id: string
           story_id: string
-          character_id: string
           user_id: string
-          override_profile?: string | null
+          override_profile_text?: string | null
+          override_voice_style?: string | null
           updated_at?: string
         }
         Update: {
+          story_character_id?: string
           story_id?: string
-          character_id?: string
           user_id?: string
-          override_profile?: string | null
+          override_profile_text?: string | null
+          override_voice_style?: string | null
           updated_at?: string
         }
       }
       story_state_values: {
         Row: {
           story_id: string
-          schema_id: string
           user_id: string
-          current_value: string
+          story_character_id: string
+          schema_key: string
+          value_json: string
           updated_at: string
         }
         Insert: {
           story_id: string
-          schema_id: string
           user_id: string
-          current_value: string
+          story_character_id: string
+          schema_key: string
+          value_json: string
           updated_at?: string
         }
         Update: {
           story_id?: string
-          schema_id?: string
           user_id?: string
-          current_value?: string
-          updated_at?: string
-        }
-      }
-      story_relationships: {
-        Row: {
-          story_id: string
-          character_a_id: string
-          character_b_id: string
-          user_id: string
-          relationship_summary: string
-          updated_at: string
-        }
-        Insert: {
-          story_id: string
-          character_a_id: string
-          character_b_id: string
-          user_id: string
-          relationship_summary: string
-          updated_at?: string
-        }
-        Update: {
-          story_id?: string
-          character_a_id?: string
-          character_b_id?: string
-          user_id?: string
-          relationship_summary?: string
+          story_character_id?: string
+          schema_key?: string
+          value_json?: string
           updated_at?: string
         }
       }
@@ -319,66 +317,101 @@ export interface Database {
           turn_id: string
           story_id: string
           user_id: string
-          turn_number: number
-          user_input: string
-          ai_narrative: string
+          turn_index: number
+          user_input_text: string
+          narrative_text: string
           created_at: string
+          error_flag: boolean | null
+          token_usage_json: string | null
         }
         Insert: {
           turn_id?: string
           story_id: string
           user_id: string
-          turn_number: number
-          user_input: string
-          ai_narrative: string
+          turn_index: number
+          user_input_text: string
+          narrative_text: string
           created_at?: string
+          error_flag?: boolean | null
+          token_usage_json?: string | null
         }
         Update: {
           turn_id?: string
           story_id?: string
           user_id?: string
-          turn_number?: number
-          user_input?: string
-          ai_narrative?: string
+          turn_index?: number
+          user_input_text?: string
+          narrative_text?: string
           created_at?: string
+          error_flag?: boolean | null
+          token_usage_json?: string | null
         }
       }
       change_log: {
         Row: {
-          log_id: string
+          change_id: string
+          turn_id: string
           story_id: string
           user_id: string
-          turn_number: number
-          change_type: string
-          target_type: string
-          target_id: string
-          old_value: string | null
-          new_value: string
-          timestamp: string
+          entity_type: string
+          target_story_character_id: string | null
+          schema_key: string | null
+          op: string
+          before_value_json: string | null
+          after_value_json: string | null
+          reason_text: string
         }
         Insert: {
-          log_id?: string
+          change_id?: string
+          turn_id: string
           story_id: string
           user_id: string
-          turn_number: number
-          change_type: string
-          target_type: string
-          target_id: string
-          old_value?: string | null
-          new_value: string
-          timestamp?: string
+          entity_type: string
+          target_story_character_id?: string | null
+          schema_key?: string | null
+          op: string
+          before_value_json?: string | null
+          after_value_json?: string | null
+          reason_text: string
         }
         Update: {
-          log_id?: string
+          change_id?: string
+          turn_id?: string
           story_id?: string
           user_id?: string
-          turn_number?: number
-          change_type?: string
-          target_type?: string
-          target_id?: string
-          old_value?: string | null
-          new_value?: string
-          timestamp?: string
+          entity_type?: string
+          target_story_character_id?: string | null
+          schema_key?: string | null
+          op?: string
+          before_value_json?: string | null
+          after_value_json?: string | null
+          reason_text?: string
+        }
+      }
+      story_summaries: {
+        Row: {
+          summary_id: string
+          story_id: string
+          user_id: string
+          generated_at_turn: number
+          summary_text: string
+          created_at: string
+        }
+        Insert: {
+          summary_id?: string
+          story_id: string
+          user_id: string
+          generated_at_turn: number
+          summary_text: string
+          created_at?: string
+        }
+        Update: {
+          summary_id?: string
+          story_id?: string
+          user_id?: string
+          generated_at_turn?: number
+          summary_text?: string
+          created_at?: string
         }
       }
     }
