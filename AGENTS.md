@@ -1,12 +1,17 @@
 # AGENTS.md
 
-This file provides guidance for agentic coding agents working in the Aetheria repository.
+Guidance for agentic coding agents working in the Aetheria repository.
+
+## Scope and Intent
+- Follow existing patterns unless explicitly asked to change them.
+- Keep changes minimal and focused on the request.
+- Do not introduce new frameworks or tooling without approval.
 
 ## Development Commands
 
 ### Core Commands
 ```bash
-npm run dev              # Start Next.js development server (http://localhost:3000)
+npm run dev              # Start Next.js dev server (http://localhost:3000)
 npm run build            # Build for production
 npm run start            # Start production server
 npm run lint             # Run ESLint
@@ -14,18 +19,33 @@ npm run tauri            # Tauri CLI commands (desktop app)
 ```
 
 ### Testing
-This project does not currently have a test framework configured. When adding tests:
-1. Choose appropriate framework (Jest for unit tests, Playwright for E2E)
-2. Update package.json with test scripts
-3. Follow existing code patterns in test structure
+- No test framework is currently configured.
+- If you add tests, update `package.json` scripts and follow repo patterns.
+- Recommended defaults:
+  - Jest for unit tests
+  - Playwright for E2E
 
-## Code Style Guidelines
+### Single-Test Guidance (when framework exists)
+- Jest (example): `npm test -- <pattern>` or `npx jest <path>`
+- Playwright (example): `npx playwright test <file>`
 
-### Import Organization
-- Use `@/*` path alias for root directory imports (configured in tsconfig.json)
-- Group imports: React/Next.js → Third-party → Local types → Local services/components
+## Tooling & Configs
+- `next.config.ts`: Next.js config (React strict mode enabled; images unoptimized).
+- `tsconfig.json`: TypeScript strict mode, `@/*` path alias to repo root.
+- `.eslintrc.json`: Extends `next/core-web-vitals` and `next/typescript`.
+- `tailwind.config.ts`: Tailwind theme with CSS variables; `tailwindcss-animate` plugin.
+- `postcss.config.js`: Tailwind + Autoprefixer.
+
+## Import Organization
+- Use `@/*` alias for root imports.
+- Group imports in this order:
+  1. React/Next.js
+  2. Third-party libraries
+  3. Local types (`import type`)
+  4. Local services
+  5. Local components
 - Example:
-```typescript
+```ts
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -37,25 +57,24 @@ import { getStories } from '@/services/supabase/stories';
 import { Button } from '@/components/ui/button';
 ```
 
-### TypeScript & Types
-- Use strict TypeScript configuration (already enabled)
-- Define interfaces in `types/database/index.ts` for database entities
-- Define agent types in `types/api/agents.ts` for AI agent inputs/outputs
-- Use `type` for simple types, `interface` for objects with implementation
-- Avoid `any` - ESLint rule `@typescript-eslint/no-explicit-any` is disabled but prefer proper typing
+## TypeScript & Types
+- Strict mode is enabled.
+- Prefer `type` for simple aliases and `interface` for object shapes.
+- Database entity types live in `types/database/`.
+- AI agent types live in `types/api/agents.ts`.
+- Avoid `any` even though ESLint allows it.
 
-### Naming Conventions
-- **Files**: kebab-case for components (`app-header.tsx`), camelCase for services (`story-agent.ts`)
-- **Components**: PascalCase (`AppHeader`, `ProtectedRoute`)
-- **Functions/Variables**: camelCase (`callStoryAgent`, `nextTurnIndex`)
-- **Constants**: UPPER_SNAKE_CASE with descriptive names (`DEFAULT_CONTEXT_TURNS`)
-- **Interfaces**: PascalCase with descriptive suffixes (`StoryAgentInput`, `ExecuteTurnInput`)
+## Naming Conventions
+- Files: kebab-case for components and services (e.g., `story-agent.ts`).
+- Components: PascalCase (e.g., `AppHeader`).
+- Functions/variables: camelCase (e.g., `executeTurn`).
+- Constants: UPPER_SNAKE_CASE (e.g., `DEFAULT_CONTEXT_TURNS`).
 
-### Error Handling
-- Use try-catch blocks for async operations
-- Return error objects or throw for unrecoverable errors
-- Use toast notifications for user-facing errors:
-```typescript
+## Error Handling
+- Wrap async operations in `try/catch` where appropriate.
+- Throw descriptive errors for unrecoverable cases.
+- For user-facing errors, use toast notifications:
+```ts
 try {
   await operation();
   toast.success('Operation completed');
@@ -65,89 +84,67 @@ try {
 }
 ```
 
-### Console Logging Pattern
-- Use descriptive console.log with function name prefix:
-```typescript
-console.log('[functionName] Description:', data);
-console.log('[executeTurn] Starting turn execution...');
-console.log('[callStoryAgent] Character count:', input.characters.length);
-```
-- Include key data points for debugging AI agent calls
-- Log step numbers in complex functions (see `execute-turn.ts`)
-
-### Component Patterns
-- Use Shadcn/ui components from `components/ui/`
-- Follow existing component structure with proper TypeScript props
-- Use `cn()` utility for conditional Tailwind classes
-- Client components: Start with `'use client';` directive
-- Server components: Default, no directive needed
-
-### Service Layer Architecture
-- **Database operations**: One service file per Supabase table in `services/supabase/`
-- **AI agents**: Separate files in `services/agents/` with clear input/output types
-- **Game logic**: Core gameplay in `services/gameplay/`
-- **AI providers**: Provider integrations in `services/ai/`
-
-### AI Agent Development
-- Define input/output interfaces in `types/api/agents.ts`
-- Use `callOpenRouterJsonWithRetry()` for JSON-structured responses
-- Use `callOpenRouterWithRetry()` for text responses
-- Build system prompts with clear sections using markdown headers
-- Include comprehensive logging for agent calls
-
-### Database Patterns
-- Use RLS (Row Level Security) policies for user data access
-- Client: `@/lib/supabase/client.ts`
-- Server: `@/lib/supabase/server.ts`
-- Use retry wrapper: `@/lib/supabase/retry.ts`
-- JSON columns: Parse with `JSON.parse()` before use, stringify before save
-
-### State Management
-- Story state values stored as JSON in `story_state_values.value_json`
-- State operations: `set`, `inc` (numbers), `push`, `remove` (lists)
-- Validate constraints (min/max, enum options) when applying state changes
-- Create change logs for audit trail
-
-### File Structure Conventions
-```
-app/                    # Next.js App Router pages
-components/
-  ui/                  # Shadcn/ui components
-  auth/                # Authentication components
-  forms/               # Form components
-  layout/              # Layout components
-services/
-  agents/              # AI agent implementations
-  supabase/            # Database CRUD operations
-  ai/                  # AI provider integrations
-  gameplay/            # Core game logic
-types/
-  database/            # Database entity types
-  api/                 # API request/response types
-lib/                   # Utility functions
+## Logging Pattern
+- Prefix logs with function name in brackets.
+- Use step numbering for multi-step flows.
+- Example:
+```ts
+console.log('[executeTurn] 步驟 1: 建構 Story Agent 輸入...');
+console.log('[callStoryAgent] 角色數量:', input.characters.length);
 ```
 
-### Internationalization
-- Project uses Traditional Chinese for comments and user-facing text
-- Console logs may mix English (function names) with Chinese (descriptions)
-- Maintain consistency with existing language patterns
+## Component Patterns
+- Use Shadcn/ui components from `components/ui/`.
+- Use `cn()` for conditional Tailwind classes.
+- Client components must start with `'use client';`.
+- Server components are default (no directive).
 
-### Security Best Practices
-- Never expose `SUPABASE_SERVICE_ROLE_KEY` to client
-- API keys stored in user's `provider_settings` table (RLS protected)
-- Sanitize user inputs before AI prompts
-- Validate all data before database operations
+## Service Layer Architecture
+- Supabase CRUD: `services/supabase/` (one file per table).
+- AI agents: `services/agents/` (clear input/output types).
+- AI providers: `services/ai/`.
+- Gameplay logic: `services/gameplay/`.
 
-### Performance Considerations
-- Use `Promise.all()` for parallel database queries
-- Implement rolling summary system for long story contexts
-- Cache component state to reduce redundant queries
-- Use streaming for AI responses when applicable
+## AI Agent Development
+- Define agent input/output types in `types/api/agents.ts`.
+- Use `callOpenRouterJsonWithRetry()` for JSON responses.
+- Use `callOpenRouterWithRetry()` for text responses.
+- Prompts should use clear markdown headers.
+- Include comprehensive logging for agent calls.
 
-## Important Notes
+## Database Patterns
+- Use RLS (Row Level Security) for user data access.
+- Client: `@/lib/supabase/client.ts`.
+- Server: `@/lib/supabase/server.ts`.
+- Retry wrapper: `@/lib/supabase/retry.ts`.
+- JSON columns: `JSON.parse()` on read; `JSON.stringify()` on write.
 
-- This is a Next.js 15 app with Supabase backend
-- AI integration supports OpenRouter and OpenAI providers
-- Uses TypeScript with strict mode enabled
-- Follows existing patterns rather than introducing new frameworks
-- All database operations must respect user ownership via RLS policies
+## State Management
+- Story state values stored in `story_state_values.value_json`.
+- Supported operations: `set`, `inc`, `push`, `remove`.
+- Validate min/max and enum constraints when applying changes.
+- Create change logs for audit trail.
+
+## Internationalization
+- User-facing text and comments use Traditional Chinese.
+- Console logs can mix English function names and Chinese descriptions.
+
+## Security
+- Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
+- API keys stored in `provider_settings` (RLS protected).
+- Sanitize user input before AI prompts.
+- Validate all data before database writes.
+
+## Performance
+- Use `Promise.all()` for parallel queries.
+- Implement rolling summaries for long story contexts.
+- Cache component state when beneficial.
+- Use streaming for AI responses when applicable.
+
+## Repository Notes
+- Next.js 15 app with Supabase backend.
+- Strict TypeScript and ESLint are expected.
+- Prefer existing patterns over new frameworks.
+
+## Cursor/Copilot Rules
+- No `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md` found.

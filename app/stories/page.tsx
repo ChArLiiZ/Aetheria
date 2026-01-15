@@ -479,7 +479,7 @@ function StoriesPageContent() {
                   </Link>
                   <Link href={`/stories/${story.story_id}`}>
                     <Button variant="outline" className="w-full">
-                      詳情
+                      編輯
                     </Button>
                   </Link>
                   {(story.turn_count ?? 0) > 0 && (
