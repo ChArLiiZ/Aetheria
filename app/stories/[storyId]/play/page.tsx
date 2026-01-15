@@ -674,12 +674,12 @@ function StoryPlayPageContent() {
                                           <span className="text-muted-foreground shrink-0 whitespace-nowrap">
                                             {schema.display_name}
                                           </span>
-                                          <span className={cn(
-                                            "font-medium",
-                                            isLongText ? "text-foreground leading-relaxed" : "text-right"
-                                          )}>
-                                            {displayValue}{unit && ` ${unit}`}
-                                          </span>
+                                                      <span className={cn(
+                                                            "font-medium whitespace-pre-wrap",
+                                                            isLongText ? "text-foreground leading-relaxed" : "text-right"
+                                                          )}>
+                                                            {displayValue}{unit && ` ${unit}`}
+                                                          </span>
                                         </div>
                                       </div>
                                     );

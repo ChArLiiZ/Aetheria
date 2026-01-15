@@ -80,7 +80,9 @@ World（世界規則、狀態 Schema）
 4. **Generation Agent**（`services/agents/generation-agent.ts`）
    - 一鍵生成世界觀（包含狀態 Schema）
    - 一鍵生成角色
-   - 函式：`generateWorld()`、`generateCharacter()`
+   - 一鍵生成完整故事（世界觀 + 角色 + 故事設定），支援現有標籤整合
+   - 函式：`generateWorld()`、`generateCharacter()`、`generateFullStory()`
+   - 生成頁面：`/stories/generate`
 
 ### 回合執行流程
 
@@ -140,6 +142,7 @@ Agent 型別位於 `types/api/agents.ts`：
 - `StoryAgentInput/Output`
 - `SuggestionAgentInput/Output`
 - `WorldGenerationInput/Output`、`CharacterGenerationInput/Output`
+- `FullStoryGenerationInput/Output`、`GeneratedCharacterData`
 
 ### 路徑別名
 

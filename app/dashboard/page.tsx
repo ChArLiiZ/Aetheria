@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AppHeader } from '@/components/app-header';
-import { Globe, User, BookOpen, Settings, Book, AlertTriangle, Play, Loader2 } from 'lucide-react';
+import { Globe, User, BookOpen, Settings, Book, AlertTriangle, Play, Loader2, Sparkles } from 'lucide-react';
 import { Story } from '@/types';
 import { getStories } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
@@ -119,17 +119,41 @@ function DashboardContent() {
 
       <main className="container mx-auto px-4 py-8 space-y-8">
         {/* Welcome Section */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            歡迎回來，{user?.display_name}！
-          </h1>
-          <p className="text-muted-foreground">
-            從這裡開始管理您的世界觀、角色與故事
-          </p>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              歡迎回來，{user?.display_name}！
+            </h1>
+            <p className="text-muted-foreground">
+              從這裡開始管理您的世界觀、角色與故事
+            </p>
+          </div>
+        </div>
+
+        {/* AI Quick Start Banner */}
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-primary/10 p-6 md:p-8">
+          <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]" />
+          <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-2 max-w-2xl">
+              <h2 className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                AI 快速開始
+              </h2>
+              <p className="text-muted-foreground text-sm md:text-base">
+                沒有靈感？讓 AI 協助您快速建立獨特的世界觀與故事，只需簡單描述即可開始您的冒險。
+              </p>
+            </div>
+            <Link href="/stories/generate">
+              <Button size="lg" className="w-full md:w-auto shadow-lg hover:shadow-primary/25 transition-all">
+                <Play className="mr-2 h-4 w-4 fill-current" />
+                立即開始
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
           {quickActions.map((action) => {
             const Icon = action.icon;
             return (
@@ -186,7 +210,7 @@ function DashboardContent() {
                 </Link>
               </div>
             ) : (
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
                 {recentStories.map((story) => (
                   <Card key={story.story_id} className="flex flex-col hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">

@@ -111,11 +111,14 @@ Aetheria/
 │   ├── worlds/            # 世界觀管理
 │   ├── characters/        # 角色管理
 │   ├── stories/           # 故事管理與遊玩
+│   │   └── generate/      # AI 快速生成故事頁面
 │   └── settings/          # 設定頁（AI 供應商、帳戶）
 ├── components/
 │   ├── ui/                # Radix UI 組件
 │   ├── auth/              # 認證相關組件
-│   └── layout/            # 布局組件
+│   ├── layout/            # 布局組件
+│   ├── ai-generation-dialog.tsx  # AI 生成對話框（世界觀/角色）
+│   └── tag-selector.tsx          # 標籤選擇器組件
 ├── contexts/              # React Context (AuthContext)
 ├── lib/
 │   ├── ai-providers.ts    # AI 供應商設定
@@ -137,11 +140,12 @@ Aetheria/
 
 - [x] **使用者系統**：註冊、登入、登出、認證保護
 - [x] **世界觀管理**：CRUD、複製、狀態 Schema 定義
-- [x] **角色管理**：CRUD、標籤、複製
+- [x] **角色管理**：CRUD、標籤、複製、統一格式範本
 - [x] **故事系統**：建立、編輯、角色初始狀態設定
 - [x] **遊戲核心迴圈**：Story Agent、狀態追蹤、即時更新
 - [x] **AI 整合**：OpenRouter/OpenAI、模型選擇、參數調整
 - [x] **AI 生成助手**：一鍵生成世界觀、角色設定（含 Schema）
+- [x] **AI 快速開始**：完整故事生成頁面（/stories/generate），支援編輯與 AI 對話修改
 - [x] **UI 系統**：深色/淺色主題、響應式設計、Toast 通知
 
 ### 遊戲頁面功能
@@ -227,6 +231,6 @@ supabase.auth.onAuthStateChange((event, session) => {
 
 ---
 
-**最後更新**：2026-01-13  
-**當前版本**：v0.9.3-alpha  
-**專案狀態**：✅ 核心功能完成（AI 生成助手、合併版 Story Agent、Markdown 對話、雙 AI 供應商）
+**最後更新**：2026-01-14  
+**當前版本**：v0.9.5-alpha  
+**專案狀態**：核心功能完成（AI 快速生成頁面、AI 生成助手、合併版 Story Agent、Markdown 對話、雙 AI 供應商）

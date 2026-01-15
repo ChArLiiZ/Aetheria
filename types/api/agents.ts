@@ -197,3 +197,50 @@ export interface CharacterGenerationOutput {
   tags: string[];
 }
 
+// ==================== Full Story Generation ====================
+
+/** 完整故事生成輸入 */
+export interface FullStoryGenerationInput {
+  userPrompt: string;
+  /** 現有資料（用於修改模式） */
+  currentData?: FullStoryGenerationOutput;
+  /** 現有的角色標籤（讓 AI 優先使用） */
+  existingCharacterTags?: string[];
+  /** 現有的世界標籤 */
+  existingWorldTags?: string[];
+  /** 現有的故事標籤 */
+  existingStoryTags?: string[];
+}
+
+/** 生成的角色資料 */
+export interface GeneratedCharacterData {
+  canonical_name: string;
+  core_profile_text: string;
+  tags: string[];
+  is_player: boolean;
+  /** 角色的初始狀態值 */
+  initial_states: Record<string, string | number | boolean | string[]>;
+}
+
+/** 完整故事生成輸出 */
+export interface FullStoryGenerationOutput {
+  /** 世界觀設定 */
+  world: {
+    name: string;
+    description: string;
+    rules_text: string;
+    tags: string[];
+    schemas: SchemaGenerationData[];
+  };
+  /** 角色列表（1-3 個） */
+  characters: GeneratedCharacterData[];
+  /** 故事設定 */
+  story: {
+    title: string;
+    premise_text: string;
+    story_mode: 'PLAYER_CHARACTER' | 'DIRECTOR';
+    story_prompt: string;
+    tags: string[];
+  };
+}
+

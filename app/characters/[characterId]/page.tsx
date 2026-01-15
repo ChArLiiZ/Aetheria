@@ -18,11 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles, FileText } from 'lucide-react';
 import { AIGenerationDialog } from '@/components/ai-generation-dialog';
 import { TagSelector } from '@/components/tag-selector';
 import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { CharacterGenerationOutput } from '@/types/api/agents';
+import { CHARACTER_EMPTY_TEMPLATE } from '@/lib/character-template';
 
 function CharacterEditorPageContent() {
   const { user } = useAuth();
@@ -45,6 +46,17 @@ function CharacterEditorPageContent() {
   const [showAIDialog, setShowAIDialog] = useState(false);
 
   const isNewCharacter = characterId === 'new';
+
+  // 插入格式範本
+  const handleInsertTemplate = () => {
+    if (formData.core_profile_text.trim()) {
+      if (!confirm('這將覆蓋目前的角色資料，確定要繼續嗎？')) {
+        return;
+      }
+    }
+    setFormData({ ...formData, core_profile_text: CHARACTER_EMPTY_TEMPLATE });
+    toast.success('已插入格式範本（僅供參考，可自由調整）');
+  };
 
   // Load character with cancellation support to prevent race conditions
   useEffect(() => {
@@ -243,17 +255,30 @@ function CharacterEditorPageContent() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="char-profile">核心角色資料 (背景/性格/動機/秘密/說話風格)</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="char-profile">核心角色資料</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleInsertTemplate}
+                >
+                  <FileText className="mr-2 h-3.5 w-3.5" />
+                  插入格式範本
+                </Button>
+              </div>
               <Textarea
                 id="char-profile"
-                placeholder="詳細描述這個角色..."
-                rows={12}
+                placeholder={"描述這個角色的背景、性格、說話風格等...\n\n可使用「插入格式範本」作為參考，但格式不限。"}
+                rows={14}
                 className="font-mono text-sm"
                 value={formData.core_profile_text}
                 onChange={(e) => setFormData({ ...formData, core_profile_text: e.target.value })}
               />
               {errors.core_profile_text && <p className="text-sm text-destructive">{errors.core_profile_text}</p>}
-              <p className="text-xs text-muted-foreground">詳細的角色資料有助於 AI 更準確地扮演這個角色。</p>
+              <p className="text-xs text-muted-foreground">
+                詳細的角色資料有助於 AI 更準確地扮演這個角色。格式不限，可自由發揮。
+              </p>
             </div>
 
             <div className="space-y-2">
