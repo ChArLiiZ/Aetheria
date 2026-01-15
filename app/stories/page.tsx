@@ -9,6 +9,7 @@ import { getStories, deleteStory, deleteStories } from '@/services/supabase/stor
 import { getWorldsByUserId } from '@/services/supabase/worlds';
 import { getCharacters } from '@/services/supabase/characters';
 import { getStoryCharactersForStories } from '@/services/supabase/story-characters';
+import { resetStory } from '@/services/supabase/story-reset';
 import { Tag, getTagsForEntities } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
@@ -25,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, BookOpen, Play, Trash2, Globe } from 'lucide-react';
+import { Loader2, Plus, BookOpen, Play, Trash2, Globe, RotateCcw, AlertTriangle } from 'lucide-react';
 import {
   ListToolbar,
   ListItemCheckbox,
@@ -59,6 +60,8 @@ function StoriesPageContent() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [storyToDelete, setStoryToDelete] = useState<{ id: string, title: string } | null>(null);
+  const [storyToReset, setStoryToReset] = useState<{ id: string, title: string } | null>(null);
+  const [resettingId, setResettingId] = useState<string | null>(null);
 
   // QOL 功能狀態
   const [searchValue, setSearchValue] = useState('');
@@ -291,6 +294,28 @@ function StoriesPageContent() {
     }
   };
 
+  // Reset story functions
+  const confirmReset = (storyId: string, title: string) => {
+    setStoryToReset({ id: storyId, title });
+  };
+
+  const handleReset = async () => {
+    if (!user || !storyToReset) return;
+
+    try {
+      setResettingId(storyToReset.id);
+      await resetStory(storyToReset.id, user.user_id);
+      await loadStories();
+      toast.success('故事已重新開始！');
+    } catch (err: any) {
+      console.error('Failed to reset story:', err);
+      toast.error(`重置失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setResettingId(null);
+      setStoryToReset(null);
+    }
+  };
+
   const getStoryModeLabel = (mode: string) => {
     switch (mode) {
       case 'PLAYER_CHARACTER':
@@ -457,6 +482,22 @@ function StoriesPageContent() {
                       詳情
                     </Button>
                   </Link>
+                  {(story.turn_count ?? 0) > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-orange-600 hover:text-orange-600 hover:bg-orange-600/10"
+                      onClick={() => confirmReset(story.story_id, story.title)}
+                      disabled={resettingId === story.story_id}
+                      title="重新開始故事"
+                    >
+                      {resettingId === story.story_id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -508,6 +549,35 @@ function StoriesPageContent() {
               <AlertDialogCancel>取消</AlertDialogCancel>
               <AlertDialogAction onClick={handleBatchDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 確認刪除
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* 重新開始確認 */}
+        <AlertDialog open={!!storyToReset} onOpenChange={(open) => !open && setStoryToReset(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                確認重新開始故事
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2">
+                <p>您正在重新開始「{storyToReset?.title}」。</p>
+                <p className="font-semibold text-foreground">此操作將會：</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>刪除所有回合記錄和對話</li>
+                  <li>刪除所有狀態變更歷史</li>
+                  <li>將所有角色狀態重置為預設值</li>
+                </ul>
+                <p className="font-semibold text-orange-600 pt-2">⚠️ 此操作無法復原！</p>
+                <p className="text-muted-foreground">故事的基本設定將會保留。</p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={handleReset} className="bg-orange-600 text-white hover:bg-orange-700">
+                確認重新開始
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

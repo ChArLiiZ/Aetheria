@@ -51,3 +51,6 @@ next-env.d.ts
 
 # Test account
 test_account.txt
+
+# Claude Code temporary files
+tmpclaude-*-cwd

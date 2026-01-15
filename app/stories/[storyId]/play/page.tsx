@@ -19,6 +19,7 @@ import { getStoryTurns } from '@/services/supabase/story-turns';
 import { getProviderSetting } from '@/services/supabase/provider-settings';
 import { executeTurn } from '@/services/gameplay/execute-turn';
 import { rollbackStoryToTurn } from '@/services/gameplay/rollback-turns';
+import { resetStory } from '@/services/supabase/story-reset';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
 import { getAllStateValuesForStory } from '@/services/supabase/story-state-values';
@@ -32,10 +33,20 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb } from 'lucide-react';
+import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -83,6 +94,10 @@ function StoryPlayPageContent() {
   const [tempMaxTokens, setTempMaxTokens] = useState<number>(3000);
   const [tempContextTurns, setTempContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS);
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Reset story
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -429,6 +444,38 @@ function StoryPlayPageContent() {
     }
   };
 
+  const handleResetStory = async () => {
+    if (!user || !story) return;
+
+    try {
+      setResetting(true);
+      await resetStory(storyId, user.user_id);
+      toast.success('故事已重新開始！');
+      setShowResetDialog(false);
+
+      // Reload all data
+      const [storyData, turnsData, stateValuesData] = await Promise.all([
+        getStoryById(storyId, user.user_id),
+        getStoryTurns(storyId, user.user_id),
+        getAllStateValuesForStory(storyId, user.user_id),
+      ]);
+
+      if (storyData) {
+        setStory(storyData);
+        setTurns(turnsData);
+        setStateValues(stateValuesData);
+        setPendingUserInput(null);
+        setUserInput('');
+        setSuggestions([]);
+      }
+    } catch (err: any) {
+      console.error('Failed to reset story:', err);
+      toast.error(`重置失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -466,6 +513,24 @@ function StoryPlayPageContent() {
           </div>
 
           <div className="flex gap-2 shrink-0">
+            {/* Reset Story Button */}
+            {turns.length > 0 && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowResetDialog(true)}
+                disabled={resetting}
+                title="重新開始故事"
+                className="text-orange-600 hover:text-orange-600 hover:bg-orange-600/10 border-orange-600/30"
+              >
+                {resetting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+
             {/* Settings Button */}
             <Sheet open={showSettingsPanel} onOpenChange={setShowSettingsPanel}>
               <SheetTrigger asChild>
@@ -891,6 +956,49 @@ function StoryPlayPageContent() {
           </p>
         </div>
       </div>
+
+      {/* Reset Story Confirmation Dialog */}
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-600" />
+              確認重新開始故事
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="font-semibold text-foreground">此操作將會：</p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>刪除所有 {turns.length} 個回合記錄</li>
+                <li>清除所有對話歷史</li>
+                <li>刪除所有狀態變更記錄</li>
+                <li>將角色狀態重置為預設值</li>
+              </ul>
+              <p className="font-semibold text-orange-600 pt-2">⚠️ 此操作無法復原！</p>
+              <p className="text-muted-foreground">故事設定和角色將會保留。</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetStory}
+              disabled={resetting}
+              className="bg-orange-600 text-white hover:bg-orange-700"
+            >
+              {resetting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  重置中...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  確認重新開始
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

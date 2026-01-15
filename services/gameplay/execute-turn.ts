@@ -27,15 +27,39 @@ import { callSummaryAgent } from '@/services/agents/summary-agent';
 import { getStoryTurns, createStoryTurn, markTurnAsError } from '@/services/supabase/story-turns';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
-import { getAllStateValuesForStory, setStateValue } from '@/services/supabase/story-state-values';
+import { getAllStateValuesForStory, setStateValue, setMultipleStateValues } from '@/services/supabase/story-state-values';
 import { getWorldById } from '@/services/supabase/worlds';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 import { updateStory } from '@/services/supabase/stories';
 import { createChangeLogs, ChangeLogInsert } from '@/services/supabase/change-log';
 import { getLatestSummaryForTurn, createStorySummary } from '@/services/supabase/story-summaries';
+import { getSchemaDefaultValue } from '@/utils/schema-defaults';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
+
+/**
+ * 驗證狀態操作是否與 schema 類型匹配
+ * @param schemaType - Schema 的類型
+ * @param operation - 要執行的操作類型
+ * @returns true 如果操作有效，否則 false
+ */
+function validateStateOperation(
+  schemaType: 'number' | 'text' | 'bool' | 'enum' | 'list_text',
+  operation: 'set' | 'inc'
+): boolean {
+  // 定義有效的操作-類型組合
+  const validCombinations: Record<string, ('set' | 'inc')[]> = {
+    number: ['set', 'inc'], // 數字可以 set 或 inc
+    text: ['set'], // 文字只能 set
+    bool: ['set'], // 布林只能 set
+    enum: ['set'], // 枚舉只能 set
+    list_text: [], // 列表不應該用 StateChange，應該用 ListOperation
+  };
+
+  const validOps = validCombinations[schemaType] || [];
+  return validOps.includes(operation);
+}
 
 export interface ExecuteTurnInput {
   story: Story;
@@ -57,6 +81,7 @@ type ChangeLogDraft = Omit<ChangeLogInsert, 'turn_id'>;
 
 /**
  * Build story agent input from story context
+ * @returns StoryAgentInput 以及補全後的狀態和 schema，用於後續狀態套用
  */
 async function buildStoryAgentInput(
   story: Story,
@@ -64,7 +89,11 @@ async function buildStoryAgentInput(
   userId: string,
   contextTurns: number,
   currentTurnIndex: number
-): Promise<StoryAgentInput> {
+): Promise<{
+  input: StoryAgentInput;
+  stateValues: StoryStateValue[];
+  worldSchema: WorldStateSchema[];
+}> {
   console.log('[buildStoryAgentInput] 開始取得所有必要資料...');
 
   // Fetch all required data in parallel (including applicable summary)
@@ -91,14 +120,88 @@ async function buildStoryAgentInput(
   );
   console.log('[buildStoryAgentInput] 角色詳細資料取得完成');
 
-  // Build character contexts
+  // Build schema contexts (需要在狀態補全前建構，因為補全邏輯需要使用)
+  const schemaContexts: SchemaContext[] = worldSchema.map((schema) => ({
+    schema_key: schema.schema_key,
+    display_name: schema.display_name,
+    type: schema.type,
+    ai_description: schema.ai_description,
+    enum_options: schema.enum_options_json ? JSON.parse(schema.enum_options_json) : undefined,
+    number_constraints: schema.number_constraints_json
+      ? JSON.parse(schema.number_constraints_json)
+      : undefined,
+  }));
+
+  // 狀態自動補全：確保所有角色都有所有 Schema 的狀態值
+  // 重要：必須在建構 character contexts 之前完成，確保狀態摘要使用完整的資料
+  console.log('[buildStoryAgentInput] 檢查狀態完整性...');
+  const stateMap = new Map<string, StoryStateValue>();
+  stateValues.forEach((sv) => {
+    const key = `${sv.story_character_id}:${sv.schema_key}`;
+    stateMap.set(key, sv);
+  });
+
+  const missingStates: Array<{
+    story_id: string;
+    story_character_id: string;
+    schema_key: string;
+    value_json: string;
+  }> = [];
+
+  // 檢查每個角色是否有所有 Schema 的狀態
+  for (const sc of storyCharacters) {
+    for (const schema of worldSchema) {
+      const key = `${sc.story_character_id}:${schema.schema_key}`;
+      if (!stateMap.has(key)) {
+        // 狀態缺失，建立預設值
+        const defaultValue = getSchemaDefaultValue(schema);
+        console.log(`[buildStoryAgentInput] 缺失狀態: ${sc.story_character_id}:${schema.schema_key}, 使用預設值:`, defaultValue);
+
+        missingStates.push({
+          story_id: story.story_id,
+          story_character_id: sc.story_character_id,
+          schema_key: schema.schema_key,
+          value_json: JSON.stringify(defaultValue),
+        });
+
+        // 同時加入到記憶體的 stateValues 中，確保這次回合能使用
+        const newStateValue: StoryStateValue = {
+          user_id: userId,
+          story_id: story.story_id,
+          story_character_id: sc.story_character_id,
+          schema_key: schema.schema_key,
+          value_json: JSON.stringify(defaultValue),
+          updated_at: new Date().toISOString(),
+        };
+        stateValues.push(newStateValue);
+        stateMap.set(key, newStateValue);
+      }
+    }
+  }
+
+  // 批次寫入缺失的狀態到資料庫
+  if (missingStates.length > 0) {
+    console.log(`[buildStoryAgentInput] 發現 ${missingStates.length} 個缺失狀態，正在初始化...`);
+    try {
+      await setMultipleStateValues(userId, missingStates);
+      console.log('[buildStoryAgentInput] 狀態初始化完成');
+    } catch (error) {
+      console.error('[buildStoryAgentInput] 狀態初始化失敗:', error);
+      // 繼續執行，使用記憶體中的值
+    }
+  } else {
+    console.log('[buildStoryAgentInput] 所有狀態完整，無需補全');
+  }
+
+  // 建構角色上下文（在狀態補全之後，確保使用完整的狀態資料）
+  console.log('[buildStoryAgentInput] 建構角色上下文（使用補全後的狀態）...');
   const characters: StoryCharacterContext[] = storyCharacters.map((sc, index) => {
     const char = characterDetails[index];
     if (!char) {
       throw new Error(`Character not found: ${sc.character_id}`);
     }
 
-    // Get character's state values
+    // Get character's state values (現在使用的是補全後的 stateValues)
     const charStates = stateValues.filter(
       (sv) => sv.story_character_id === sc.story_character_id
     );
@@ -130,19 +233,7 @@ async function buildStoryAgentInput(
   // Find the player character for logging
   const playerCharacter = characters.find(c => c.is_player);
 
-  // Build schema contexts
-  const schemaContexts: SchemaContext[] = worldSchema.map((schema) => ({
-    schema_key: schema.schema_key,
-    display_name: schema.display_name,
-    type: schema.type,
-    ai_description: schema.ai_description,
-    enum_options: schema.enum_options_json ? JSON.parse(schema.enum_options_json) : undefined,
-    number_constraints: schema.number_constraints_json
-      ? JSON.parse(schema.number_constraints_json)
-      : undefined,
-  }));
-
-  // Build current state contexts
+  // Build current state contexts (與 characters 使用相同的補全後狀態)
   const currentStates: CurrentStateContext[] = stateValues.map((sv) => ({
     story_character_id: sv.story_character_id,
     schema_key: sv.schema_key,
@@ -162,6 +253,7 @@ async function buildStoryAgentInput(
   console.log('  - 玩家角色:', playerCharacter?.display_name || '無（導演模式）');
   console.log('  - 角色數量:', characters.length);
   console.log('  - 狀態 Schema 數量:', schemaContexts.length);
+  console.log('  - 當前狀態數量:', currentStates.length);
   console.log('  - 最近回合數:', recentTurnContexts.length);
   console.log('  - 摘要:', applicableSummary ? '有' : '無');
 
@@ -174,33 +266,40 @@ async function buildStoryAgentInput(
   }
 
   return {
-    story_mode: story.story_mode,
-    world_rules: world.rules_text,
-    story_prompt: story.story_prompt,
-    characters,
-    world_schema: schemaContexts,
-    current_states: currentStates,
-    recent_turns: recentTurnContexts,
-    user_input: userInput,
-    story_summary: applicableSummary?.summary_text,
+    input: {
+      story_mode: story.story_mode,
+      world_rules: world.rules_text,
+      story_prompt: story.story_prompt,
+      characters,
+      world_schema: schemaContexts,
+      current_states: currentStates,
+      recent_turns: recentTurnContexts,
+      user_input: userInput,
+      story_summary: applicableSummary?.summary_text,
+    },
+    stateValues, // 回傳補全後的狀態，確保與 AI 輸入一致
+    worldSchema, // 回傳 schema，避免重複查詢
   };
 }
 
 /**
  * Apply state changes from story agent output
+ * @param preInitializedStates - 已預先初始化的狀態（來自 buildStoryAgentInput 的補全），避免重新查詢時遺失初始化值
  */
 async function applyStateChanges(
   story: Story,
   agentOutput: StoryAgentOutput,
-  userId: string
+  userId: string,
+  worldSchema: WorldStateSchema[],
+  preInitializedStates?: StoryStateValue[]
 ): Promise<ChangeLogDraft[]> {
   const changeLogs: ChangeLogDraft[] = [];
 
-  // Fetch current states and world schema
-  const [currentStates, worldSchema] = await Promise.all([
-    getAllStateValuesForStory(story.story_id, userId),
-    getSchemaByWorldId(story.world_id, userId),
-  ]);
+  console.log('[applyStateChanges] 使用', preInitializedStates ? '預先初始化的狀態' : '從資料庫重新查詢的狀態');
+
+  // 使用預先初始化的狀態（如果有），否則從資料庫查詢
+  // 這確保了如果 buildStoryAgentInput 的初始化失敗，我們仍使用記憶體中的補全狀態
+  const currentStates = preInitializedStates ?? await getAllStateValuesForStory(story.story_id, userId);
 
   const stateMap = new Map<string, any>();
   currentStates.forEach((state) => {
@@ -220,13 +319,42 @@ async function applyStateChanges(
     const schema = worldSchema.find((s) => s.schema_key === change.schema_key);
     if (!schema) continue;
 
+    // ⭐ 驗證操作類型是否與 schema 類型匹配
+    const isValidOperation = validateStateOperation(schema.type, change.op);
+    if (!isValidOperation) {
+      console.warn(
+        `[applyStateChanges] 無效的操作組合: schema "${schema.schema_key}" (type: ${schema.type}) 不支援操作 "${change.op}"`
+      );
+      console.warn(`[applyStateChanges] 跳過此狀態變更以防止資料損壞`);
+      continue; // 跳過這個無效的變更
+    }
+
     const stateKey = `${change.target_story_character_id}:${change.schema_key}`;
     const beforeValue = stateMap.get(stateKey);
     let newValue = change.value;
 
-    if (change.op === 'inc' && schema.type === 'number') {
-      const currentValue = beforeValue ?? 0;
-      newValue = (currentValue as number) + (change.value as number);
+    // 處理 inc 操作（只對 number 類型有效）
+    if (change.op === 'inc') {
+      if (schema.type !== 'number') {
+        // 這不應該發生，因為上面已經驗證過，但為了安全起見再檢查一次
+        console.error(`[applyStateChanges] 內部錯誤: inc 操作應該只用於 number 類型`);
+        continue;
+      }
+
+      // ⭐ 修復：如果找不到現有值，使用 schema 的預設值而不是硬編碼的 0
+      // 這解決了當狀態初始化失敗時，inc 操作會從錯誤的基準值開始計算的問題
+      let currentValue: number;
+      if (beforeValue !== undefined) {
+        currentValue = beforeValue as number;
+      } else {
+        const defaultValue = getSchemaDefaultValue(schema);
+        currentValue = typeof defaultValue === 'number' ? defaultValue : 0;
+        console.warn(
+          `[applyStateChanges] 找不到狀態 "${change.schema_key}" 的現有值，使用 schema 預設值: ${currentValue}`
+        );
+      }
+
+      newValue = currentValue + (change.value as number);
 
       if (schema.number_constraints_json) {
         const constraints = JSON.parse(schema.number_constraints_json);
@@ -236,6 +364,44 @@ async function applyStateChanges(
         if (constraints.max !== undefined) {
           newValue = Math.min(newValue as number, constraints.max);
         }
+      }
+    }
+
+    // Enum 值驗證（只對 set 操作）
+    if (schema.type === 'enum' && schema.enum_options_json && change.op === 'set') {
+      try {
+        const validOptions = JSON.parse(schema.enum_options_json) as string[];
+        if (!validOptions.includes(newValue as string)) {
+          console.warn(
+            `[applyStateChanges] 無效的 Enum 值 "${newValue}" 對於 schema "${schema.schema_key}". 有效選項:`,
+            validOptions
+          );
+          console.warn(`[applyStateChanges] 跳過此狀態變更`);
+          continue; // 跳過這個無效的變更
+        }
+      } catch (error) {
+        console.error(`[applyStateChanges] 無法解析 enum_options_json:`, error);
+      }
+    }
+
+    // 數字限制驗證（對 set 操作）
+    if (schema.type === 'number' && change.op === 'set' && schema.number_constraints_json) {
+      try {
+        const constraints = JSON.parse(schema.number_constraints_json);
+        if (constraints.min !== undefined && (newValue as number) < constraints.min) {
+          console.warn(
+            `[applyStateChanges] 數值 ${newValue} 小於最小值 ${constraints.min}，已調整`
+          );
+          newValue = constraints.min;
+        }
+        if (constraints.max !== undefined && (newValue as number) > constraints.max) {
+          console.warn(
+            `[applyStateChanges] 數值 ${newValue} 大於最大值 ${constraints.max}，已調整`
+          );
+          newValue = constraints.max;
+        }
+      } catch (error) {
+        console.error(`[applyStateChanges] 無法解析 number_constraints_json:`, error);
       }
     }
 
@@ -262,6 +428,21 @@ async function applyStateChanges(
 
   // Apply list operations
   for (const listOp of agentOutput.list_ops) {
+    // 驗證 schema 是否存在且類型為 list_text
+    const schema = worldSchema.find((s) => s.schema_key === listOp.schema_key);
+    if (!schema) {
+      console.warn(`[applyStateChanges] 找不到 schema "${listOp.schema_key}"，跳過列表操作`);
+      continue;
+    }
+
+    if (schema.type !== 'list_text') {
+      console.warn(
+        `[applyStateChanges] 無效的列表操作: schema "${schema.schema_key}" (type: ${schema.type}) 不是 list_text 類型`
+      );
+      console.warn(`[applyStateChanges] 跳過此列表操作以防止資料損壞`);
+      continue;
+    }
+
     const stateKey = `${listOp.target_story_character_id}:${listOp.schema_key}`;
     const beforeValue = stateMap.get(stateKey);
     const currentList = Array.isArray(beforeValue) ? beforeValue : [];
@@ -334,16 +515,22 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
 
   // Step 1: Build and call story agent (單次 API 呼叫)
   console.log('[executeTurn] 步驟 1: 建構 Story Agent 輸入...');
-  const storyAgentInput = await buildStoryAgentInput(story, userInput, userId, effectiveContextTurns, nextTurnIndex);
+  const { input: storyAgentInput, stateValues, worldSchema } = await buildStoryAgentInput(
+    story,
+    userInput,
+    userId,
+    effectiveContextTurns,
+    nextTurnIndex
+  );
   console.log('[executeTurn] 步驟 1a 完成: 輸入已建構');
 
   console.log('[executeTurn] 步驟 1b: 呼叫 Story Agent...');
   const agentOutput = await callStoryAgent(apiKey, selectedModel, storyAgentInput, params);
   console.log('[executeTurn] 步驟 1 完成: Story Agent 回應成功');
 
-  // Step 2: Apply state changes
+  // Step 2: Apply state changes (傳入補全後的狀態，確保與 AI 輸入一致)
   console.log('[executeTurn] 步驟 2: 套用狀態變更...');
-  const changeLogs = await applyStateChanges(story, agentOutput, userId);
+  const changeLogs = await applyStateChanges(story, agentOutput, userId, worldSchema, stateValues);
   console.log(`[executeTurn] 步驟 2 完成: 套用了 ${changeLogs.length} 個狀態變更`);
 
   // Step 3: Save turn

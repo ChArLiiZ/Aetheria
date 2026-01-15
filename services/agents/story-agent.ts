@@ -85,26 +85,53 @@ ${current_states.length > 0
             : 'No state values set yet.'
         }
 
+# CRITICAL: State Update Requirements
+
+You MUST proactively update states whenever the narrative implies a change:
+
+**Always Update These States:**
+- **Location**: Update EVERY TIME a character moves or their position changes, even for small movements
+- **Health/Status**: Update when characters take damage, heal, or change condition
+- **Inventory/Items**: Update when characters gain, lose, or use items
+- **Resources (mana, stamina, etc.)**: Update when characters use abilities or rest
+- **Any situational states**: If a state exists in the schema and your narrative mentions it, update it
+
+**How to Track State Changes:**
+1. After writing your narrative, review it sentence by sentence
+2. Ask yourself: "Did this sentence describe any state change?"
+3. If yes, add the corresponding state_change
+4. Don't skip obvious changes just because they seem minor
+
+**Example:**
+❌ BAD: Narrative mentions "Alice walks to the forest" but no location update
+✅ GOOD: Narrative + state_change for Alice.location from "village" to "forest"
+
+❌ BAD: Narrative mentions "Bob uses a healing spell on himself" but no mana/health update
+✅ GOOD: Narrative + state_change for Bob.mana (decreased) and Bob.health (increased)
+
 # Your Task
 Based on the user's input, generate:
-1. **Narrative**: A vivid, engaging description of what happens (2-4 paragraphs). 
+1. **Narrative**: A vivid, engaging description of what happens (2-4 paragraphs).
    - Character dialogue MUST be naturally woven INTO the narrative flow, not listed at the end.
    - Use Markdown quote block format for dialogue: > **角色名**：「對話內容」
    - Dialogue should appear at the natural moment when the character speaks.
-   
+
    **GOOD Example (dialogue woven naturally):**
    凜的冰藍眼眸微微柔和，轉向身旁的櫻。
-   
+
    > **凜**：「放心，我會保護好妳的。」
-   
+
    她冷淡的語調中帶著罕見的溫柔，雪白短髮在微風中輕輕晃動。
 
    **BAD Example (dialogue listed at end - DO NOT DO THIS):**
    凜的冰藍眼眸微微柔和，轉向身旁的櫻，冷淡的語調中帶著罕見的溫柔。
-   
+
    > **凜**：「放心，我會保護好妳的。」
 
 2. **State Changes**: Determine what state changes should occur based on the narrative.
+   - Review your narrative and identify ALL implied state changes
+   - Err on the side of updating states when in doubt
+   - Missing a state update is worse than adding one unnecessarily
 
 # Response Format
 Respond with ONLY a valid JSON object (no markdown, no code blocks):
@@ -137,11 +164,11 @@ IMPORTANT:
 - Make the narrative engaging and immersive
 - **CRITICAL: Dialogue MUST be naturally woven into the narrative at the moment characters speak, NOT listed separately at the end**
 - Each dialogue line should be surrounded by narrative description before AND after
-- Only suggest state changes that are clearly supported by the narrative
-- Be conservative with state changes - don't make up changes
+- **Accurately reflect ALL state changes that occur in the narrative**
+- Err on the side of updating states when in doubt - missing updates is worse than extra updates
 - Provide clear reasons for each state change
 - Respect the constraints of each field type (min/max for numbers, enum options, etc.)
-- Empty arrays are fine if no changes are needed
+- Empty arrays are fine if no changes are needed (but try to avoid this for states clearly affected by the narrative)
 ${story_mode === 'PLAYER_CHARACTER' && playerCharacter
             ? `- Remember: ${playerCharacter.display_name} is controlled by the player. Describe their actions based on the player's input, but don't control their internal decisions.`
             : ''}`;

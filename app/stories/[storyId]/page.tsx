@@ -20,9 +20,11 @@ import {
   getStateValues,
   setMultipleStateValues
 } from '@/services/supabase/story-state-values';
+import { resetStory, hasStoryProgress } from '@/services/supabase/story-reset';
 import { Tag, getAllTagsForType, getTagsForEntities, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import { TagSelector } from '@/components/tag-selector';
 import { toast } from 'sonner';
+import { getSchemaDefaultValue } from '@/utils/schema-defaults';
 
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
@@ -49,34 +51,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Play, Trash2 } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Play, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Pagination helper
 const ITEMS_PER_PAGE = 6;
-
-const getSchemaDefaultValue = (schema: WorldStateSchema) => {
-  if (schema.default_value_json) {
-    try {
-      return JSON.parse(schema.default_value_json);
-    } catch {
-      // Fall through to type-based defaults
-    }
-  }
-
-  switch (schema.type) {
-    case 'number':
-      return 0;
-    case 'bool':
-      return false;
-    case 'list_text':
-      return [];
-    case 'enum':
-    case 'text':
-    default:
-      return '';
-  }
-};
 
 function StoryDetailPageContent() {
   const { user } = useAuth();
@@ -104,6 +83,10 @@ function StoryDetailPageContent() {
   const [worldSchema, setWorldSchema] = useState<WorldStateSchema[]>([]);
   const [stateValues, setStateValues] = useState<Record<string, any>>({});
   const [savingStates, setSavingStates] = useState(false);
+
+  // Story reset
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -670,6 +653,26 @@ function StoryDetailPageContent() {
     setWorldSchema([]);
   };
 
+  // Reset story functions
+  const handleResetStory = async () => {
+    if (!user || !story) return;
+
+    try {
+      setResetting(true);
+      await resetStory(storyId, user.user_id);
+      toast.success('故事已重新開始！所有進度已清除。');
+      setShowResetDialog(false);
+
+      // Reload story data to reflect changes
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to reset story:', err);
+      toast.error(`重置故事失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -959,6 +962,53 @@ function StoryDetailPageContent() {
                                             </SelectContent>
                                           </Select>
                                         )}
+                                        {schema.type === 'list_text' && (
+                                          <div className="space-y-2">
+                                            <div className="flex flex-wrap gap-1">
+                                              {(charStates[schema.schema_key] ?? []).map((item: string, idx: number) => (
+                                                <Badge key={idx} variant="secondary" className="gap-1">
+                                                  {item}
+                                                  <button
+                                                    type="button"
+                                                    className="ml-1 hover:text-destructive"
+                                                    onClick={() => {
+                                                      const newStates = { ...initialStates };
+                                                      if (!newStates[charId]) newStates[charId] = {};
+                                                      const currentList = [...(newStates[charId][schema.schema_key] ?? [])];
+                                                      currentList.splice(idx, 1);
+                                                      newStates[charId][schema.schema_key] = currentList;
+                                                      setInitialStates(newStates);
+                                                    }}
+                                                  >
+                                                    ×
+                                                  </button>
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                            <div className="flex gap-2">
+                                              <Input
+                                                className="h-8 flex-1"
+                                                placeholder="輸入項目後按 Enter"
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const input = e.currentTarget;
+                                                    const value = input.value.trim();
+                                                    if (value) {
+                                                      const newStates = { ...initialStates };
+                                                      if (!newStates[charId]) newStates[charId] = {};
+                                                      const currentList = [...(newStates[charId][schema.schema_key] ?? [])];
+                                                      currentList.push(value);
+                                                      newStates[charId][schema.schema_key] = currentList;
+                                                      setInitialStates(newStates);
+                                                      input.value = '';
+                                                    }
+                                                  }
+                                                }}
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     ))}
                                   </div>
@@ -1076,11 +1126,23 @@ function StoryDetailPageContent() {
             <CardContent className="flex flex-col items-center justify-center p-8 text-center space-y-4">
               <h3 className="text-2xl font-bold">準備好開始冒險了嗎？</h3>
               <p className="opacity-90">當前回合數: {story.turn_count || 0}</p>
-              <Button asChild size="lg" variant="secondary" className="font-bold text-lg px-8">
-                <Link href={`/stories/${storyId}/play`}>
-                  <Play className="mr-2 h-5 w-5" /> 進入遊戲
-                </Link>
-              </Button>
+              <div className="flex gap-3">
+                <Button asChild size="lg" variant="secondary" className="font-bold text-lg px-8">
+                  <Link href={`/stories/${storyId}/play`}>
+                    <Play className="mr-2 h-5 w-5" /> 進入遊戲
+                  </Link>
+                </Button>
+                {(story.turn_count ?? 0) > 0 && (
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="font-bold text-lg px-6 bg-white/10 hover:bg-white/20 border-white/30"
+                    onClick={() => setShowResetDialog(true)}
+                  >
+                    <RotateCcw className="mr-2 h-5 w-5" /> 重新開始
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -1565,6 +1627,50 @@ function StoryDetailPageContent() {
                           </SelectContent>
                         </Select>
                       )}
+                      {schema.type === 'list_text' && (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-1 min-h-[2rem] p-2 border rounded-md">
+                            {(stateValues[schema.schema_key] ?? []).length === 0 ? (
+                              <span className="text-sm text-muted-foreground">目前沒有項目</span>
+                            ) : (
+                              (stateValues[schema.schema_key] ?? []).map((item: string, idx: number) => (
+                                <Badge key={idx} variant="secondary" className="gap-1">
+                                  {item}
+                                  <button
+                                    type="button"
+                                    className="ml-1 hover:text-destructive"
+                                    onClick={() => {
+                                      const currentList = [...(stateValues[schema.schema_key] ?? [])];
+                                      currentList.splice(idx, 1);
+                                      setStateValues({ ...stateValues, [schema.schema_key]: currentList });
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </Badge>
+                              ))
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="輸入項目後按 Enter 新增"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const input = e.currentTarget;
+                                  const value = input.value.trim();
+                                  if (value) {
+                                    const currentList = [...(stateValues[schema.schema_key] ?? [])];
+                                    currentList.push(value);
+                                    setStateValues({ ...stateValues, [schema.schema_key]: currentList });
+                                    input.value = '';
+                                  }
+                                }
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1575,6 +1681,62 @@ function StoryDetailPageContent() {
               <Button onClick={handleSaveStates} disabled={savingStates}>
                 {savingStates && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 儲存狀態
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reset Story Confirmation Dialog */}
+        <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                確認重新開始故事
+              </DialogTitle>
+              <DialogDescription className="space-y-2 pt-2">
+                <p className="font-semibold text-foreground">
+                  此操作將會：
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>刪除所有回合記錄和對話</li>
+                  <li>刪除所有狀態變更歷史</li>
+                  <li>刪除所有故事摘要</li>
+                  <li>將所有角色狀態重置為預設值</li>
+                  <li>回合計數重置為 0</li>
+                </ul>
+                <p className="font-semibold text-destructive pt-2">
+                  ⚠️ 此操作無法復原！
+                </p>
+                <p className="text-muted-foreground pt-1">
+                  故事的基本設定（標題、世界、角色等）將會保留。
+                </p>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowResetDialog(false)}
+                disabled={resetting}
+              >
+                取消
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleResetStory}
+                disabled={resetting}
+              >
+                {resetting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    重置中...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    確認重新開始
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
