@@ -35,8 +35,12 @@ import {
   sortItems,
   collectTagsFromItems,
 } from '@/components/list-toolbar';
+import { WorldDetailsDialog } from '@/components/world-details-dialog';
+import { CharacterDetailsDialog } from '@/components/character-details-dialog';
+import { StoryDetailsDialog } from '@/components/story-details-dialog';
 
 interface StoryCharacterInfo {
+  id: string;
   name: string;
   isPlayer: boolean;
 }
@@ -72,6 +76,11 @@ function StoriesPageContent() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
+
+  // Details Dialogs
+  const [viewingWorldId, setViewingWorldId] = useState<string | null>(null);
+  const [viewingCharacterId, setViewingCharacterId] = useState<string | null>(null);
+  const [viewingStoryId, setViewingStoryId] = useState<string | null>(null);
 
   // Load stories
   useEffect(() => {
@@ -113,6 +122,7 @@ function StoriesPageContent() {
         const storiesWithData = storiesData.map((story) => {
           const storyChars = storyCharsMap.get(story.story_id) || [];
           const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
+            id: sc.character_id,
             name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
             isPlayer: sc.is_player,
           }));
@@ -173,6 +183,7 @@ function StoriesPageContent() {
       const storiesWithData = storiesData.map((story) => {
         const storyChars = storyCharsMap.get(story.story_id) || [];
         const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
+          id: sc.character_id,
           name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
           isPlayer: sc.is_player,
         }));
@@ -428,8 +439,8 @@ function StoriesPageContent() {
             {filteredAndSortedStories.map((story) => (
               <Card
                 key={story.story_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow overflow-hidden ${selectedIds.has(story.story_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : ''}`}
-                onClick={isSelectMode ? () => handleToggleSelect(story.story_id) : undefined}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow overflow-hidden ${selectedIds.has(story.story_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : 'cursor-pointer'}`}
+                onClick={isSelectMode ? () => handleToggleSelect(story.story_id) : () => setViewingStoryId(story.story_id)}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(story.story_id)}
@@ -443,7 +454,16 @@ function StoriesPageContent() {
                   <CardDescription className="flex items-center gap-2 text-xs mt-1">
                     <span className="flex items-center">
                       <Globe className="mr-1 h-3 w-3" />
-                      {story.world_name}
+                      <button
+                        className="hover:underline hover:text-primary transition-colors focus:outline-none"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setViewingWorldId(story.world_id);
+                        }}
+                      >
+                        {story.world_name}
+                      </button>
                     </span>
                     <span>-</span>
                     <span>{getStoryModeLabel(story.story_mode)}</span>
@@ -460,12 +480,17 @@ function StoriesPageContent() {
                     <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
                       <span className="text-xs text-muted-foreground mr-1">角色:</span>
                       {story.characters.map((char, idx) => (
-                        <span
+                        <button
                           key={idx}
-                          className={`text-xs px-1.5 py-0.5 rounded ${char.isPlayer ? 'bg-primary/15 text-primary font-medium' : 'bg-muted text-muted-foreground'}`}
+                          className={`text-xs px-1.5 py-0.5 rounded hover:opacity-80 transition-opacity focus:outline-none ${char.isPlayer ? 'bg-primary/15 text-primary font-medium' : 'bg-muted text-muted-foreground'}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setViewingCharacterId(char.id);
+                          }}
                         >
                           {char.name}
-                        </span>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -583,6 +608,31 @@ function StoriesPageContent() {
           </AlertDialogContent>
         </AlertDialog>
 
+        <WorldDetailsDialog
+          worldId={viewingWorldId}
+          open={!!viewingWorldId}
+          onOpenChange={(open) => !open && setViewingWorldId(null)}
+        />
+
+        <CharacterDetailsDialog
+          characterId={viewingCharacterId}
+          open={!!viewingCharacterId}
+          onOpenChange={(open) => !open && setViewingCharacterId(null)}
+        />
+
+        <StoryDetailsDialog
+          storyId={viewingStoryId}
+          open={!!viewingStoryId}
+          onOpenChange={(open) => !open && setViewingStoryId(null)}
+          onWorldClick={(id) => {
+            setViewingStoryId(null);
+            setTimeout(() => setViewingWorldId(id), 100);
+          }}
+          onCharacterClick={(id) => {
+            setViewingStoryId(null);
+            setTimeout(() => setViewingCharacterId(id), 100);
+          }}
+        />
       </main>
     </div>
   );

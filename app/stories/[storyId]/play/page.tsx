@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import ReactMarkdown from 'react-markdown';
@@ -47,11 +48,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle, FileEdit } from 'lucide-react';
+import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle, FileEdit, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { MODEL_PRESETS, PROVIDER_INFO, Provider, PROVIDERS, DEFAULT_PROVIDER, DEFAULT_MODELS } from '@/lib/ai-providers';
+import { WorldDetailsDialog } from '@/components/world-details-dialog';
+import { CharacterDetailsDialog } from '@/components/character-details-dialog';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
@@ -99,6 +102,10 @@ function StoryPlayPageContent() {
   // Reset story
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  // Details Dialogs
+  const [viewingWorldId, setViewingWorldId] = useState<string | null>(null);
+  const [viewingCharacterId, setViewingCharacterId] = useState<string | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -514,6 +521,16 @@ function StoryPlayPageContent() {
           </div>
 
           <div className="flex gap-2 shrink-0">
+            {/* World Details Button */}
+            <Button
+              variant="outline"
+              size="icon"
+              title="查看世界觀設定"
+              onClick={() => setViewingWorldId(story.world_id)}
+            >
+              <Globe className="h-4 w-4" />
+            </Button>
+
             {/* Edit Story Button */}
             <Button
               variant="outline"
@@ -698,7 +715,12 @@ function StoryPlayPageContent() {
                             <CardHeader className="p-4 pb-2">
                               <div className="flex items-center justify-between">
                                 <div className="font-semibold flex items-center gap-2 truncate">
-                                  {sc.display_name_override || char.canonical_name}
+                                  <button
+                                    className="hover:underline hover:text-primary transition-colors focus:outline-none"
+                                    onClick={() => setViewingCharacterId(sc.character_id)}
+                                  >
+                                    {sc.display_name_override || char.canonical_name}
+                                  </button>
                                   {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5 shrink-0">玩家</Badge>}
                                 </div>
                               </div>
@@ -1046,6 +1068,17 @@ function StoryPlayPageContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <WorldDetailsDialog
+        worldId={viewingWorldId}
+        open={!!viewingWorldId}
+        onOpenChange={(open) => !open && setViewingWorldId(null)}
+      />
+
+      <CharacterDetailsDialog
+        characterId={viewingCharacterId}
+        open={!!viewingCharacterId}
+        onOpenChange={(open) => !open && setViewingCharacterId(null)}
+      />
     </div>
   );
 }

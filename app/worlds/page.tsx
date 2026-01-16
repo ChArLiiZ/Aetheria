@@ -33,6 +33,7 @@ import {
   sortItems,
   collectTagsFromItems,
 } from '@/components/list-toolbar';
+import { WorldDetailsDialog } from '@/components/world-details-dialog';
 
 interface WorldWithTags extends World {
   tags?: Tag[];
@@ -62,6 +63,7 @@ function WorldsPageContent() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
+  const [viewingWorldId, setViewingWorldId] = useState<string | null>(null);
 
   // Load worlds with cancellation support
   useEffect(() => {
@@ -348,8 +350,8 @@ function WorldsPageContent() {
             {filteredAndSortedWorlds.map((world) => (
               <Card
                 key={world.world_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : ''}`}
-                onClick={isSelectMode ? () => handleToggleSelect(world.world_id) : undefined}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : 'cursor-pointer'}`}
+                onClick={isSelectMode ? () => handleToggleSelect(world.world_id) : () => setViewingWorldId(world.world_id)}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(world.world_id)}
@@ -370,7 +372,7 @@ function WorldsPageContent() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
-                  <Link href={`/worlds/${world.world_id}`} className="flex-1">
+                  <Link href={`/worlds/${world.world_id}/edit`} className="flex-1">
                     <Button variant="outline" className="w-full">
                       <Edit className="mr-2 h-4 w-4" />
                       編輯
@@ -430,6 +432,12 @@ function WorldsPageContent() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <WorldDetailsDialog
+          worldId={viewingWorldId}
+          open={!!viewingWorldId}
+          onOpenChange={(open) => !open && setViewingWorldId(null)}
+        />
       </main>
     </div>
   );

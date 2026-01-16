@@ -32,6 +32,7 @@ import {
   sortItems,
   collectTagsFromItems,
 } from '@/components/list-toolbar';
+import { CharacterDetailsDialog } from '@/components/character-details-dialog';
 
 interface CharacterWithTags extends Character {
   tags?: Tag[];
@@ -59,6 +60,7 @@ function CharactersListPageContent() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
+  const [viewingCharacterId, setViewingCharacterId] = useState<string | null>(null);
 
   // Load characters
   useEffect(() => {
@@ -329,8 +331,8 @@ function CharactersListPageContent() {
             {filteredAndSortedCharacters.map((character) => (
               <Card
                 key={character.character_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : ''}`}
-                onClick={isSelectMode ? () => handleToggleSelect(character.character_id) : undefined}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} cursor-pointer`}
+                onClick={isSelectMode ? () => handleToggleSelect(character.character_id) : () => setViewingCharacterId(character.character_id)}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(character.character_id)}
@@ -351,7 +353,7 @@ function CharactersListPageContent() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
-                  <Link href={`/characters/${character.character_id}`} className="flex-1">
+                  <Link href={`/characters/${character.character_id}/edit`} className="flex-1">
                     <Button variant="outline" className="w-full">
                       <Edit className="mr-2 h-4 w-4" />
                       編輯
@@ -412,6 +414,11 @@ function CharactersListPageContent() {
           </AlertDialogContent>
         </AlertDialog>
 
+        <CharacterDetailsDialog
+          characterId={viewingCharacterId}
+          open={!!viewingCharacterId}
+          onOpenChange={(open) => !open && setViewingCharacterId(null)}
+        />
       </main>
     </div>
   );

@@ -12,15 +12,32 @@ import { Globe, User, BookOpen, Settings, Book, AlertTriangle, Play, Loader2, Sp
 import { Story } from '@/types';
 import { getStories } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
+import { getCharacters } from '@/services/supabase/characters';
+import { getStoryCharactersForStories } from '@/services/supabase/story-characters';
+import { WorldDetailsDialog } from '@/components/world-details-dialog';
+import { CharacterDetailsDialog } from '@/components/character-details-dialog';
+import { StoryDetailsDialog } from '@/components/story-details-dialog';
+
+interface StoryCharacterInfo {
+  id: string;
+  name: string;
+  isPlayer: boolean;
+}
 
 interface StoryWithWorld extends Story {
   world_name?: string;
+  characters?: StoryCharacterInfo[];
 }
 
 function DashboardContent() {
   const { user } = useAuth();
   const [recentStories, setRecentStories] = useState<StoryWithWorld[]>([]);
   const [storiesLoading, setStoriesLoading] = useState(true);
+
+  // Details Dialogs State
+  const [viewingWorldId, setViewingWorldId] = useState<string | null>(null);
+  const [viewingCharacterId, setViewingCharacterId] = useState<string | null>(null);
+  const [viewingStoryId, setViewingStoryId] = useState<string | null>(null);
 
   // 載入最近的故事
   useEffect(() => {
@@ -35,29 +52,50 @@ function DashboardContent() {
       try {
         setStoriesLoading(true);
 
-        // 同時取得故事和世界觀資料
-        const [storiesData, worldsData] = await Promise.all([
+        // 同時取得故事、世界觀、角色資料
+        const [storiesData, worldsData, charactersData] = await Promise.all([
           getStories(user.user_id),
           getWorldsByUserId(user.user_id),
+          getCharacters(user.user_id),
         ]);
 
         if (cancelled) return;
 
-        // 建立 world_id 到 world_name 的映射
+        // 建立映射
         const worldMap = new Map(
           worldsData.map((world) => [world.world_id, world.name])
         );
 
-        // 將世界觀名稱附加到故事上，並按更新時間排序取最近 3 個
-        const storiesWithWorlds = storiesData
-          .map((story) => ({
+        const characterMap = new Map(
+          charactersData.map((char) => [char.character_id, char.canonical_name])
+        );
+
+        // 取得最近 3 個故事的 ID
+        const sortedStories = [...storiesData].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).slice(0, 3);
+        const storyIds = sortedStories.map(s => s.story_id);
+
+        // 取得這些故事的角色
+        const storyCharsMap = await getStoryCharactersForStories(storyIds, user.user_id);
+
+        if (cancelled) return;
+
+        // 組合資料
+        const storiesWithData = sortedStories.map((story) => {
+          const storyChars = storyCharsMap.get(story.story_id) || [];
+          const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
+            id: sc.character_id,
+            name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
+            isPlayer: sc.is_player,
+          }));
+
+          return {
             ...story,
             world_name: worldMap.get(story.world_id) || '未知世界觀',
-          }))
-          .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-          .slice(0, 3);
+            characters,
+          };
+        });
 
-        setRecentStories(storiesWithWorlds);
+        setRecentStories(storiesWithData);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load recent stories:', err);
@@ -212,13 +250,26 @@ function DashboardContent() {
             ) : (
               <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
                 {recentStories.map((story) => (
-                  <Card key={story.story_id} className="flex flex-col hover:shadow-md transition-shadow">
+                  <Card
+                    key={story.story_id}
+                    className="flex flex-col hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => setViewingStoryId(story.story_id)}
+                  >
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base line-clamp-1">{story.title}</CardTitle>
                       <CardDescription className="flex items-center gap-2 text-xs mt-1">
                         <span className="flex items-center">
                           <Globe className="mr-1 h-3 w-3" />
-                          {story.world_name}
+                          <button
+                            className="hover:underline hover:text-primary transition-colors focus:outline-none"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setViewingWorldId(story.world_id);
+                            }}
+                          >
+                            {story.world_name}
+                          </button>
                         </span>
                         <span>•</span>
                         <span>{getStoryModeLabel(story.story_mode)}</span>
@@ -226,12 +277,30 @@ function DashboardContent() {
                         <span>{story.turn_count || 0} 回合</span>
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex-1 pb-2">
+                    <CardContent className="flex-1 space-y-3 pb-2">
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {story.premise_text}
                       </p>
+                      {story.characters && story.characters.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
+                          <span className="text-xs text-muted-foreground mr-1">角色:</span>
+                          {story.characters.map((char, idx) => (
+                            <button
+                              key={idx}
+                              className={`text-xs px-1.5 py-0.5 rounded hover:opacity-80 transition-opacity focus:outline-none ${char.isPlayer ? 'bg-primary/15 text-primary font-medium' : 'bg-muted text-muted-foreground'}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setViewingCharacterId(char.id);
+                              }}
+                            >
+                              {char.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </CardContent>
-                    <CardFooter className="pt-2 border-t">
+                    <CardFooter className="pt-2 border-t" onClick={(e) => e.stopPropagation()}>
                       <Link href={`/stories/${story.story_id}/play`} className="w-full">
                         <Button size="sm" className="w-full">
                           <Play className="mr-2 h-3 w-3" />
@@ -254,6 +323,33 @@ function DashboardContent() {
             應用程式仍在開發階段，部分功能尚未完善，且尚未經過仔細測試，可能存在錯誤或不穩定的情況。
           </AlertDescription>
         </Alert>
+
+        {/* Dialogs */}
+        <WorldDetailsDialog
+          worldId={viewingWorldId}
+          open={!!viewingWorldId}
+          onOpenChange={(open) => !open && setViewingWorldId(null)}
+        />
+
+        <CharacterDetailsDialog
+          characterId={viewingCharacterId}
+          open={!!viewingCharacterId}
+          onOpenChange={(open) => !open && setViewingCharacterId(null)}
+        />
+
+        <StoryDetailsDialog
+          storyId={viewingStoryId}
+          open={!!viewingStoryId}
+          onOpenChange={(open) => !open && setViewingStoryId(null)}
+          onWorldClick={(id) => {
+            setViewingStoryId(null);
+            setTimeout(() => setViewingWorldId(id), 100);
+          }}
+          onCharacterClick={(id) => {
+            setViewingStoryId(null);
+            setTimeout(() => setViewingCharacterId(id), 100);
+          }}
+        />
       </main>
     </div>
   );

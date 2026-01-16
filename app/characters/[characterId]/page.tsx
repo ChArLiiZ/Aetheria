@@ -5,70 +5,40 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { Character } from '@/types';
-import {
-  getCharacterById,
-  createCharacter,
-  updateCharacter,
-  characterNameExists,
-} from '@/services/supabase/characters';
+import { getCharacterById } from '@/services/supabase/characters';
+import { getEntityTags, Tag } from '@/services/supabase/tags';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles, FileText } from 'lucide-react';
-import { AIGenerationDialog } from '@/components/ai-generation-dialog';
-import { TagSelector } from '@/components/tag-selector';
-import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
-import type { CharacterGenerationOutput } from '@/types/api/agents';
-import { CHARACTER_EMPTY_TEMPLATE } from '@/lib/character-template';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from "@/components/ui/badge";
+import { Loader2, ArrowLeft, Edit } from 'lucide-react';
 
-function CharacterEditorPageContent() {
+function CharacterDetailsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const params = useParams();
   const characterId = params.characterId as string;
 
   const [character, setCharacter] = useState<Character | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
-  const [formData, setFormData] = useState({
-    canonical_name: '',
-    core_profile_text: '',
-  });
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // AI 生成對話框
-  const [showAIDialog, setShowAIDialog] = useState(false);
-
-  const isNewCharacter = characterId === 'new';
-
-  // 插入格式範本
-  const handleInsertTemplate = () => {
-    if (formData.core_profile_text.trim()) {
-      if (!confirm('這將覆蓋目前的角色資料，確定要繼續嗎？')) {
-        return;
-      }
+  // Redirect 'new' directly to edit page
+  useEffect(() => {
+    if (characterId === 'new') {
+      router.replace('/characters/new/edit');
     }
-    setFormData({ ...formData, core_profile_text: CHARACTER_EMPTY_TEMPLATE });
-    toast.success('已插入格式範本（僅供參考，可自由調整）');
-  };
+  }, [characterId, router]);
 
-  // Load character with cancellation support to prevent race conditions
   useEffect(() => {
     let cancelled = false;
 
-    const fetchCharacter = async () => {
-      if (isNewCharacter) {
-        setLoading(false);
-        return;
-      }
+    const fetchData = async () => {
+      // 'new' 由第一個 useEffect 處理 redirect
+      if (characterId === 'new') return;
 
-      // 如果沒有 user_id，設定 loading = false 並返回
+      // 沒有使用者時停止 loading，避免卡住
       if (!user?.user_id) {
         setLoading(false);
         return;
@@ -76,26 +46,21 @@ function CharacterEditorPageContent() {
 
       try {
         setLoading(true);
-        const data = await getCharacterById(characterId, user.user_id);
+        const [charData, tagsData] = await Promise.all([
+          getCharacterById(characterId, user.user_id),
+          getEntityTags('character', characterId, user.user_id),
+        ]);
 
         if (cancelled) return;
 
-        if (!data) {
+        if (!charData) {
           toast.error('找不到此角色');
           router.push('/characters');
           return;
         }
 
-        setCharacter(data);
-
-        setFormData({
-          canonical_name: data.canonical_name,
-          core_profile_text: data.core_profile_text,
-        });
-
-        // 載入標籤
-        const tags = await getEntityTags('character', characterId, user.user_id);
-        setSelectedTags(tags);
+        setCharacter(charData);
+        setTags(tagsData);
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load character:', err);
@@ -108,88 +73,14 @@ function CharacterEditorPageContent() {
       }
     };
 
-    fetchCharacter();
+    fetchData();
 
     return () => {
       cancelled = true;
     };
-  }, [characterId, user?.user_id, isNewCharacter, router]);
+  }, [characterId, user?.user_id, router]);
 
-  const validateForm = async (): Promise<boolean> => {
-    const newErrors: Record<string, string> = {};
-
-    if (!formData.canonical_name.trim()) {
-      newErrors.canonical_name = '請輸入角色名稱';
-    } else if (user) {
-      const exists = await characterNameExists(
-        user.user_id,
-        formData.canonical_name.trim(),
-        isNewCharacter ? undefined : characterId
-      );
-      if (exists) {
-        newErrors.canonical_name = '此角色名稱已存在';
-      }
-    }
-
-    if (!formData.core_profile_text.trim()) {
-      newErrors.core_profile_text = '請輸入角色資料';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async () => {
-    if (!user) return;
-
-    const isValid = await validateForm();
-    if (!isValid) return;
-
-    try {
-      setSaving(true);
-
-      if (isNewCharacter) {
-        const newChar = await createCharacter(user.user_id, {
-          canonical_name: formData.canonical_name.trim(),
-          core_profile_text: formData.core_profile_text.trim(),
-        });
-
-        // 設定標籤
-        if (selectedTags.length > 0) {
-          await setEntityTags('character', newChar.character_id, user.user_id, selectedTags.map(t => t.tag_id));
-        }
-        toast.success('角色建立成功！');
-      } else {
-        await updateCharacter(characterId, user.user_id, {
-          canonical_name: formData.canonical_name.trim(),
-          core_profile_text: formData.core_profile_text.trim(),
-        });
-
-        // 更新標籤
-        await setEntityTags('character', characterId, user.user_id, selectedTags.map(t => t.tag_id));
-        toast.success('儲存成功！');
-      }
-
-      router.push('/characters');
-    } catch (err: any) {
-      console.error('Failed to save character:', err);
-      toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // AI 生成結果處理
-  const handleAIGenerated = (data: CharacterGenerationOutput) => {
-    setFormData({
-      canonical_name: data.canonical_name || formData.canonical_name,
-      core_profile_text: data.core_profile_text || formData.core_profile_text,
-    });
-    // AI 生成的 tags 保留現有選取
-    toast.success('AI 生成完成！請檢查並調整內容。');
-  };
-
-  if (loading) {
+  if (loading || characterId === 'new') {
     return (
       <div className="min-h-screen bg-background">
         <AppHeader />
@@ -215,111 +106,42 @@ function CharacterEditorPageContent() {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                {isNewCharacter ? '新增角色' : `編輯角色：${character?.canonical_name || ''}`}
+                {character?.canonical_name}
               </h1>
-              <p className="text-muted-foreground">
-                {isNewCharacter
-                  ? '建立一個新的角色卡（背景、性格、說話風格等）'
-                  : '修改角色的核心資料'}
-              </p>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {tags.map(tag => (
+                  <Badge key={tag.tag_id} variant="secondary">
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowAIDialog(true)}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                AI 生成
-              </Button>
-              <Button onClick={handleSubmit} disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Save className="mr-2 h-4 w-4" /> 儲存變更
-              </Button>
-            </div>
+            <Button onClick={() => router.push(`/characters/${characterId}/edit`)}>
+              <Edit className="mr-2 h-4 w-4" /> 編輯角色
+            </Button>
           </div>
         </div>
 
-        {/* Main Form */}
         <Card>
           <CardHeader>
-            <CardTitle>基本資料</CardTitle>
-            <CardDescription>設定角色的名稱、屬性與詳細設定。</CardDescription>
+            <CardTitle>核心資料</CardTitle>
+            <CardDescription>角色的詳細設定資料</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="char-name">角色名稱 (canonical_name)</Label>
-              <Input
-                id="char-name"
-                placeholder="例如：艾莉亞"
-                value={formData.canonical_name}
-                onChange={(e) => setFormData({ ...formData, canonical_name: e.target.value })}
-              />
-              {errors.canonical_name && <p className="text-sm text-destructive">{errors.canonical_name}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="char-profile">核心角色資料</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleInsertTemplate}
-                >
-                  <FileText className="mr-2 h-3.5 w-3.5" />
-                  插入格式範本
-                </Button>
-              </div>
-              <Textarea
-                id="char-profile"
-                placeholder={"描述這個角色的背景、性格、說話風格等...\n\n可使用「插入格式範本」作為參考，但格式不限。"}
-                rows={14}
-                className="font-mono text-sm"
-                value={formData.core_profile_text}
-                onChange={(e) => setFormData({ ...formData, core_profile_text: e.target.value })}
-              />
-              {errors.core_profile_text && <p className="text-sm text-destructive">{errors.core_profile_text}</p>}
-              <p className="text-xs text-muted-foreground">
-                詳細的角色資料有助於 AI 更準確地扮演這個角色。格式不限，可自由發揮。
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>標籤</Label>
-              <TagSelector
-                tagType="character"
-                selectedTags={selectedTags}
-                onTagsChange={setSelectedTags}
-                placeholder="選擇或新增標籤..."
-              />
+          <CardContent>
+            <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed p-4 bg-muted/50 rounded-md">
+              {character?.core_profile_text || '無資料'}
             </div>
           </CardContent>
-          <CardFooter className="flex justify-end gap-4 border-t pt-4">
-            <Button variant="outline" onClick={() => router.push('/characters')}>取消</Button>
-            <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? '儲存中...' : '儲存變更'}
-            </Button>
-          </CardFooter>
         </Card>
-
-        {/* AI 生成對話框 */}
-        <AIGenerationDialog
-          open={showAIDialog}
-          onOpenChange={setShowAIDialog}
-          type="character"
-          currentData={{
-            canonical_name: formData.canonical_name,
-            core_profile_text: formData.core_profile_text,
-            tags: selectedTags.map(t => t.name),
-          }}
-          onGenerated={(data) => handleAIGenerated(data as CharacterGenerationOutput)}
-        />
       </main>
     </div>
   );
 }
 
-export default function CharacterEditorPage() {
+export default function CharacterPage() {
   return (
     <ProtectedRoute>
-      <CharacterEditorPageContent />
+      <CharacterDetailsPage />
     </ProtectedRoute>
   );
 }
