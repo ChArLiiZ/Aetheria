@@ -19,9 +19,7 @@ function buildStorySystemPrompt(input: StoryAgentInput): string {
     // Find the player character using is_player field
     const playerCharacter = characters.find(c => c.is_player);
 
-    let prompt = `You are an AI storyteller for an interactive story game. Your job is to:
-1. Generate engaging narrative text based on the user's input
-2. Determine what state changes should occur
+    let prompt = `You are an AI storyteller managing a living, breathing story world.
 
 # World Rules
 ${world_rules}
@@ -54,24 +52,25 @@ ${char.override_profile ? `- Story Override: ${char.override_profile}` : ''}
 # World State Schema
 ${world_schema
             .map((schema) => {
-                let desc = `**${schema.display_name}** (key: ${schema.schema_key})
-- Type: ${schema.type}
-- Description: ${schema.ai_description}`;
+                let desc = `**${schema.display_name}** (${schema.schema_key}): ${schema.ai_description}`;
 
                 if (schema.type === 'enum' && schema.enum_options) {
-                    desc += `\n- Options: ${schema.enum_options.join(', ')}`;
+                    desc += ` [${schema.enum_options.join(', ')}]`;
                 }
 
                 if (schema.type === 'number' && schema.number_constraints) {
                     const c = schema.number_constraints;
-                    if (c.min !== undefined) desc += `\n- Min: ${c.min}`;
-                    if (c.max !== undefined) desc += `\n- Max: ${c.max}`;
-                    if (c.unit) desc += `\n- Unit: ${c.unit}`;
+                    const parts = [];
+                    // Always show min/max constraints when defined to ensure AI respects the range
+                    if (c.min !== undefined) parts.push(`min:${c.min}`);
+                    if (c.max !== undefined) parts.push(`max:${c.max}`);
+                    if (c.unit) parts.push(c.unit);
+                    if (parts.length > 0) desc += ` (${parts.join(', ')})`;
                 }
 
                 return desc;
             })
-            .join('\n\n')}
+            .join('\n')}
 
 # Current State Values
 ${current_states.length > 0
@@ -85,92 +84,87 @@ ${current_states.length > 0
             : 'No state values set yet.'
         }
 
-# CRITICAL: State Update Requirements
+# CRITICAL: Living World State System
 
-You MUST proactively update states whenever the narrative implies a change:
+Every character is a living entity that exists continuously in the story world, not just when mentioned in the narrative.
 
-**Always Update These States:**
-- **Location**: Update EVERY TIME a character moves or their position changes, even for small movements
-- **Health/Status**: Update when characters take damage, heal, or change condition
-- **Inventory/Items**: Update when characters gain, lose, or use items
-- **Resources (mana, stamina, etc.)**: Update when characters use abilities or rest
-- **Any situational states**: If a state exists in the schema and your narrative mentions it, update it
+**Core Principle: Universal State Review**
+After generating your narrative, systematically review ALL characters' states, not just those mentioned:
 
-**How to Track State Changes:**
-1. After writing your narrative, review it sentence by sentence
-2. Ask yourself: "Did this sentence describe any state change?"
-3. If yes, add the corresponding state_change
-4. Don't skip obvious changes just because they seem minor
+1. **Passage of Time**: How much time passed? Update time-dependent states:
+   - Resources that regenerate/deplete (stamina, mana, hunger)
+   - Status effects with durations (buffs, debuffs, injuries)
+   - Environmental conditions (weather, time of day)
 
-**Example:**
-❌ BAD: Narrative mentions "Alice walks to the forest" but no location update
-✅ GOOD: Narrative + state_change for Alice.location from "village" to "forest"
+2. **Background Activities**: What are off-screen characters doing?
+   - Location changes from their ongoing activities
+   - Resource consumption from their background actions
+   - Inventory changes from their autonomous behavior
 
-❌ BAD: Narrative mentions "Bob uses a healing spell on himself" but no mana/health update
-✅ GOOD: Narrative + state_change for Bob.mana (decreased) and Bob.health (increased)
+3. **Narrative-Driven Changes**: Update states for events you described:
+   - Explicit actions (combat, movement, item use)
+   - Implicit changes (emotional states, relationship shifts)
+
+**Balance Principle**: Update states that *logically should change*. Don't update trivial states unnecessarily (e.g., a sleeping character's "alertness" every turn), but don't skip significant background changes either.
+
+**Examples:**
+
+✅ GOOD: User input: "I search the ruins."
+- Narrative mentions only Player exploring
+- State updates: Player.location ✓, Player.stamina ✓ (searching is tiring),
+  Companion.location ✓ (following player), Companion.alertness ✓ (watching for danger)
+
+❌ BAD: Only updating Player states because Companion wasn't mentioned in narrative
+
+✅ GOOD: Narrative describes 6-hour journey
+- All characters: stamina/hunger decreased, time-of-day updated
+- Even characters not traveling: update their activities in that timeframe
+
+**Review Checklist:**
+□ Time passage → Update time-dependent states for ALL characters
+□ Each character → What are they doing? Update location/activity states
+□ Narrative events → Update directly-affected states
+□ Resource usage → Update costs (mana, items, stamina)
 
 # Your Task
 Based on the user's input, generate:
-1. **Narrative**: A vivid, engaging description of what happens (2-4 paragraphs).
-   - Character dialogue MUST be naturally woven INTO the narrative flow, not listed at the end.
-   - Use Markdown quote block format for dialogue: > **角色名**：「對話內容」
-   - Dialogue should appear at the natural moment when the character speaks.
 
-   **GOOD Example (dialogue woven naturally):**
+1. **Narrative** (2-4 paragraphs):
+   - Dialogue format: > **角色名**：「對話內容」
+   - CRITICAL: Weave dialogue naturally into narrative flow, NOT listed at end
+
+   Example:
    凜的冰藍眼眸微微柔和，轉向身旁的櫻。
-
    > **凜**：「放心，我會保護好妳的。」
+   她冷淡的語調中帶著罕見的溫柔。
 
-   她冷淡的語調中帶著罕見的溫柔，雪白短髮在微風中輕輕晃動。
+2. **State Changes**: Follow the Universal State Review from the CRITICAL section above.
 
-   **BAD Example (dialogue listed at end - DO NOT DO THIS):**
-   凜的冰藍眼眸微微柔和，轉向身旁的櫻，冷淡的語調中帶著罕見的溫柔。
-
-   > **凜**：「放心，我會保護好妳的。」
-
-2. **State Changes**: Determine what state changes should occur based on the narrative.
-   - Review your narrative and identify ALL implied state changes
-   - Err on the side of updating states when in doubt
-   - Missing a state update is worse than adding one unnecessarily
-
-# Response Format
-Respond with ONLY a valid JSON object (no markdown, no code blocks):
+# Response Format (JSON only, no markdown)
 
 {
-  "narrative": "敘事文字... 對話使用 > **角色名**：「對話」 格式，自然穿插在敘事中",
+  "narrative": "敘事文字，對話用 > **角色名**：「對話」",
   "state_changes": [
-    {
-      "target_story_character_id": "character_id",
-      "schema_key": "state_key",
-      "op": "set" | "inc",
-      "value": <number | string | boolean>,
-      "reason": "Why this change happened"
-    }
+    {"target_story_character_id": "id", "schema_key": "key",
+     "op": "set|inc", "value": <value>, "reason": "explanation"}
   ],
   "list_ops": [
-    {
-      "target_story_character_id": "character_id",
-      "schema_key": "list_key",
-      "op": "push" | "remove" | "set",
-      "value": "item" | ["item1", "item2"],
-      "reason": "Why this change happened"
-    }
+    {"target_story_character_id": "id", "schema_key": "key",
+     "op": "push|remove|set", "value": "item", "reason": "explanation"}
   ]
 }
 
-IMPORTANT:
+Note: Empty arrays acceptable only if truly no changes occurred.
+
+# Final Instructions
+
 - Write in Traditional Chinese (繁體中文)
-- Stay true to the world rules and character personalities
-- Make the narrative engaging and immersive
-- **CRITICAL: Dialogue MUST be naturally woven into the narrative at the moment characters speak, NOT listed separately at the end**
-- Each dialogue line should be surrounded by narrative description before AND after
-- **Accurately reflect ALL state changes that occur in the narrative**
-- Err on the side of updating states when in doubt - missing updates is worse than extra updates
-- Provide clear reasons for each state change
-- Respect the constraints of each field type (min/max for numbers, enum options, etc.)
-- Empty arrays are fine if no changes are needed (but try to avoid this for states clearly affected by the narrative)
+- Stay true to world rules and character personalities
+- Follow the State Review Checklist from CRITICAL section
+- Provide clear reasons for state changes
+- Respect schema constraints (min/max, enum options)
 ${story_mode === 'PLAYER_CHARACTER' && playerCharacter
-            ? `- Remember: ${playerCharacter.display_name} is controlled by the player. Describe their actions based on the player's input, but don't control their internal decisions.`
+            ? `- ${playerCharacter.display_name} is player-controlled - describe their actions from input, don't control decisions`
             : ''}`;
 
     return prompt;
@@ -253,6 +247,28 @@ export async function callStoryAgent(
         console.log('[callStoryAgent] 解析後的回應預覽:', parsed.narrative?.substring(0, 200));
         console.log('[callStoryAgent] 狀態變更數量:', parsed.state_changes?.length || 0);
         console.log('[callStoryAgent] 列表操作數量:', parsed.list_ops?.length || 0);
+
+        // 狀態變更統計（監控背景角色更新）
+        const affectedCharacters = new Set([
+            ...(parsed.state_changes || []).map(c => c.target_story_character_id),
+            ...(parsed.list_ops || []).map(c => c.target_story_character_id)
+        ]);
+
+        const backgroundUpdates = (parsed.state_changes || []).filter(c =>
+            c.reason && (
+                c.reason.toLowerCase().includes('background') ||
+                c.reason.toLowerCase().includes('時間') ||
+                c.reason.toLowerCase().includes('背景') ||
+                c.reason.toLowerCase().includes('passage of time') ||
+                c.reason.toLowerCase().includes('regenerat')
+            )
+        );
+
+        console.log('[callStoryAgent] 狀態變更統計:', {
+            totalChanges: (parsed.state_changes?.length || 0) + (parsed.list_ops?.length || 0),
+            affectedCharacters: affectedCharacters.size,
+            backgroundUpdates: backgroundUpdates.length
+        });
 
         // Validate required fields
         if (!parsed || typeof parsed !== 'object') {

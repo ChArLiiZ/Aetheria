@@ -48,7 +48,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle, FileEdit, Globe } from 'lucide-react';
+import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle, FileEdit, Globe, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -244,7 +244,7 @@ function StoryPlayPageContent() {
   }, [userInput]);
 
   const handleDeleteFromTurn = async (turnIndex: number) => {
-    if (!user || !story || deletingTurnIndex) return;
+    if (!user || !story || deletingTurnIndex !== null || submitting) return;
 
     if (!confirm(`確定要刪除回合 ${turnIndex} 及其後所有內容嗎？\n\n此操作將回溯角色狀態，且無法復原。`)) {
       return;
@@ -265,6 +265,68 @@ function StoryPlayPageContent() {
       toast.error(`刪除失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setDeletingTurnIndex(null);
+    }
+  };
+
+  const handleRegenerate = async (turnIndex: number, previousInput: string) => {
+    if (!user || !story || !providerSettings || submitting || deletingTurnIndex !== null) return;
+
+    try {
+      setSubmitError(null); // 清除先前的錯誤訊息
+      setSubmitting(true);
+      setPendingUserInput(previousInput);
+      setUserInput(''); // Clear any current input
+
+      // 1. Rollback to remove the current turn
+      const remainingTurns = await rollbackStoryToTurn(storyId, turnIndex, user.user_id);
+
+      // 2. Update local state to reflect rollback
+      const rolledBackTurnCount = remainingTurns.length > 0
+        ? Math.max(...remainingTurns.map((turn) => turn.turn_index))
+        : 0;
+      setTurns(remainingTurns);
+      setStory({ ...story, turn_count: rolledBackTurnCount });
+
+      // 3. Re-execute the turn with the same input
+      const selectedModel = tempUsePreset === 'preset' ? tempModel : tempCustomModel;
+      const result = await executeTurn({
+        story: { ...story, turn_count: rolledBackTurnCount }, // Use updated turn count
+        userInput: previousInput,
+        userId: user.user_id,
+        apiKey: providerSettings.api_key,
+        model: selectedModel,
+        params: {
+          temperature: tempTemperature,
+          max_tokens: tempMaxTokens,
+        },
+        contextTurns: tempContextTurns,
+      });
+
+      // 4. Update state with new turn
+      setPendingUserInput(null);
+      setTurns([...remainingTurns, result.turn]);
+      setStory({ ...story, turn_count: result.turn.turn_index });
+      await loadCharacterStates(story.world_id);
+
+    } catch (err: any) {
+      console.error('Failed to regenerate:', err);
+      setSubmitError(err.message || '重新產生失敗');
+      // 注意：不要在這裡呼叫 setPendingUserInput(null)
+      // 錯誤 UI 區塊依賴 pendingUserInput 為真值才會顯示
+      // 使用者需要看到「編輯後重試」、「重試」、「取消」等選項
+      // Reload both turns and character states to ensure consistency after rollback
+      // 將恢復操作包在 try-catch 中，避免恢復失敗時產生未處理的 Promise 拒絕
+      try {
+        const turnsData = await getStoryTurns(storyId, user.user_id);
+        setTurns(turnsData);
+        await loadCharacterStates(story.world_id);
+      } catch (recoveryErr) {
+        console.error('Failed to recover state after regeneration error:', recoveryErr);
+        // 恢復失敗時不再拋出錯誤，主要錯誤訊息已經顯示給使用者
+      }
+      toast.error(`重新產生失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -852,7 +914,7 @@ function StoryPlayPageContent() {
           </Card>
 
           {/* Turns */}
-          {turns.map((turn) => (
+          {turns.map((turn, index) => (
             <div key={turn.turn_id} className="space-y-6">
               {/* User Input */}
               <div className="flex justify-end pl-12">
@@ -871,15 +933,29 @@ function StoryPlayPageContent() {
                 <div className="space-y-2 flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground font-medium">回合 {turn.turn_index}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs text-muted-foreground hover:text-destructive p-0"
-                      onClick={() => handleDeleteFromTurn(turn.turn_index)}
-                      disabled={deletingTurnIndex !== null}
-                    >
-                      {deletingTurnIndex === turn.turn_index ? '刪除中...' : '回溯至此'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {index === turns.length - 1 && ( // Note: 'questions' isn't available here, using turns.length check is fine. 'index' comes from map.
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-primary"
+                          onClick={() => handleRegenerate(turn.turn_index, turn.user_input_text)}
+                          disabled={submitting || deletingTurnIndex !== null}
+                          title="重新產生 (刪除此回應並重試)"
+                        >
+                          {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs text-muted-foreground hover:text-destructive p-0"
+                        onClick={() => handleDeleteFromTurn(turn.turn_index)}
+                        disabled={deletingTurnIndex !== null || submitting}
+                      >
+                        {deletingTurnIndex === turn.turn_index ? '刪除中...' : '回溯至此'}
+                      </Button>
+                    </div>
                   </div>
                   {/* Markdown Rendered Narrative */}
                   <div className="prose dark:prose-invert max-w-none text-foreground leading-relaxed">

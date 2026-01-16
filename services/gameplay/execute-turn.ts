@@ -39,6 +39,17 @@ import { getSchemaDefaultValue } from '@/utils/schema-defaults';
 const DEFAULT_CONTEXT_TURNS = 5;
 
 /**
+ * 檢查狀態值是否為預設值
+ * @param value - 當前狀態值
+ * @param schema - 狀態 Schema 定義
+ * @returns true 如果是預設值
+ */
+function isDefaultState(value: any, schema: WorldStateSchema): boolean {
+  const defaultValue = getSchemaDefaultValue(schema);
+  return JSON.stringify(value) === JSON.stringify(defaultValue);
+}
+
+/**
  * 驗證狀態操作是否與 schema 類型匹配
  * @param schemaType - Schema 的類型
  * @param operation - 要執行的操作類型
@@ -206,13 +217,21 @@ async function buildStoryAgentInput(
       (sv) => sv.story_character_id === sc.story_character_id
     );
 
-    // Build state summary
+    // Build state summary (優化：只顯示關鍵欄位和非預設值)
+    const criticalFields = ['location', 'health', 'hp', 'status', 'condition'];
+
     const stateSummary = charStates
       .map((sv) => {
         const schema = worldSchema.find((s) => s.schema_key === sv.schema_key);
         if (!schema) return '';
         try {
           const value = JSON.parse(sv.value_json);
+
+          // Prioritize non-default values for conciseness
+          if (!criticalFields.includes(schema.schema_key) && isDefaultState(value, schema)) {
+            return '';
+          }
+
           return `${schema.display_name}: ${JSON.stringify(value)}`;
         } catch {
           return '';
@@ -264,6 +283,23 @@ async function buildStoryAgentInput(
   if (story.story_mode === 'PLAYER_CHARACTER' && !playerCharacter) {
     console.warn('[buildStoryAgentInput] 警告：玩家角色模式但沒有設定玩家角色！');
   }
+
+  // Prompt 統計（用於監控優化效果）
+  const systemPromptLength = (world.rules_text.length + story.story_prompt.length +
+    characters.map(c => c.core_profile.length).reduce((a, b) => a + b, 0) +
+    (applicableSummary?.summary_text.length || 0));
+
+  const recentTurnsLength = recentTurnContexts
+    .map(t => t.user_input.length + t.narrative.length)
+    .reduce((a, b) => a + b, 0);
+
+  console.log('[buildStoryAgentInput] Prompt 統計:', {
+    systemPromptLength,
+    characterCount: characters.length,
+    schemaCount: schemaContexts.length,
+    recentTurns: recentTurnContexts.length,
+    estimatedTokens: Math.ceil((systemPromptLength + recentTurnsLength) / 4)
+  });
 
   return {
     input: {
