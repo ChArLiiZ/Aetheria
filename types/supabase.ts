@@ -81,6 +81,7 @@ export interface Database {
           description: string
           rules_text: string
           tags_json: string | null
+          image_url: string | null
           created_at: string
           updated_at: string
         }
@@ -91,6 +92,7 @@ export interface Database {
           description: string
           rules_text: string
           tags_json?: string | null
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -101,6 +103,7 @@ export interface Database {
           description?: string
           rules_text?: string
           tags_json?: string | null
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -156,6 +159,7 @@ export interface Database {
           canonical_name: string
           core_profile_text: string
           tags_json: string
+          image_url: string | null
           created_at: string
           updated_at: string
         }
@@ -165,6 +169,7 @@ export interface Database {
           canonical_name: string
           core_profile_text: string
           tags_json?: string
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -174,6 +179,7 @@ export interface Database {
           canonical_name?: string
           core_profile_text?: string
           tags_json?: string
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }

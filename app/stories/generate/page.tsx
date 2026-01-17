@@ -6,12 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { getProviderSettings } from '@/services/supabase/provider-settings';
 import { generateFullStory } from '@/services/agents/generation-agent';
-import { createWorld } from '@/services/supabase/worlds';
+import { createWorld, updateWorld as updateWorldRecord } from '@/services/supabase/worlds';
 import { createSchemaItem } from '@/services/supabase/world-schema';
-import { createCharacter } from '@/services/supabase/characters';
+import { createCharacter, updateCharacter as updateCharacterRecord } from '@/services/supabase/characters';
 import { createStory } from '@/services/supabase/stories';
 import { addStoryCharacter } from '@/services/supabase/story-characters';
 import { setMultipleStateValues } from '@/services/supabase/story-state-values';
+import { uploadImage } from '@/services/supabase/storage';
 import {
     getTagsByType,
     getOrCreateTag,
@@ -57,6 +58,7 @@ import {
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+import { ImageUpload } from '@/components/image-upload';
 
 type Step = 'input' | 'edit' | 'creating';
 
@@ -88,6 +90,43 @@ function GenerateStoryPageContent() {
 
     // 建立進度
     const [createProgress, setCreateProgress] = useState<string>('');
+
+    // 圖片暫存（只在前端，儲存時才上傳）
+    const [worldImageFile, setWorldImageFile] = useState<File | null>(null);
+    const [characterImageFiles, setCharacterImageFiles] = useState<Map<number, File>>(new Map());
+    
+    // 圖片預覽 URL 狀態（管理 object URL 生命週期，避免記憶體洩漏）
+    const [worldImagePreviewUrl, setWorldImagePreviewUrl] = useState<string | null>(null);
+    const [characterImagePreviewUrls, setCharacterImagePreviewUrls] = useState<Map<number, string>>(new Map());
+
+    // 管理 worldImageFile 的 object URL 生命週期
+    useEffect(() => {
+        if (worldImageFile) {
+            const objectUrl = URL.createObjectURL(worldImageFile);
+            setWorldImagePreviewUrl(objectUrl);
+            return () => {
+                URL.revokeObjectURL(objectUrl);
+            };
+        } else {
+            setWorldImagePreviewUrl(null);
+        }
+    }, [worldImageFile]);
+
+    // 管理 characterImageFiles 的 object URL 生命週期
+    useEffect(() => {
+        const newUrls = new Map<number, string>();
+        characterImageFiles.forEach((file, index) => {
+            newUrls.set(index, URL.createObjectURL(file));
+        });
+        setCharacterImagePreviewUrls(newUrls);
+
+        return () => {
+            // 清理所有舊的 object URLs
+            newUrls.forEach((url) => {
+                URL.revokeObjectURL(url);
+            });
+        };
+    }, [characterImageFiles]);
 
     // 載入 AI 設定和現有標籤
     useEffect(() => {
@@ -157,6 +196,9 @@ function GenerateStoryPageContent() {
 
             setEditData(result);
             setStep('edit');
+            // 清除暫存圖片（重新生成時）
+            setWorldImageFile(null);
+            setCharacterImageFiles(new Map());
         } catch (err: any) {
             console.error('[GenerateStoryPage] 生成失敗:', err);
             setError(err.message || '生成失敗，請稍後再試');
@@ -291,6 +333,30 @@ function GenerateStoryPageContent() {
             newCharacters[0].is_player = true;
         }
         setEditData({ ...editData, characters: newCharacters });
+        // 清除對應的暫存圖片
+        const newImageFiles = new Map(characterImageFiles);
+        newImageFiles.delete(index);
+        // 重新索引
+        const reindexedMap = new Map<number, File>();
+        newImageFiles.forEach((file, idx) => {
+            if (idx > index) {
+                reindexedMap.set(idx - 1, file);
+            } else {
+                reindexedMap.set(idx, file);
+            }
+        });
+        setCharacterImageFiles(reindexedMap);
+    };
+
+    // 角色圖片變更
+    const handleCharacterImageChange = (index: number, file: File | null) => {
+        const newMap = new Map(characterImageFiles);
+        if (file) {
+            newMap.set(index, file);
+        } else {
+            newMap.delete(index);
+        }
+        setCharacterImageFiles(newMap);
     };
 
     // 設定玩家角色
@@ -339,6 +405,16 @@ function GenerateStoryPageContent() {
                 await setEntityTags('world', world.world_id, user.user_id, worldTagIds);
             }
 
+            // 上傳世界觀圖片（如果有）
+            if (worldImageFile) {
+                try {
+                    const worldImageUrl = await uploadImage('worlds', user.user_id, world.world_id, worldImageFile);
+                    await updateWorldRecord(world.world_id, user.user_id, { image_url: worldImageUrl });
+                } catch (imgErr) {
+                    console.error('世界觀圖片上傳失敗:', imgErr);
+                }
+            }
+
             // 2. 建立狀態 Schema
             setCreateProgress('正在建立狀態系統...');
             for (const schema of editData.world.schemas) {
@@ -374,6 +450,17 @@ function GenerateStoryPageContent() {
                         charTagIds.push(tag.tag_id);
                     }
                     await setEntityTags('character', character.character_id, user.user_id, charTagIds);
+                }
+
+                // 上傳角色圖片（如果有）
+                const charImageFile = characterImageFiles.get(i);
+                if (charImageFile) {
+                    try {
+                        const charImageUrl = await uploadImage('characters', user.user_id, character.character_id, charImageFile);
+                        await updateCharacterRecord(character.character_id, user.user_id, { image_url: charImageUrl });
+                    } catch (imgErr) {
+                        console.error(`角色 ${charData.canonical_name} 圖片上傳失敗:`, imgErr);
+                    }
                 }
             }
 
@@ -671,6 +758,15 @@ function GenerateStoryPageContent() {
                                             </div>
                                         </div>
                                         <div className="space-y-2">
+                                            <Label>世界觀圖片</Label>
+                                            <ImageUpload
+                                                imageUrl={worldImagePreviewUrl || undefined}
+                                                onImageChange={(file) => setWorldImageFile(file)}
+                                                aspectRatio={1}
+                                            />
+                                            <p className="text-xs text-muted-foreground">圖片將在儲存時上傳</p>
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label htmlFor="world-desc">描述</Label>
                                             <Textarea
                                                 id="world-desc"
@@ -859,6 +955,15 @@ function GenerateStoryPageContent() {
                                                     onTagsChange={(tags) => updateCharacter(idx, 'tags', tags)}
                                                     placeholder="選擇或新增標籤..."
                                                 />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>角色圖片</Label>
+                                                <ImageUpload
+                                                    imageUrl={characterImagePreviewUrls.get(idx) || undefined}
+                                                    onImageChange={(file) => handleCharacterImageChange(idx, file)}
+                                                    aspectRatio={1}
+                                                />
+                                                <p className="text-xs text-muted-foreground">圖片將在儲存時上傳</p>
                                             </div>
                                             <div className="space-y-2">
                                                 <Label>角色設定</Label>

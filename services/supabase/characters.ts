@@ -60,6 +60,7 @@ export async function createCharacter(
     canonical_name: string;
     core_profile_text: string;
     tags?: string[];
+    image_url?: string | null;
   }
 ): Promise<Character> {
   return withRetry(async () => {
@@ -70,6 +71,7 @@ export async function createCharacter(
         canonical_name: data.canonical_name,
         core_profile_text: data.core_profile_text,
         tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
+        image_url: data.image_url ?? null,
       })
       .select()
       .single();
@@ -88,20 +90,32 @@ export async function createCharacter(
 export async function updateCharacter(
   characterId: string,
   userId: string,
-  data: {
+  data: Partial<{
     canonical_name: string;
     core_profile_text: string;
     tags?: string[];
-  }
+    image_url: string | null;
+  }>
 ): Promise<Character> {
   return withRetry(async () => {
+    const updatePayload: any = {};
+
+    if (data.canonical_name !== undefined) {
+      updatePayload.canonical_name = data.canonical_name;
+    }
+    if (data.core_profile_text !== undefined) {
+      updatePayload.core_profile_text = data.core_profile_text;
+    }
+    if (data.tags !== undefined) {
+      updatePayload.tags_json = data.tags.length > 0 ? JSON.stringify(data.tags) : '';
+    }
+    if (data.image_url !== undefined) {
+      updatePayload.image_url = data.image_url;
+    }
+
     const { data: updatedCharacter, error } = await (supabase
       .from('characters') as any)
-      .update({
-        canonical_name: data.canonical_name,
-        core_profile_text: data.core_profile_text,
-        tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
-      })
+      .update(updatePayload)
       .eq('character_id', characterId)
       .eq('user_id', userId)
       .select()

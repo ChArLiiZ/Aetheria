@@ -11,6 +11,7 @@ import {
     updateCharacter,
     characterNameExists,
 } from '@/services/supabase/characters';
+import { uploadImage, deleteImage } from '@/services/supabase/storage';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ import { TagSelector } from '@/components/tag-selector';
 import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { CharacterGenerationOutput } from '@/types/api/agents';
 import { CHARACTER_EMPTY_TEMPLATE } from '@/lib/character-template';
+import { ImageUpload } from '@/components/image-upload';
 
 function CharacterEditorPageContent() {
     const { user } = useAuth();
@@ -41,6 +43,25 @@ function CharacterEditorPageContent() {
     });
     const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    // 圖片上傳狀態
+    const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+    const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+    const [shouldDeleteImage, setShouldDeleteImage] = useState(false);
+    const [pendingImagePreviewUrl, setPendingImagePreviewUrl] = useState<string | null>(null);
+
+    // 管理 pendingImageFile 的 object URL 生命週期，避免記憶體洩漏
+    useEffect(() => {
+        if (pendingImageFile) {
+            const objectUrl = URL.createObjectURL(pendingImageFile);
+            setPendingImagePreviewUrl(objectUrl);
+            return () => {
+                URL.revokeObjectURL(objectUrl);
+            };
+        } else {
+            setPendingImagePreviewUrl(null);
+        }
+    }, [pendingImageFile]);
 
     // AI 生成對話框
     const [showAIDialog, setShowAIDialog] = useState(false);
@@ -92,6 +113,11 @@ function CharacterEditorPageContent() {
                     canonical_name: data.canonical_name,
                     core_profile_text: data.core_profile_text,
                 });
+
+                // 載入圖片並重置暫存狀態
+                setCurrentImageUrl(data.image_url || null);
+                setPendingImageFile(null);
+                setShouldDeleteImage(false);
 
                 // 載入標籤
                 const tags = await getEntityTags('character', characterId, user.user_id);
@@ -147,35 +173,94 @@ function CharacterEditorPageContent() {
 
         try {
             setSaving(true);
+            let finalImageUrl: string | null | undefined = undefined;
 
             if (isNewCharacter) {
+                // 先建立角色
                 const newChar = await createCharacter(user.user_id, {
                     canonical_name: formData.canonical_name.trim(),
                     core_profile_text: formData.core_profile_text.trim(),
                 });
+
+                // 如果有待上傳的圖片，上傳它
+                if (pendingImageFile) {
+                    try {
+                        finalImageUrl = await uploadImage('characters', user.user_id, newChar.character_id, pendingImageFile);
+                        // 更新角色的 image_url
+                        await updateCharacter(newChar.character_id, user.user_id, {
+                            canonical_name: formData.canonical_name.trim(),
+                            core_profile_text: formData.core_profile_text.trim(),
+                            image_url: finalImageUrl,
+                        });
+                    } catch (imgErr) {
+                        console.error('圖片上傳失敗:', imgErr);
+                        toast.error('圖片上傳失敗，但角色已建立');
+                    }
+                }
 
                 // 設定標籤
                 if (selectedTags.length > 0) {
                     await setEntityTags('character', newChar.character_id, user.user_id, selectedTags.map(t => t.tag_id));
                 }
                 toast.success('角色建立成功！');
-                router.push(`/characters/${newChar.character_id}`);
+                // 清除圖片相關狀態，避免導向後重複上傳
+                setPendingImageFile(null);
+                setShouldDeleteImage(false);
+                // 導向新建立的角色編輯頁面
+                router.replace(`/characters/${newChar.character_id}/edit`);
             } else {
+                // 處理圖片刪除
+                if (shouldDeleteImage && currentImageUrl) {
+                    try {
+                        await deleteImage('characters', user.user_id, characterId);
+                        finalImageUrl = null;
+                    } catch (imgErr) {
+                        console.error('圖片刪除失敗:', imgErr);
+                        toast.error('圖片刪除失敗，原圖片將保留');
+                        // 不設定 finalImageUrl，讓 service 層保留原有值
+                    }
+                }
+
+                // 處理圖片上傳
+                if (pendingImageFile) {
+                    try {
+                        finalImageUrl = await uploadImage('characters', user.user_id, characterId, pendingImageFile);
+                    } catch (imgErr) {
+                        console.error('圖片上傳失敗:', imgErr);
+                        toast.error('圖片上傳失敗');
+                    }
+                }
+
                 await updateCharacter(characterId, user.user_id, {
                     canonical_name: formData.canonical_name.trim(),
                     core_profile_text: formData.core_profile_text.trim(),
+                    image_url: finalImageUrl,
                 });
 
                 // 更新標籤
                 await setEntityTags('character', characterId, user.user_id, selectedTags.map(t => t.tag_id));
                 toast.success('儲存成功！');
-                router.push(`/characters/${characterId}`);
+                // 留在編輯頁面，重新載入資料
+                setCurrentImageUrl(finalImageUrl !== undefined ? finalImageUrl : currentImageUrl);
+                setPendingImageFile(null);
+                setShouldDeleteImage(false);
             }
         } catch (err: any) {
             console.error('Failed to save character:', err);
             toast.error(`儲存失敗: ${err.message || '未知錯誤'}`);
         } finally {
             setSaving(false);
+        }
+    };
+
+    // 圖片變更處理
+    const handleImageChange = (file: File | null) => {
+        if (file) {
+            setPendingImageFile(file);
+            setShouldDeleteImage(false);
+        } else {
+            setPendingImageFile(null);
+            setShouldDeleteImage(true);
         }
     };
 
@@ -208,14 +293,8 @@ function CharacterEditorPageContent() {
                 {/* Header */}
                 <div className="space-y-4">
                     <div className="flex items-center space-x-2 text-muted-foreground text-sm">
-                        <Button variant="ghost" size="sm" onClick={() => {
-                            if (isNewCharacter) {
-                                router.push('/characters');
-                            } else {
-                                router.push(`/characters/${characterId}`);
-                            }
-                        }}>
-                            <ArrowLeft className="mr-2 h-4 w-4" /> {isNewCharacter ? '返回列表' : '返回詳情'}
+                        <Button variant="ghost" size="sm" onClick={() => router.push('/characters')}>
+                            <ArrowLeft className="mr-2 h-4 w-4" /> 返回列表
                         </Button>
                     </div>
                     <div className="flex justify-between items-center">
@@ -249,15 +328,33 @@ function CharacterEditorPageContent() {
                         <CardDescription>設定角色的名稱、屬性與詳細設定。</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <div className="space-y-2">
-                            <Label htmlFor="char-name">角色名稱 (canonical_name)</Label>
-                            <Input
-                                id="char-name"
-                                placeholder="例如：艾莉亞"
-                                value={formData.canonical_name}
-                                onChange={(e) => setFormData({ ...formData, canonical_name: e.target.value })}
-                            />
-                            {errors.canonical_name && <p className="text-sm text-destructive">{errors.canonical_name}</p>}
+                        {/* 基本資訊區：圖片 + 名稱 */}
+                        <div className="flex flex-col sm:flex-row gap-6">
+                            {/* 角色圖片 */}
+                            <div className="space-y-2">
+                                <Label>角色圖片</Label>
+                                <ImageUpload
+                                    imageUrl={pendingImagePreviewUrl || currentImageUrl}
+                                    onImageChange={handleImageChange}
+                                    isLoading={saving}
+                                    disabled={saving}
+                                />
+                                <p className="text-xs text-muted-foreground max-w-[200px]">
+                                    上傳角色的代表圖片（選填）
+                                </p>
+                            </div>
+
+                            {/* 角色名稱 */}
+                            <div className="flex-1 space-y-2">
+                                <Label htmlFor="char-name">角色名稱 (canonical_name)</Label>
+                                <Input
+                                    id="char-name"
+                                    placeholder="例如：艾莉亞"
+                                    value={formData.canonical_name}
+                                    onChange={(e) => setFormData({ ...formData, canonical_name: e.target.value })}
+                                />
+                                {errors.canonical_name && <p className="text-sm text-destructive">{errors.canonical_name}</p>}
+                            </div>
                         </div>
 
                         <div className="space-y-2">
@@ -298,7 +395,7 @@ function CharacterEditorPageContent() {
                         </div>
                     </CardContent>
                     <CardFooter className="flex justify-end gap-4 border-t pt-4">
-                        <Button variant="outline" onClick={() => router.push(isNewCharacter ? '/characters' : `/characters/${characterId}`)}>取消</Button>
+                        <Button variant="outline" onClick={() => router.push('/characters')}>取消</Button>
                         <Button onClick={handleSubmit} disabled={saving}>
                             {saving ? '儲存中...' : '儲存變更'}
                         </Button>

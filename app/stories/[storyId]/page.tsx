@@ -51,7 +51,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Loader2, ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Play, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Play, Trash2, RotateCcw, AlertTriangle, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Pagination helper
@@ -884,6 +884,16 @@ function StoryDetailPageContent() {
                               <div key={charId} className="border rounded-lg overflow-hidden">
                                 <div className="flex items-center justify-between p-4 bg-muted/30">
                                   <div className="flex items-center gap-3">
+                                    {/* 角色頭像 */}
+                                    <div className="w-10 h-10 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                                      {char.image_url ? (
+                                        <img src={char.image_url} alt={char.canonical_name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                          <User className="h-5 w-5 text-muted-foreground" />
+                                        </div>
+                                      )}
+                                    </div>
                                     <span className="font-medium">{char.canonical_name}</span>
                                     {formData.player_character_id === charId && <Badge>玩家角色</Badge>}
                                     {charTags.length > 0 && (
@@ -1050,6 +1060,16 @@ function StoryDetailPageContent() {
                               <div key={storyChar.story_character_id} className="border rounded-lg overflow-hidden">
                                 <div className="flex items-center justify-between p-4 bg-muted/30">
                                   <div className="flex items-center gap-3">
+                                    {/* 角色頭像 */}
+                                    <div className="w-10 h-10 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                                      {char.image_url ? (
+                                        <img src={char.image_url} alt={storyChar.display_name_override || char.canonical_name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                          <User className="h-5 w-5 text-muted-foreground" />
+                                        </div>
+                                      )}
+                                    </div>
                                     <span className="font-medium">{storyChar.display_name_override || char.canonical_name}</span>
                                     {storyChar.is_player && <Badge>玩家角色</Badge>}
                                     {charTags.length > 0 && (
@@ -1219,15 +1239,29 @@ function StoryDetailPageContent() {
                               setCharacterPage(1);
                             }}
                           >
-                            <h5 className="font-semibold">{char.canonical_name}</h5>
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
-                            {charTags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {charTags.slice(0, 3).map((tag) => (
-                                  <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
-                                ))}
+                            <div className="flex items-start gap-3">
+                              {/* 角色頭像 */}
+                              <div className="w-10 h-10 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                                {char.image_url ? (
+                                  <img src={char.image_url} alt={char.canonical_name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <User className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                )}
                               </div>
-                            )}
+                              <div className="flex-1 min-w-0">
+                                <h5 className="font-semibold">{char.canonical_name}</h5>
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
+                                {charTags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {charTags.slice(0, 3).map((tag) => (
+                                      <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
@@ -1337,15 +1371,29 @@ function StoryDetailPageContent() {
                               setCharacterPage(1);
                             }}
                           >
-                            <h5 className="font-semibold">{char.canonical_name}</h5>
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
-                            {charTags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {charTags.slice(0, 3).map((tag) => (
-                                  <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
-                                ))}
+                            <div className="flex items-start gap-3">
+                              {/* 角色頭像 */}
+                              <div className="w-10 h-10 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                                {char.image_url ? (
+                                  <img src={char.image_url} alt={char.canonical_name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <User className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                )}
                               </div>
-                            )}
+                              <div className="flex-1 min-w-0">
+                                <h5 className="font-semibold">{char.canonical_name}</h5>
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
+                                {charTags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {charTags.slice(0, 3).map((tag) => (
+                                      <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
@@ -1451,15 +1499,29 @@ function StoryDetailPageContent() {
                             setCharacterPage(1);
                           }}
                         >
-                          <h4 className="font-semibold">{char.canonical_name}</h4>
-                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
-                          {charTags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {charTags.slice(0, 3).map((tag) => (
-                                <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
-                              ))}
+                          <div className="flex items-start gap-3">
+                            {/* 角色頭像 */}
+                            <div className="w-10 h-10 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                              {char.image_url ? (
+                                <img src={char.image_url} alt={char.canonical_name} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <User className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                              )}
                             </div>
-                          )}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold">{char.canonical_name}</h4>
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{char.core_profile_text}</p>
+                              {charTags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {charTags.slice(0, 3).map((tag) => (
+                                    <Badge key={tag.tag_id} variant="secondary" className="text-xs">{tag.name}</Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       );
                     })}

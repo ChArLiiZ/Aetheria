@@ -350,7 +350,7 @@ function WorldsPageContent() {
             {filteredAndSortedWorlds.map((world) => (
               <Card
                 key={world.world_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} ${isSelectMode ? 'cursor-pointer' : 'cursor-pointer'}`}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} cursor-pointer overflow-hidden`}
                 onClick={isSelectMode ? () => handleToggleSelect(world.world_id) : () => setViewingWorldId(world.world_id)}
               >
                 <ListItemCheckbox
@@ -359,8 +359,26 @@ function WorldsPageContent() {
                   isSelectMode={isSelectMode}
                 />
                 <CardHeader className={isSelectMode ? 'pl-12' : ''}>
-                  <CardTitle className="line-clamp-1">{world.name}</CardTitle>
-                  {renderWorldTags(world)}
+                  <div className="flex items-start gap-3">
+                    {/* 世界觀封面 */}
+                    <div className="w-12 h-12 rounded-lg bg-muted overflow-hidden flex-shrink-0">
+                      {world.image_url ? (
+                        <img
+                          src={world.image_url}
+                          alt={world.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Globe className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="line-clamp-1">{world.name}</CardTitle>
+                      {renderWorldTags(world)}
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <p className="text-sm text-muted-foreground line-clamp-3 mb-4">

@@ -22,10 +22,12 @@ interface StoryCharacterInfo {
   id: string;
   name: string;
   isPlayer: boolean;
+  imageUrl?: string | null;
 }
 
 interface StoryWithWorld extends Story {
   world_name?: string;
+  world_image_url?: string | null;
   characters?: StoryCharacterInfo[];
 }
 
@@ -63,11 +65,11 @@ function DashboardContent() {
 
         // 建立映射
         const worldMap = new Map(
-          worldsData.map((world) => [world.world_id, world.name])
+          worldsData.map((world) => [world.world_id, { name: world.name, imageUrl: world.image_url }])
         );
 
         const characterMap = new Map(
-          charactersData.map((char) => [char.character_id, char.canonical_name])
+          charactersData.map((char) => [char.character_id, { name: char.canonical_name, imageUrl: char.image_url }])
         );
 
         // 取得最近 3 個故事的 ID
@@ -82,15 +84,21 @@ function DashboardContent() {
         // 組合資料
         const storiesWithData = sortedStories.map((story) => {
           const storyChars = storyCharsMap.get(story.story_id) || [];
-          const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
-            id: sc.character_id,
-            name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
-            isPlayer: sc.is_player,
-          }));
+          const worldInfo = worldMap.get(story.world_id);
+          const characters: StoryCharacterInfo[] = storyChars.map((sc) => {
+            const charInfo = characterMap.get(sc.character_id);
+            return {
+              id: sc.character_id,
+              name: sc.display_name_override || charInfo?.name || '未知角色',
+              isPlayer: sc.is_player,
+              imageUrl: charInfo?.imageUrl,
+            };
+          });
 
           return {
             ...story,
-            world_name: worldMap.get(story.world_id) || '未知世界觀',
+            world_name: worldInfo?.name || '未知世界觀',
+            world_image_url: worldInfo?.imageUrl,
             characters,
           };
         });
@@ -248,16 +256,66 @@ function DashboardContent() {
                 </Link>
               </div>
             ) : (
-              <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
                 {recentStories.map((story) => (
                   <Card
                     key={story.story_id}
-                    className="flex flex-col hover:shadow-md transition-shadow cursor-pointer"
+                    className="flex flex-col hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
                     onClick={() => setViewingStoryId(story.story_id)}
                   >
+                    {/* 世界觀背景橫幅 + 角色頭像 */}
+                    <div className="relative h-20 bg-gradient-to-br from-muted to-muted/50 overflow-hidden">
+                      {story.world_image_url && (
+                        <img
+                          src={story.world_image_url}
+                          alt={story.world_name}
+                          className="absolute inset-0 w-full h-full object-cover object-center opacity-70"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+
+                      {/* 角色頭像疊加在底部 */}
+                      {story.characters && story.characters.length > 0 && (
+                        <div className="absolute bottom-2 left-2 flex -space-x-1.5">
+                          {story.characters.slice(0, 3).map((char, idx) => (
+                            <button
+                              key={idx}
+                              className={`relative w-6 h-6 rounded-full border-2 border-background overflow-hidden bg-muted hover:z-10 hover:scale-110 transition-transform focus:outline-none ${char.isPlayer ? 'ring-1 ring-primary' : ''}`}
+                              style={{ zIndex: story.characters!.length - idx }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setViewingCharacterId(char.id);
+                              }}
+                              title={char.name}
+                            >
+                              {char.imageUrl ? (
+                                <img
+                                  src={char.imageUrl}
+                                  alt={char.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-muted">
+                                  <span className="text-[10px] font-medium text-muted-foreground">
+                                    {char.name.charAt(0)}
+                                  </span>
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                          {story.characters.length > 3 && (
+                            <div className="relative w-6 h-6 rounded-full border-2 border-background bg-muted flex items-center justify-center">
+                              <span className="text-[10px] text-muted-foreground">+{story.characters.length - 3}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base line-clamp-1">{story.title}</CardTitle>
-                      <CardDescription className="flex items-center gap-2 text-xs mt-1">
+                      <CardDescription className="flex items-center gap-1 text-xs mt-1 flex-wrap">
                         <span className="flex items-center">
                           <Globe className="mr-1 h-3 w-3" />
                           <button
@@ -272,33 +330,13 @@ function DashboardContent() {
                           </button>
                         </span>
                         <span>•</span>
-                        <span>{getStoryModeLabel(story.story_mode)}</span>
-                        <span>•</span>
                         <span>{story.turn_count || 0} 回合</span>
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="flex-1 space-y-3 pb-2">
+                    <CardContent className="flex-1 pb-2">
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {story.premise_text}
                       </p>
-                      {story.characters && story.characters.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
-                          <span className="text-xs text-muted-foreground mr-1">角色:</span>
-                          {story.characters.map((char, idx) => (
-                            <button
-                              key={idx}
-                              className={`text-xs px-1.5 py-0.5 rounded hover:opacity-80 transition-opacity focus:outline-none ${char.isPlayer ? 'bg-primary/15 text-primary font-medium' : 'bg-muted text-muted-foreground'}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setViewingCharacterId(char.id);
-                              }}
-                            >
-                              {char.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </CardContent>
                     <CardFooter className="pt-2 border-t" onClick={(e) => e.stopPropagation()}>
                       <Link href={`/stories/${story.story_id}/play`} className="w-full">

@@ -43,10 +43,12 @@ interface StoryCharacterInfo {
   id: string;
   name: string;
   isPlayer: boolean;
+  imageUrl?: string | null;
 }
 
 interface StoryWithWorld extends Story {
   world_name?: string;
+  world_image_url?: string | null;
   tags?: Tag[];
   characters?: StoryCharacterInfo[];
 }
@@ -104,11 +106,11 @@ function StoriesPageContent() {
         if (cancelled) return;
 
         const worldMap = new Map(
-          worldsData.map((world) => [world.world_id, world.name])
+          worldsData.map((world) => [world.world_id, { name: world.name, imageUrl: world.image_url }])
         );
 
         const characterMap = new Map(
-          charactersData.map((char) => [char.character_id, char.canonical_name])
+          charactersData.map((char) => [char.character_id, { name: char.canonical_name, imageUrl: char.image_url }])
         );
 
         const storyIds = storiesData.map((s) => s.story_id);
@@ -121,15 +123,21 @@ function StoriesPageContent() {
 
         const storiesWithData = storiesData.map((story) => {
           const storyChars = storyCharsMap.get(story.story_id) || [];
-          const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
-            id: sc.character_id,
-            name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
-            isPlayer: sc.is_player,
-          }));
+          const worldInfo = worldMap.get(story.world_id);
+          const characters: StoryCharacterInfo[] = storyChars.map((sc) => {
+            const charInfo = characterMap.get(sc.character_id);
+            return {
+              id: sc.character_id,
+              name: sc.display_name_override || charInfo?.name || '未知角色',
+              isPlayer: sc.is_player,
+              imageUrl: charInfo?.imageUrl,
+            };
+          });
 
           return {
             ...story,
-            world_name: worldMap.get(story.world_id) || '未知世界觀',
+            world_name: worldInfo?.name || '未知世界觀',
+            world_image_url: worldInfo?.imageUrl,
             tags: tagsMap.get(story.story_id) || [],
             characters,
           };
@@ -167,11 +175,11 @@ function StoriesPageContent() {
       ]);
 
       const worldMap = new Map(
-        worldsData.map((world) => [world.world_id, world.name])
+        worldsData.map((world) => [world.world_id, { name: world.name, imageUrl: world.image_url }])
       );
 
       const characterMap = new Map(
-        charactersData.map((char) => [char.character_id, char.canonical_name])
+        charactersData.map((char) => [char.character_id, { name: char.canonical_name, imageUrl: char.image_url }])
       );
 
       const storyIds = storiesData.map((s) => s.story_id);
@@ -182,15 +190,21 @@ function StoriesPageContent() {
 
       const storiesWithData = storiesData.map((story) => {
         const storyChars = storyCharsMap.get(story.story_id) || [];
-        const characters: StoryCharacterInfo[] = storyChars.map((sc) => ({
-          id: sc.character_id,
-          name: sc.display_name_override || characterMap.get(sc.character_id) || '未知角色',
-          isPlayer: sc.is_player,
-        }));
+        const worldInfo = worldMap.get(story.world_id);
+        const characters: StoryCharacterInfo[] = storyChars.map((sc) => {
+          const charInfo = characterMap.get(sc.character_id);
+          return {
+            id: sc.character_id,
+            name: sc.display_name_override || charInfo?.name || '未知角色',
+            isPlayer: sc.is_player,
+            imageUrl: charInfo?.imageUrl,
+          };
+        });
 
         return {
           ...story,
-          world_name: worldMap.get(story.world_id) || '未知世界觀',
+          world_name: worldInfo?.name || '未知世界觀',
+          world_image_url: worldInfo?.imageUrl,
           tags: tagsMap.get(story.story_id) || [],
           characters,
         };
@@ -447,6 +461,57 @@ function StoriesPageContent() {
                   onChange={() => handleToggleSelect(story.story_id)}
                   isSelectMode={isSelectMode}
                 />
+
+                {/* 世界觀背景橫幅 + 角色頭像 */}
+                <div className="relative h-28 bg-gradient-to-br from-muted to-muted/50 overflow-hidden">
+                  {story.world_image_url && (
+                    <img
+                      src={story.world_image_url}
+                      alt={story.world_name}
+                      className="absolute inset-0 w-full h-full object-cover object-center opacity-70"
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+
+                  {/* 角色頭像疊加在底部 */}
+                  {story.characters && story.characters.length > 0 && (
+                    <div className="absolute bottom-2 left-3 flex -space-x-2">
+                      {story.characters.slice(0, 4).map((char, idx) => (
+                        <button
+                          key={idx}
+                          className={`relative w-8 h-8 rounded-full border-2 border-background overflow-hidden bg-muted hover:z-10 hover:scale-110 transition-transform focus:outline-none ${char.isPlayer ? 'ring-2 ring-primary' : ''}`}
+                          style={{ zIndex: story.characters!.length - idx }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setViewingCharacterId(char.id);
+                          }}
+                          title={char.name}
+                        >
+                          {char.imageUrl ? (
+                            <img
+                              src={char.imageUrl}
+                              alt={char.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-muted">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {char.name.charAt(0)}
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                      {story.characters.length > 4 && (
+                        <div className="relative w-8 h-8 rounded-full border-2 border-background bg-muted flex items-center justify-center">
+                          <span className="text-xs text-muted-foreground">+{story.characters.length - 4}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <CardHeader className={isSelectMode ? 'pl-12' : ''}>
                   <div className="flex justify-between items-start gap-2">
                     <CardTitle className="line-clamp-1 leading-tight">{story.title}</CardTitle>
@@ -472,28 +537,10 @@ function StoriesPageContent() {
                   </CardDescription>
                   {renderStoryTags(story)}
                 </CardHeader>
-                <CardContent className="flex-1 space-y-3">
+                <CardContent className="flex-1">
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {story.premise_text}
                   </p>
-                  {story.characters && story.characters.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t">
-                      <span className="text-xs text-muted-foreground mr-1">角色:</span>
-                      {story.characters.map((char, idx) => (
-                        <button
-                          key={idx}
-                          className={`text-xs px-1.5 py-0.5 rounded hover:opacity-80 transition-opacity focus:outline-none ${char.isPlayer ? 'bg-primary/15 text-primary font-medium' : 'bg-muted text-muted-foreground'}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setViewingCharacterId(char.id);
-                          }}
-                        >
-                          {char.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t bg-muted/20" onClick={(e) => e.stopPropagation()}>
                   <Link href={`/stories/${story.story_id}/play`} className="flex-1">

@@ -62,6 +62,7 @@ export async function createWorld(
     description: string;
     rules_text: string;
     tags?: string[];
+    image_url?: string | null;
   }
 ): Promise<World> {
   return withRetry(async () => {
@@ -73,6 +74,7 @@ export async function createWorld(
         description: data.description,
         rules_text: data.rules_text,
         tags_json: data.tags && data.tags.length > 0 ? JSON.stringify(data.tags) : '',
+        image_url: data.image_url ?? null,
       })
       .select()
       .single();
@@ -91,15 +93,26 @@ export async function createWorld(
 export async function updateWorld(
   worldId: string,
   userId: string,
-  updates: Partial<Pick<World, 'name' | 'description' | 'rules_text'>> & { tags?: string[] }
+  updates: Partial<Pick<World, 'name' | 'description' | 'rules_text' | 'image_url'>> & { tags?: string[] }
 ): Promise<void> {
   return withRetry(async () => {
-    const payload: any = { ...updates };
+    const payload: any = {};
 
-    // Handle tags separately
+    // 只有當欄位明確被傳入時才更新，避免 undefined 意外覆蓋現有值
+    if (updates.name !== undefined) {
+      payload.name = updates.name;
+    }
+    if (updates.description !== undefined) {
+      payload.description = updates.description;
+    }
+    if (updates.rules_text !== undefined) {
+      payload.rules_text = updates.rules_text;
+    }
+    if (updates.image_url !== undefined) {
+      payload.image_url = updates.image_url;
+    }
     if (updates.tags !== undefined) {
       payload.tags_json = updates.tags.length > 0 ? JSON.stringify(updates.tags) : '';
-      delete payload.tags;
     }
 
     const { error } = await (supabase

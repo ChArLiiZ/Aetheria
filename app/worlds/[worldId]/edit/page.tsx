@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { World, WorldStateSchema, SchemaFieldType } from '@/types';
 import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/supabase/worlds';
+import { uploadImage, deleteImage } from '@/services/supabase/storage';
 import {
     getSchemaByWorldId,
     createSchemaItem,
@@ -68,6 +69,7 @@ import { AIGenerationDialog } from '@/components/ai-generation-dialog';
 import { TagSelector } from '@/components/tag-selector';
 import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { WorldGenerationOutput, SchemaGenerationData } from '@/types/api/agents';
+import { ImageUpload } from '@/components/image-upload';
 
 type Tab = 'basic' | 'states';
 
@@ -108,6 +110,25 @@ function WorldEditorPageContent() {
     const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
     const [basicErrors, setBasicErrors] = useState<Record<string, string>>({});
     const [savingBasic, setSavingBasic] = useState(false);
+
+    // 圖片上傳狀態
+    const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+    const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
+    const [shouldDeleteImage, setShouldDeleteImage] = useState(false);
+    const [pendingImagePreviewUrl, setPendingImagePreviewUrl] = useState<string | null>(null);
+
+    // 管理 pendingImageFile 的 object URL 生命週期，避免記憶體洩漏
+    useEffect(() => {
+        if (pendingImageFile) {
+            const objectUrl = URL.createObjectURL(pendingImageFile);
+            setPendingImagePreviewUrl(objectUrl);
+            return () => {
+                URL.revokeObjectURL(objectUrl);
+            };
+        } else {
+            setPendingImagePreviewUrl(null);
+        }
+    }, [pendingImageFile]);
 
     // Schema form
     const [showSchemaForm, setShowSchemaForm] = useState(false);
@@ -169,6 +190,11 @@ function WorldEditorPageContent() {
                     rules_text: worldData.rules_text,
                 });
 
+                // 載入圖片並重置暫存狀態
+                setCurrentImageUrl(worldData.image_url || null);
+                setPendingImageFile(null);
+                setShouldDeleteImage(false);
+
                 // 載入標籤
                 const tags = await getEntityTags('world', worldId, user.user_id);
                 setSelectedTags(tags);
@@ -216,6 +242,11 @@ function WorldEditorPageContent() {
                 description: worldData.description,
                 rules_text: worldData.rules_text,
             });
+
+            // 載入圖片並重置暫存狀態
+            setCurrentImageUrl(worldData.image_url || null);
+            setPendingImageFile(null);
+            setShouldDeleteImage(false);
 
             // 載入標籤
             const tags = await getEntityTags('world', worldId, user.user_id);
@@ -272,6 +303,17 @@ function WorldEditorPageContent() {
                 rules_text: basicFormData.rules_text.trim(),
             });
 
+            // 上傳圖片
+            if (pendingImageFile) {
+                try {
+                    const imageUrl = await uploadImage('worlds', user.user_id, newWorld.world_id, pendingImageFile);
+                    await updateWorld(newWorld.world_id, user.user_id, { image_url: imageUrl });
+                } catch (imgErr) {
+                    console.error('圖片上傳失敗:', imgErr);
+                    toast.error('圖片上傳失敗，但世界觀已建立');
+                }
+            }
+
             // 設定標籤
             if (selectedTags.length > 0) {
                 await setEntityTags('world', newWorld.world_id, user.user_id, selectedTags.map(t => t.tag_id));
@@ -290,7 +332,10 @@ function WorldEditorPageContent() {
             }
 
             toast.success(`世界觀「${newWorld.name}」建立成功！`);
-            router.push(`/worlds/${newWorld.world_id}`);
+            // 清除圖片相關狀態，避免導向後重複上傳
+            setPendingImageFile(null);
+            setShouldDeleteImage(false);
+            router.push(`/worlds/${newWorld.world_id}/edit`);
         } catch (err: any) {
             console.error('Failed to create world:', err);
             toast.error(`建立失敗: ${err.message || '未知錯誤'}`);
@@ -307,26 +352,62 @@ function WorldEditorPageContent() {
 
         try {
             setSavingBasic(true);
+            let finalImageUrl: string | null | undefined = undefined;
+
+            // 處理圖片刪除
+            if (shouldDeleteImage && currentImageUrl) {
+                try {
+                    await deleteImage('worlds', user.user_id, worldId);
+                    finalImageUrl = null;
+                } catch (imgErr) {
+                    console.error('圖片刪除失敗:', imgErr);
+                    toast.error('圖片刪除失敗，原圖片將保留');
+                    // 不設定 finalImageUrl，讓 service 層保留原有值
+                }
+            }
+
+            // 處理圖片上傳
+            if (pendingImageFile) {
+                try {
+                    finalImageUrl = await uploadImage('worlds', user.user_id, worldId, pendingImageFile);
+                } catch (imgErr) {
+                    console.error('圖片上傳失敗:', imgErr);
+                    toast.error('圖片上傳失敗');
+                }
+            }
 
             await updateWorld(worldId, user.user_id, {
                 name: basicFormData.name.trim(),
                 description: basicFormData.description.trim(),
                 rules_text: basicFormData.rules_text.trim(),
+                image_url: finalImageUrl,
             });
 
             // 更新標籤
             await setEntityTags('world', worldId, user.user_id, selectedTags.map(t => t.tag_id));
 
+            // 重置圖片狀態
+            setPendingImageFile(null);
+            setShouldDeleteImage(false);
+
             await reloadData();
             toast.success('儲存成功！');
-
-            // Optionally redirect back to view page or stay here. 
-            // User might want to continue editing schemas. But let's stay here as it is "Save Changes".
         } catch (err: any) {
             console.error('Failed to save world:', err);
             toast.error(`更新失敗: ${err.message || '未知錯誤'}`);
         } finally {
             setSavingBasic(false);
+        }
+    };
+
+    // 圖片變更處理
+    const handleImageChange = (file: File | null) => {
+        if (file) {
+            setPendingImageFile(file);
+            setShouldDeleteImage(false);
+        } else {
+            setPendingImageFile(null);
+            setShouldDeleteImage(true);
         }
     };
 
@@ -620,14 +701,8 @@ function WorldEditorPageContent() {
                 {/* Header */}
                 <div className="space-y-4">
                     <div className="flex items-center space-x-2 text-muted-foreground text-sm">
-                        <Button variant="ghost" size="sm" onClick={() => {
-                            if (isNewWorld) {
-                                router.push('/worlds');
-                            } else {
-                                router.push(`/worlds/${worldId}`);
-                            }
-                        }}>
-                            <ArrowLeft className="mr-2 h-4 w-4" /> {isNewWorld ? '返回列表' : '返回詳情'}
+                        <Button variant="ghost" size="sm" onClick={() => router.push('/worlds')}>
+                            <ArrowLeft className="mr-2 h-4 w-4" /> 返回列表
                         </Button>
                     </div>
                     <div className="flex justify-between items-center">
@@ -678,15 +753,33 @@ function WorldEditorPageContent() {
                                 <CardDescription>設定世界觀的名稱、背景故事與核心規則。</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="world-name">世界觀名稱</Label>
-                                    <Input
-                                        id="world-name"
-                                        placeholder="例如：賽博龐克 2077"
-                                        value={basicFormData.name}
-                                        onChange={(e) => setBasicFormData({ ...basicFormData, name: e.target.value })}
-                                    />
-                                    {basicErrors.name && <p className="text-sm text-destructive">{basicErrors.name}</p>}
+                                {/* 基本資訊區：圖片 + 名稱 */}
+                                <div className="flex flex-col sm:flex-row gap-6">
+                                    {/* 世界觀圖片 */}
+                                    <div className="space-y-2">
+                                        <Label>世界觀封面圖片</Label>
+                                        <ImageUpload
+                                            imageUrl={pendingImagePreviewUrl || currentImageUrl}
+                                            onImageChange={handleImageChange}
+                                            isLoading={savingBasic || creatingWorld}
+                                            disabled={savingBasic || creatingWorld}
+                                        />
+                                        <p className="text-xs text-muted-foreground max-w-[200px]">
+                                            上傳世界觀的封面圖片（選填）
+                                        </p>
+                                    </div>
+
+                                    {/* 世界觀名稱 */}
+                                    <div className="flex-1 space-y-2">
+                                        <Label htmlFor="world-name">世界觀名稱</Label>
+                                        <Input
+                                            id="world-name"
+                                            placeholder="例如：賽博龐克 2077"
+                                            value={basicFormData.name}
+                                            onChange={(e) => setBasicFormData({ ...basicFormData, name: e.target.value })}
+                                        />
+                                        {basicErrors.name && <p className="text-sm text-destructive">{basicErrors.name}</p>}
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="world-desc">世界描述</Label>

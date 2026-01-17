@@ -140,6 +140,19 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange }: WorldDetails
                         </TabsList>
 
                         <TabsContent value="basic" className="space-y-4">
+                            {/* 世界觀封面圖片 */}
+                            {world.image_url && (
+                                <div className="flex justify-center">
+                                    <div className="w-40 h-40 rounded-lg overflow-hidden border bg-muted">
+                                        <img
+                                            src={world.image_url}
+                                            alt={world.name}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                             <Card>
                                 <CardHeader>
                                     <CardTitle className="text-base">世界描述</CardTitle>

@@ -48,6 +48,7 @@ export interface World {
   description: string;
   rules_text: string;
   tags_json?: string; // JSON array string
+  image_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +83,7 @@ export interface Character {
   canonical_name: string;
   core_profile_text: string;
   tags_json?: string; // JSON array string
+  image_url?: string | null;
   created_at: string;
   updated_at: string;
 }

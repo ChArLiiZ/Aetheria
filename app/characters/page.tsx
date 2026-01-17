@@ -331,7 +331,7 @@ function CharactersListPageContent() {
             {filteredAndSortedCharacters.map((character) => (
               <Card
                 key={character.character_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} cursor-pointer`}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} cursor-pointer overflow-hidden`}
                 onClick={isSelectMode ? () => handleToggleSelect(character.character_id) : () => setViewingCharacterId(character.character_id)}
               >
                 <ListItemCheckbox
@@ -340,8 +340,26 @@ function CharactersListPageContent() {
                   isSelectMode={isSelectMode}
                 />
                 <CardHeader className={isSelectMode ? 'pl-12' : ''}>
-                  <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
-                  {renderCharacterTags(character)}
+                  <div className="flex items-start gap-3">
+                    {/* 角色頭像 */}
+                    <div className="w-12 h-12 rounded-lg bg-muted overflow-hidden flex-shrink-0">
+                      {character.image_url ? (
+                        <img
+                          src={character.image_url}
+                          alt={character.canonical_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <User className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
+                      {renderCharacterTags(character)}
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <p className="text-sm text-muted-foreground line-clamp-3 mb-4">

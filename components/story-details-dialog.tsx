@@ -19,15 +19,13 @@ import {
 import {
     Card,
     CardContent,
-    CardDescription,
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Edit, Play, Globe } from 'lucide-react';
+import { Loader2, Edit, Play, Globe, User } from 'lucide-react';
 import { toast } from 'sonner';
-import Link from 'next/link';
 
 interface StoryDetailsDialogProps {
     storyId: string | null;
@@ -39,11 +37,12 @@ interface StoryDetailsDialogProps {
 
 interface StoryCharacterWithDetails extends StoryCharacter {
     canonical_name?: string;
-    avatar_url?: string;
+    image_url?: string | null;
 }
 
 interface StoryWithDetails extends Story {
     world_name?: string;
+    world_image_url?: string | null;
 }
 
 export function StoryDetailsDialog({
@@ -71,22 +70,27 @@ export function StoryDetailsDialog({
 
                     if (storyData) {
                         let worldName = '未知世界觀';
+                        let worldImageUrl: string | null = null;
                         try {
                             const world = await getWorldById(storyData.world_id, user.user_id);
-                            if (world) worldName = world.name;
+                            if (world) {
+                                worldName = world.name;
+                                worldImageUrl = world.image_url || null;
+                            }
                         } catch (e) {
-                            console.error('Failed to fetch world name', e);
+                            console.error('Failed to fetch world', e);
                         }
 
-                        setStory({ ...storyData, world_name: worldName });
+                        setStory({ ...storyData, world_name: worldName, world_image_url: worldImageUrl });
 
-                        // Fetch canonical names for characters
+                        // Fetch details for characters including image
                         const charsWithDetails = await Promise.all(storyChars.map(async (sc) => {
                             try {
                                 const charDetails = await getCharacterById(sc.character_id, user.user_id);
                                 return {
                                     ...sc,
-                                    canonical_name: charDetails?.canonical_name
+                                    canonical_name: charDetails?.canonical_name,
+                                    image_url: charDetails?.image_url,
                                 };
                             } catch {
                                 return sc;
@@ -130,6 +134,29 @@ export function StoryDetailsDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                {/* 世界觀背景橫幅 */}
+                {!loading && story && (
+                    <div className="relative h-24 -mx-6 -mt-6 mb-4 bg-gradient-to-br from-muted to-muted/50 overflow-hidden rounded-t-lg">
+                        {story.world_image_url && (
+                            <img
+                                src={story.world_image_url}
+                                alt={story.world_name}
+                                className="absolute inset-0 w-full h-full object-cover object-center opacity-70"
+                            />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-background/90 to-transparent" />
+                        <div className="absolute bottom-3 left-4 flex items-center gap-2">
+                            <Globe className="h-4 w-4 text-muted-foreground" />
+                            <button
+                                className="text-sm font-medium hover:underline hover:text-primary transition-colors focus:outline-none"
+                                onClick={() => onWorldClick?.(story.world_id)}
+                            >
+                                {story.world_name}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <DialogHeader>
                     <DialogTitle className="flex justify-between items-center pr-8">
                         <span className="truncate">{loading ? '載入中...' : story?.title}</span>
@@ -137,20 +164,9 @@ export function StoryDetailsDialog({
                     <DialogDescription asChild>
                         <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                             {!loading && story && (
-                                <>
-                                    <span className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-md">
-                                        <Globe className="h-3 w-3" />
-                                        <button
-                                            className="hover:underline hover:text-primary transition-colors focus:outline-none"
-                                            onClick={() => onWorldClick?.(story.world_id)}
-                                        >
-                                            {story.world_name}
-                                        </button>
-                                    </span>
-                                    <Badge variant="outline" className="text-xs font-normal">
-                                        {story.story_mode === 'PLAYER_CHARACTER' ? '玩家角色模式' : '導演模式'}
-                                    </Badge>
-                                </>
+                                <Badge variant="outline" className="text-xs font-normal">
+                                    {story.story_mode === 'PLAYER_CHARACTER' ? '玩家角色模式' : '導演模式'}
+                                </Badge>
                             )}
                         </div>
                     </DialogDescription>
@@ -175,9 +191,23 @@ export function StoryDetailsDialog({
                                     {characters.map(char => (
                                         <button
                                             key={char.story_character_id}
-                                            className={`text-xs px-2 py-1 rounded border transition-colors focus:outline-none flex items-center gap-1.5 ${char.is_player ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-muted/50 border-muted text-foreground hover:bg-muted'}`}
+                                            className={`text-xs px-2 py-1.5 rounded border transition-colors focus:outline-none flex items-center gap-2 ${char.is_player ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-muted/50 border-muted text-foreground hover:bg-muted'}`}
                                             onClick={() => onCharacterClick?.(char.character_id)}
                                         >
+                                            {/* 角色頭像 */}
+                                            <div className="w-6 h-6 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                                                {char.image_url ? (
+                                                    <img
+                                                        src={char.image_url}
+                                                        alt={char.display_name_override || char.canonical_name || ''}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center">
+                                                        <User className="h-3 w-3 text-muted-foreground" />
+                                                    </div>
+                                                )}
+                                            </div>
                                             <span>{char.display_name_override || char.canonical_name}</span>
                                             {char.is_player && <Badge variant="secondary" className="text-[10px] h-4 px-1 py-0">玩家</Badge>}
                                         </button>

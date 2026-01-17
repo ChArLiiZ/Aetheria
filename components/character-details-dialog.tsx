@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Edit } from 'lucide-react';
+import { Loader2, Edit, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CharacterDetailsDialogProps {
@@ -109,6 +109,19 @@ export function CharacterDetailsDialog({ characterId, open, onOpenChange }: Char
                     </div>
                 ) : character ? (
                     <div className="space-y-4 mt-2">
+                        {/* 角色圖片 */}
+                        {character.image_url && (
+                            <div className="flex justify-center">
+                                <div className="w-40 h-40 rounded-lg overflow-hidden border bg-muted">
+                                    <img
+                                        src={character.image_url}
+                                        alt={character.canonical_name}
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <Card>
                             <CardHeader>
                                 <CardTitle className="text-base">核心資料</CardTitle>
@@ -130,3 +143,4 @@ export function CharacterDetailsDialog({ characterId, open, onOpenChange }: Char
         </Dialog>
     );
 }
+
