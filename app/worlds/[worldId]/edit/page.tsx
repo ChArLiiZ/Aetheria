@@ -622,31 +622,32 @@ function WorldEditorPageContent() {
         // Swap
         [newSchemas[index], newSchemas[targetIndex]] = [newSchemas[targetIndex], newSchemas[index]];
 
-        // Optimistic update
-        setSchemas(newSchemas);
+        // Update sort_order for all schemas
+        const updatedSchemasWithOrder = newSchemas.map((s, i) => ({
+            ...s,
+            sort_order: i + 1
+        }));
 
-        if (!isNewWorld) {
+        // Optimistic update
+        setSchemas(updatedSchemasWithOrder);
+
+        // 檢查是否存在臨時狀態（尚未儲存到資料庫）
+        const hasTempSchemas = newSchemas.some(s => s.schema_id.startsWith('temp-'));
+
+        if (!isNewWorld && !hasTempSchemas) {
+            // 只有當所有狀態都已儲存到資料庫時，才呼叫 API 更新排序
             try {
-                // Update sort_order for all affected items or just send the new order of IDs
-                // Ideally we should just update the backend with the new order
-                const orderedIds = newSchemas.map(s => s.schema_id);
+                const orderedIds = updatedSchemasWithOrder.map(s => s.schema_id);
                 await reorderSchemaItems(worldId, user.user_id, orderedIds);
             } catch (err: any) {
                 console.error('Failed to reorder schemas:', err);
                 toast.error('排序更新失敗，請重新整理頁面');
-                // Revert on error (optional, or just ask user to reload)
+                // Revert on error
                 reloadData();
             }
-        } else {
-            // For new world, we just update the sort_order property in local state if needed
-            // But since we are swapping array elements, the order is already changed.
-            // When saving, we might assign sort_order based on array index.
-            const updatedSchemasWithOrder = newSchemas.map((s, i) => ({
-                ...s,
-                sort_order: i + 1
-            }));
-            setSchemas(updatedSchemasWithOrder);
         }
+        // 對於新建世界或存在未儲存的臨時狀態時，只更新本地狀態
+        // 排序會在最終儲存時根據 sort_order 一併處理
     };
 
     // AI 生成結果處理
