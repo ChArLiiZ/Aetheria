@@ -78,8 +78,21 @@ export async function resetStory(
       throw new Error('Failed to delete story summaries: ' + summariesError.message);
     }
 
-    // 5. 重置所有狀態值為預設值
-    console.log('[resetStory] 重置狀態值...');
+    // 5. 刪除所有舊的狀態值記錄（確保套用最新的世界觀狀態定義）
+    console.log('[resetStory] 刪除舊狀態值...');
+    const { error: deleteStateError } = await supabase
+      .from('story_state_values')
+      .delete()
+      .eq('story_id', storyId)
+      .eq('user_id', userId);
+
+    if (deleteStateError) {
+      console.error('[resetStory] 刪除舊狀態值失敗:', deleteStateError);
+      throw new Error('Failed to delete old state values: ' + deleteStateError.message);
+    }
+
+    // 6. 根據最新的世界觀重新建立所有狀態值
+    console.log('[resetStory] 建立新狀態值...');
     const stateValues: Array<{
       story_id: string;
       story_character_id: string;
@@ -101,10 +114,10 @@ export async function resetStory(
 
     if (stateValues.length > 0) {
       await setMultipleStateValues(userId, stateValues);
-      console.log(`[resetStory] 已重置 ${stateValues.length} 個狀態值`);
+      console.log(`[resetStory] 已建立 ${stateValues.length} 個狀態值`);
     }
 
-    // 6. 將 story 的 turn_count 重置為 0
+    // 7. 將 story 的 turn_count 重置為 0
     console.log('[resetStory] 重置回合計數...');
     const { error: updateError } = await (supabase
       .from('stories') as any)

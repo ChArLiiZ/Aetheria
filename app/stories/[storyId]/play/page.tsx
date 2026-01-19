@@ -25,6 +25,7 @@ import { getStoryCharacters } from '@/services/supabase/story-characters';
 import { getCharacterById } from '@/services/supabase/characters';
 import { getAllStateValuesForStory } from '@/services/supabase/story-state-values';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
+import { checkStoryUpdates, type StoryUpdateCheck } from '@/services/supabase/check-story-updates';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { MODEL_PRESETS, PROVIDER_INFO, Provider, PROVIDERS, DEFAULT_PROVIDER, DEFAULT_MODELS } from '@/lib/ai-providers';
 import { WorldDetailsDialog } from '@/components/world-details-dialog';
 import { CharacterDetailsDialog } from '@/components/character-details-dialog';
+import { StoryUpdateAlert } from '@/components/story-update-alert';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
@@ -106,6 +108,10 @@ function StoryPlayPageContent() {
   // Details Dialogs
   const [viewingWorldId, setViewingWorldId] = useState<string | null>(null);
   const [viewingCharacterId, setViewingCharacterId] = useState<string | null>(null);
+
+  // Story update check
+  const [updateInfo, setUpdateInfo] = useState<StoryUpdateCheck | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -170,6 +176,19 @@ function StoryPlayPageContent() {
 
         // Load character states
         await loadCharacterStatesInternal(storyData.world_id, cancelled);
+
+        // Check for updates (non-blocking)
+        if (!sessionStorage.getItem(`story-update-dismissed-${storyId}`)) {
+          checkStoryUpdates(storyId, user.user_id)
+            .then((info) => {
+              if (!cancelled && info.hasUpdates) {
+                setUpdateInfo(info);
+              }
+            })
+            .catch((err) => {
+              console.error('[loadData] Failed to check story updates:', err);
+            });
+        }
       } catch (err: any) {
         if (cancelled) return;
         console.error('Failed to load story:', err);
@@ -537,6 +556,10 @@ function StoryPlayPageContent() {
         setPendingUserInput(null);
         setUserInput('');
         setSuggestions([]);
+        // Clear update info after reset and allow future update checks
+        setUpdateInfo(null);
+        setUpdateDismissed(false);
+        sessionStorage.removeItem(`story-update-dismissed-${storyId}`);
       }
     } catch (err: any) {
       console.error('Failed to reset story:', err);
@@ -544,6 +567,13 @@ function StoryPlayPageContent() {
     } finally {
       setResetting(false);
     }
+  };
+
+  // Handle dismiss update alert
+  const handleDismissUpdate = () => {
+    setUpdateDismissed(true);
+    setUpdateInfo(null);
+    sessionStorage.setItem(`story-update-dismissed-${storyId}`, 'true');
   };
 
   if (loading) {
@@ -898,6 +928,15 @@ function StoryPlayPageContent() {
       {/* Main Content (Chat) */}
       <ScrollArea className="flex-1 p-4 md:p-6">
         <div className="max-w-3xl mx-auto space-y-6 pb-4">
+          {/* Story Update Alert */}
+          {updateInfo && updateInfo.hasUpdates && !updateDismissed && (
+            <StoryUpdateAlert
+              updateInfo={updateInfo}
+              onReset={() => setShowResetDialog(true)}
+              onDismiss={handleDismissUpdate}
+            />
+          )}
+
           {/* Story Premise */}
           <Card className="bg-muted/50 border-primary/20">
             <CardContent className="p-4 md:p-6 flex gap-4">
@@ -1110,16 +1149,18 @@ function StoryPlayPageContent() {
               <AlertTriangle className="h-5 w-5 text-orange-600" />
               確認重新開始故事
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p className="font-semibold text-foreground">此操作將會：</p>
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>刪除所有 {turns.length} 個回合記錄</li>
-                <li>清除所有對話歷史</li>
-                <li>刪除所有狀態變更記錄</li>
-                <li>將角色狀態重置為預設值</li>
-              </ul>
-              <p className="font-semibold text-orange-600 pt-2">⚠️ 此操作無法復原！</p>
-              <p className="text-muted-foreground">故事設定和角色將會保留。</p>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div className="font-semibold text-foreground">此操作將會：</div>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>刪除所有 {turns.length} 個回合記錄</li>
+                  <li>清除所有對話歷史</li>
+                  <li>刪除所有狀態變更記錄</li>
+                  <li>將角色狀態重置為預設值</li>
+                </ul>
+                <div className="font-semibold text-orange-600 pt-2">此操作無法復原！</div>
+                <div className="text-muted-foreground">故事設定和角色將會保留。</div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

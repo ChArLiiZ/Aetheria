@@ -386,6 +386,44 @@ function WorldEditorPageContent() {
             // 更新標籤
             await setEntityTags('world', worldId, user.user_id, selectedTags.map(t => t.tag_id));
 
+            // 儲存 AI 生成的臨時狀態（schema_id 以 temp- 開頭的）
+            const tempSchemas = schemas.filter(s => s.schema_id.startsWith('temp-'));
+            if (tempSchemas.length > 0) {
+                for (const schema of tempSchemas) {
+                    await createSchemaItem(worldId, user.user_id, {
+                        schema_key: schema.schema_key,
+                        display_name: schema.display_name,
+                        type: schema.type,
+                        ai_description: schema.ai_description,
+                        default_value_json: schema.default_value_json,
+                        enum_options_json: schema.enum_options_json,
+                        number_constraints_json: schema.number_constraints_json,
+                    });
+                }
+            }
+
+            // 重新載入資料以取得新建立的 schema_id
+            const updatedSchemas = await getSchemaByWorldId(worldId, user.user_id);
+
+            // 根據當前 UI 的排序順序來重新排序
+            // 建立 schema_key 到當前順序的映射
+            const keyToOrder = new Map<string, number>();
+            schemas.forEach((s, index) => {
+                keyToOrder.set(s.schema_key, index);
+            });
+
+            // 按照 UI 順序排列新的 schema_ids
+            const sortedSchemaIds = [...updatedSchemas]
+                .sort((a, b) => {
+                    const orderA = keyToOrder.get(a.schema_key) ?? 999;
+                    const orderB = keyToOrder.get(b.schema_key) ?? 999;
+                    return orderA - orderB;
+                })
+                .map(s => s.schema_id);
+
+            // 更新排序
+            await reorderSchemaItems(worldId, user.user_id, sortedSchemaIds);
+
             // 重置圖片狀態
             setPendingImageFile(null);
             setShouldDeleteImage(false);
@@ -568,7 +606,7 @@ function WorldEditorPageContent() {
                     ));
                 } else {
                     const newSchema: WorldStateSchema = {
-                        schema_id: `temp-${Date.now()}`,
+                        schema_id: `temp-${crypto.randomUUID()}`,
                         world_id: 'temp',
                         user_id: user.user_id,
                         sort_order: schemas.length + 1,
@@ -659,25 +697,39 @@ function WorldEditorPageContent() {
             rules_text: data.rules_text || basicFormData.rules_text,
         });
 
-        // 填入 Schemas
+        // 填入 Schemas（合併到現有 schemas 而非覆蓋）
         if (data.schemas && data.schemas.length > 0) {
-            const newSchemas: WorldStateSchema[] = data.schemas.map((s, index) => ({
-                schema_id: `temp-${Date.now()}-${index}`,
-                world_id: isNewWorld ? 'temp' : worldId,
-                user_id: user?.user_id || '',
-                schema_key: s.schema_key,
-                display_name: s.display_name,
-                type: s.type as SchemaFieldType,
-                ai_description: s.ai_description,
-                default_value_json: s.default_value || '',
-                enum_options_json: s.enum_options ? JSON.stringify(s.enum_options) : '',
-                number_constraints_json: (s.number_min !== undefined || s.number_max !== undefined)
-                    ? JSON.stringify({ min: s.number_min, max: s.number_max })
-                    : '',
-                sort_order: index + 1,
-                updated_at: new Date().toISOString(),
-            }));
-            setSchemas(newSchemas);
+            const existingSchemaKeys = new Set(schemas.map(s => s.schema_key));
+            const startIndex = schemas.length;
+
+            const newSchemas: WorldStateSchema[] = data.schemas
+                .filter(s => !existingSchemaKeys.has(s.schema_key)) // 避免重複 key
+                .map((s, index) => ({
+                    schema_id: `temp-${crypto.randomUUID()}`,
+                    world_id: isNewWorld ? 'temp' : worldId,
+                    user_id: user?.user_id || '',
+                    schema_key: s.schema_key,
+                    display_name: s.display_name,
+                    type: s.type as SchemaFieldType,
+                    ai_description: s.ai_description,
+                    default_value_json: s.default_value || '',
+                    enum_options_json: s.enum_options ? JSON.stringify(s.enum_options) : '',
+                    number_constraints_json: (s.number_min !== undefined || s.number_max !== undefined)
+                        ? JSON.stringify({ min: s.number_min, max: s.number_max })
+                        : '',
+                    sort_order: startIndex + index + 1,
+                    updated_at: new Date().toISOString(),
+                }));
+
+            if (newSchemas.length > 0) {
+                setSchemas([...schemas, ...newSchemas]);
+            }
+
+            // 提示跳過的重複狀態
+            const skipped = data.schemas.length - newSchemas.length;
+            if (skipped > 0) {
+                toast.info(`已跳過 ${skipped} 個重複的狀態類型`);
+            }
         }
 
         toast.success('AI 生成完成！請檢查並調整內容。');
