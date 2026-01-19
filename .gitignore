@@ -47,7 +47,6 @@ next-env.d.ts
 **/public/workbox-*.js.map
 **/public/worker-*.js.map
 
-/.agent
 
 # Test account
 test_account.txt
