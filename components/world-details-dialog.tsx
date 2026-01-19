@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { World, WorldStateSchema } from '@/types';
 import { getWorldById } from '@/services/supabase/worlds';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
+import { getPublicWorldById, getPublicSchemaByWorldId, copyWorldToCollection } from '@/services/supabase/community';
 import { getEntityTags, Tag } from '@/services/supabase/tags';
 import {
     Dialog,
@@ -37,42 +38,78 @@ import {
 } from "@/components/ui/table"
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Edit } from 'lucide-react';
+import { Loader2, Edit, Globe, Lock, User, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface WorldDetailsDialogProps {
     worldId: string | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    readOnly?: boolean;
 }
 
-export function WorldDetailsDialog({ worldId, open, onOpenChange }: WorldDetailsDialogProps) {
+export function WorldDetailsDialog({ worldId, open, onOpenChange, readOnly = false }: WorldDetailsDialogProps) {
     const { user } = useAuth();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<string>('basic');
     const [world, setWorld] = useState<World | null>(null);
     const [schemas, setSchemas] = useState<WorldStateSchema[]>([]);
     const [tags, setTags] = useState<Tag[]>([]);
+    const [creatorInfo, setCreatorInfo] = useState<{ display_name: string; avatar_url: string | null } | null>(null);
     const [loading, setLoading] = useState(false);
+    const [copying, setCopying] = useState(false);
 
     useEffect(() => {
-        if (open && worldId && user?.user_id) {
+        // readOnly 模式不需要 user，可以查看公開內容
+        const canFetch = open && worldId && (readOnly || user?.user_id);
+
+        if (canFetch) {
             const fetchData = async () => {
                 try {
                     setLoading(true);
-                    const [worldData, schemasData, tagsData] = await Promise.all([
-                        getWorldById(worldId, user.user_id),
-                        getSchemaByWorldId(worldId, user.user_id),
-                        getEntityTags('world', worldId, user.user_id),
-                    ]);
 
-                    if (worldData) {
-                        setWorld(worldData);
-                        setSchemas(schemasData);
-                        setTags(tagsData);
+                    if (readOnly) {
+                        // 唯讀模式：使用公開查詢函式
+                        const [publicWorld, schemasData] = await Promise.all([
+                            getPublicWorldById(worldId),
+                            getPublicSchemaByWorldId(worldId),
+                        ]);
+
+                        if (publicWorld) {
+                            setWorld(publicWorld);
+                            setSchemas(schemasData as WorldStateSchema[]);
+                            // 公開查詢已包含創建者資訊
+                            setCreatorInfo({
+                                display_name: publicWorld.creator_name,
+                                avatar_url: publicWorld.creator_avatar_url,
+                            });
+                            // 公開查詢已包含標籤
+                            setTags(publicWorld.tags || []);
+                        } else {
+                            toast.error('找不到此世界觀或該世界觀非公開');
+                            onOpenChange(false);
+                        }
                     } else {
-                        toast.error('找不到此世界觀');
-                        onOpenChange(false);
+                        // 編輯模式：使用原本的查詢函式（需要 user_id）
+                        const [worldData, schemasData, tagsData] = await Promise.all([
+                            getWorldById(worldId, user!.user_id),
+                            getSchemaByWorldId(worldId, user!.user_id),
+                            getEntityTags('world', worldId, user!.user_id),
+                        ]);
+
+                        if (worldData) {
+                            setWorld(worldData);
+                            setSchemas(schemasData);
+                            setTags(tagsData);
+                            // 自己的世界觀，創建者就是自己
+                            setCreatorInfo({
+                                display_name: user!.display_name,
+                                avatar_url: user!.avatar_url || null,
+                            });
+                        } else {
+                            toast.error('找不到此世界觀');
+                            onOpenChange(false);
+                        }
                     }
                 } catch (err: any) {
                     console.error('Failed to load world data:', err);
@@ -84,18 +121,36 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange }: WorldDetails
 
             fetchData();
         } else if (!open) {
-            // Reset state on close
+            // Reset state on close，避免舊資料殘留
             setWorld(null);
             setSchemas([]);
             setTags([]);
+            setCreatorInfo(null);
             setActiveTab('basic');
         }
-    }, [open, worldId, user?.user_id, onOpenChange]);
+    }, [open, worldId, user, readOnly, onOpenChange]);
 
     const handleEdit = () => {
         if (worldId) {
             onOpenChange(false);
             router.push(`/worlds/${worldId}/edit`);
+        }
+    };
+
+    const handleCopyToCollection = async () => {
+        if (!worldId || !user?.user_id) return;
+
+        try {
+            setCopying(true);
+            const newWorldId = await copyWorldToCollection(worldId, user.user_id);
+            toast.success('已複製到我的收藏');
+            onOpenChange(false);
+            router.push(`/worlds/${newWorldId}/edit`);
+        } catch (err: any) {
+            console.error('Failed to copy world:', err);
+            toast.error(err.message || '複製失敗');
+        } finally {
+            setCopying(false);
         }
     };
 
@@ -105,14 +160,62 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange }: WorldDetails
                 <DialogHeader>
                     <DialogTitle className="flex justify-between items-center pr-8">
                         <span className="truncate">{loading ? '載入中...' : world?.name}</span>
-                        {!loading && world && (
-                            <Button size="sm" variant="outline" onClick={handleEdit}>
-                                <Edit className="mr-2 h-4 w-4" /> 編輯
-                            </Button>
-                        )}
+                        <div className="flex gap-2">
+                            {!loading && world && readOnly && user && (
+                                <Button size="sm" variant="outline" onClick={handleCopyToCollection} disabled={copying}>
+                                    {copying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Copy className="mr-2 h-4 w-4" />}
+                                    複製到收藏
+                                </Button>
+                            )}
+                            {!loading && world && !readOnly && (
+                                <Button size="sm" variant="outline" onClick={handleEdit}>
+                                    <Edit className="mr-2 h-4 w-4" /> 編輯
+                                </Button>
+                            )}
+                        </div>
                     </DialogTitle>
                     {!loading && world && (
-                        <div className="flex flex-wrap gap-2 mt-2">
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {/* 可見性 Badge */}
+                            {world.visibility === 'public' ? (
+                                <Badge variant="outline" className="text-green-600 border-green-600">
+                                    <Globe className="h-3 w-3 mr-1" />
+                                    公開
+                                </Badge>
+                            ) : (
+                                <Badge variant="outline" className="text-muted-foreground">
+                                    <Lock className="h-3 w-3 mr-1" />
+                                    私人
+                                </Badge>
+                            )}
+                            {/* 創建者資訊 */}
+                            {creatorInfo && (
+                                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                    <span className="text-muted-foreground/60">|</span>
+                                    <div className="w-5 h-5 rounded-full bg-muted overflow-hidden flex-shrink-0">
+                                        {creatorInfo.avatar_url ? (
+                                            <img
+                                                src={creatorInfo.avatar_url}
+                                                alt={creatorInfo.display_name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center">
+                                                <User className="h-3 w-3 text-muted-foreground" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <span>{creatorInfo.display_name}</span>
+                                </div>
+                            )}
+                            {/* 原作者資訊（如果是複製的內容） */}
+                            {world.original_author_id && (
+                                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                    <span className="text-muted-foreground/60">|</span>
+                                    <span>原作者:</span>
+                                    <span className="font-medium">{world.original_author_name || '未知'}</span>
+                                </div>
+                            )}
                             {tags.map(tag => (
                                 <Badge key={tag.tag_id} variant="secondary">
                                     {tag.name}

@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase/client';
 
 const BUCKET_NAME = 'images';
 
-export type ImageEntityType = 'characters' | 'worlds';
+export type ImageEntityType = 'characters' | 'worlds' | 'avatars';
 
 /**
  * 產生圖片的儲存路徑
@@ -18,6 +18,10 @@ export function getImagePath(
     userId: string,
     entityId: string
 ): string {
+    // 頭像使用特殊路徑格式
+    if (entityType === 'avatars') {
+        return `avatars/${userId}/avatar.webp`;
+    }
     return `${entityType}/${userId}/${entityId}.webp`;
 }
 

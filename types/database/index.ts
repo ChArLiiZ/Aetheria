@@ -4,6 +4,7 @@ export type StoryMode = 'PLAYER_CHARACTER' | 'DIRECTOR';
 export type UserStatus = 'active' | 'disabled';
 export type SchemaFieldType = 'number' | 'text' | 'bool' | 'enum' | 'list_text';
 export type EntityType = 'state';
+export type Visibility = 'private' | 'public';
 
 // State operation types
 export type StateOp = 'set' | 'inc';
@@ -15,6 +16,7 @@ export interface User {
   user_id: string;
   email: string;
   display_name: string;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
   status: UserStatus;
@@ -49,6 +51,12 @@ export interface World {
   rules_text: string;
   tags_json?: string; // JSON array string
   image_url?: string | null;
+  visibility: Visibility;
+  published_at?: string | null;
+  original_author_id?: string | null; // 原作者 ID（NULL = user_id 就是原作者）
+  forked_from_id?: string | null; // Fork 來源 ID
+  original_author_name?: string | null; // 原作者顯示名稱（查詢時填充）
+  original_author_avatar_url?: string | null; // 原作者頭像（查詢時填充）
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +92,12 @@ export interface Character {
   core_profile_text: string;
   tags_json?: string; // JSON array string
   image_url?: string | null;
+  visibility: Visibility;
+  published_at?: string | null;
+  original_author_id?: string | null; // 原作者 ID（NULL = user_id 就是原作者）
+  forked_from_id?: string | null; // Fork 來源 ID
+  original_author_name?: string | null; // 原作者顯示名稱（查詢時填充）
+  original_author_avatar_url?: string | null; // 原作者頭像（查詢時填充）
   created_at: string;
   updated_at: string;
 }

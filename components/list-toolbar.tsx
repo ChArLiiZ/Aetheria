@@ -65,12 +65,12 @@ export interface ListToolbarProps {
     onSortChange: (field: string, direction: SortDirection) => void;
     sortOptions: SortOption[];
 
-    // 多選模式
-    isSelectMode: boolean;
-    onSelectModeChange: (enabled: boolean) => void;
-    selectedCount: number;
-    onDeleteSelected: () => void;
-    totalCount: number;
+    // 多選模式（可選，傳入時才顯示多選功能）
+    isSelectMode?: boolean;
+    onSelectModeChange?: (enabled: boolean) => void;
+    selectedCount?: number;
+    onDeleteSelected?: () => void;
+    totalCount?: number;
 }
 
 export function ListToolbar({
@@ -86,15 +86,15 @@ export function ListToolbar({
     sortDirection,
     onSortChange,
     sortOptions,
-    isSelectMode,
+    isSelectMode = false,
     onSelectModeChange,
-    selectedCount,
+    selectedCount = 0,
     onDeleteSelected,
-    totalCount,
+    totalCount = 0,
 }: ListToolbarProps) {
     const [tagSearchValue, setTagSearchValue] = useState('');
     const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
-    
+
     const hasActiveFilters = searchValue || selectedTags.length > 0;
 
     // 篩選標籤列表
@@ -155,9 +155,9 @@ export function ListToolbar({
                         <div className="flex">
                             <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
                                 <PopoverTrigger asChild>
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm" 
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
                                         className={selectedTags.length > 0 && onTagFilterModeChange ? "rounded-r-none border-r-0" : ""}
                                     >
                                         <Tag className="mr-2 h-4 w-4" />
@@ -184,7 +184,7 @@ export function ListToolbar({
                                             </div>
                                         </div>
                                     )}
-                                    
+
                                     {/* 標籤列表 */}
                                     <ScrollArea className={allTags.length > 10 ? "h-64" : ""}>
                                         <div className="p-2 space-y-1">
@@ -207,8 +207,8 @@ export function ListToolbar({
                                                         >
                                                             <div className={cn(
                                                                 "flex h-4 w-4 items-center justify-center rounded border",
-                                                                isSelected 
-                                                                    ? "bg-primary border-primary text-primary-foreground" 
+                                                                isSelected
+                                                                    ? "bg-primary border-primary text-primary-foreground"
                                                                     : "border-muted-foreground/30"
                                                             )}>
                                                                 {isSelected && <Check className="h-3 w-3" />}
@@ -220,7 +220,7 @@ export function ListToolbar({
                                             )}
                                         </div>
                                     </ScrollArea>
-                                    
+
                                     {/* 底部操作 */}
                                     {selectedTags.length > 0 && (
                                         <div className="p-2 border-t">
@@ -259,8 +259,8 @@ export function ListToolbar({
                                         >
                                             <div className={cn(
                                                 "flex h-4 w-4 items-center justify-center rounded-full border",
-                                                tagFilterMode === 'and' 
-                                                    ? "bg-primary border-primary text-primary-foreground" 
+                                                tagFilterMode === 'and'
+                                                    ? "bg-primary border-primary text-primary-foreground"
                                                     : "border-muted-foreground/30"
                                             )}>
                                                 {tagFilterMode === 'and' && <Check className="h-3 w-3" />}
@@ -277,8 +277,8 @@ export function ListToolbar({
                                         >
                                             <div className={cn(
                                                 "flex h-4 w-4 items-center justify-center rounded-full border",
-                                                tagFilterMode === 'or' 
-                                                    ? "bg-primary border-primary text-primary-foreground" 
+                                                tagFilterMode === 'or'
+                                                    ? "bg-primary border-primary text-primary-foreground"
                                                     : "border-muted-foreground/30"
                                             )}>
                                                 {tagFilterMode === 'or' && <Check className="h-3 w-3" />}
@@ -318,22 +318,24 @@ export function ListToolbar({
                         </Button>
                     </div>
 
-                    {/* 多選模式切換 */}
-                    <Button
-                        variant={isSelectMode ? 'secondary' : 'outline'}
-                        size="sm"
-                        onClick={() => onSelectModeChange(!isSelectMode)}
-                    >
-                        {isSelectMode ? (
-                            <CheckSquare className="mr-2 h-4 w-4" />
-                        ) : (
-                            <Square className="mr-2 h-4 w-4" />
-                        )}
-                        多選
-                    </Button>
+                    {/* 多選模式切換 - 只在有提供 onSelectModeChange 時顯示 */}
+                    {onSelectModeChange && (
+                        <Button
+                            variant={isSelectMode ? 'secondary' : 'outline'}
+                            size="sm"
+                            onClick={() => onSelectModeChange(!isSelectMode)}
+                        >
+                            {isSelectMode ? (
+                                <CheckSquare className="mr-2 h-4 w-4" />
+                            ) : (
+                                <Square className="mr-2 h-4 w-4" />
+                            )}
+                            多選
+                        </Button>
+                    )}
 
                     {/* 多選刪除按鈕 */}
-                    {isSelectMode && selectedCount > 0 && (
+                    {isSelectMode && selectedCount > 0 && onDeleteSelected && (
                         <Button variant="destructive" size="sm" onClick={onDeleteSelected}>
                             <Trash2 className="mr-2 h-4 w-4" />
                             刪除 ({selectedCount})

@@ -23,8 +23,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Globe, Edit, Trash2, Calendar } from 'lucide-react';
+import { Loader2, Plus, Globe, Edit, Trash2, Calendar, Lock, User } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { LongPressCard } from '@/components/ui/long-press-card';
 import {
   ListToolbar,
   ListItemCheckbox,
@@ -348,10 +349,16 @@ function WorldsPageContent() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredAndSortedWorlds.map((world) => (
-              <Card
+              <LongPressCard
                 key={world.world_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} cursor-pointer overflow-hidden`}
-                onClick={isSelectMode ? () => handleToggleSelect(world.world_id) : () => setViewingWorldId(world.world_id)}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(world.world_id) ? 'ring-2 ring-primary' : ''} overflow-hidden`}
+                isSelectMode={isSelectMode}
+                onEnterSelectMode={() => {
+                  setIsSelectMode(true);
+                  setSelectedIds(new Set([world.world_id]));
+                }}
+                onClick={() => setViewingWorldId(world.world_id)}
+                onSelectModeClick={() => handleToggleSelect(world.world_id)}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(world.world_id)}
@@ -375,7 +382,14 @@ function WorldsPageContent() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="line-clamp-1">{world.name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="line-clamp-1">{world.name}</CardTitle>
+                        {world.visibility === 'public' ? (
+                          <Globe className="h-4 w-4 flex-shrink-0 text-green-500" aria-label="公開" />
+                        ) : (
+                          <Lock className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-label="私人" />
+                        )}
+                      </div>
                       {renderWorldTags(world)}
                     </div>
                   </div>
@@ -384,9 +398,17 @@ function WorldsPageContent() {
                   <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
                     {world.description}
                   </p>
-                  <div className="flex items-center text-xs text-muted-foreground mt-auto" suppressHydrationWarning>
-                    <Calendar className="mr-1 h-3 w-3" />
-                    建立於 {new Date(world.created_at).toLocaleDateString('zh-TW')}
+                  <div className="flex flex-col gap-1 mt-auto">
+                    {world.original_author_name && (
+                      <div className="flex items-center text-xs text-muted-foreground">
+                        <User className="mr-1 h-3 w-3" />
+                        原作者: {world.original_author_name}
+                      </div>
+                    )}
+                    <div className="flex items-center text-xs text-muted-foreground" suppressHydrationWarning>
+                      <Calendar className="mr-1 h-3 w-3" />
+                      建立於 {new Date(world.created_at).toLocaleDateString('zh-TW')}
+                    </div>
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
@@ -409,7 +431,7 @@ function WorldsPageContent() {
                     )}
                   </Button>
                 </CardFooter>
-              </Card>
+              </LongPressCard>
             ))}
           </div>
         )}

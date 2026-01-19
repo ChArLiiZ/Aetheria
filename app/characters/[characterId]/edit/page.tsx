@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { Character } from '@/types';
+import { Character, Visibility } from '@/types';
 import {
     getCharacterById,
     createCharacter,
@@ -19,13 +19,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles, FileText } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, Trash2, Plus, Sparkles, FileText, Globe, Lock } from 'lucide-react';
 import { AIGenerationDialog } from '@/components/ai-generation-dialog';
 import { TagSelector } from '@/components/tag-selector';
 import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { CharacterGenerationOutput } from '@/types/api/agents';
 import { CHARACTER_EMPTY_TEMPLATE } from '@/lib/character-template';
 import { ImageUpload } from '@/components/image-upload';
+import { Switch } from '@/components/ui/switch';
 
 function CharacterEditorPageContent() {
     const { user } = useAuth();
@@ -49,6 +50,9 @@ function CharacterEditorPageContent() {
     const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
     const [shouldDeleteImage, setShouldDeleteImage] = useState(false);
     const [pendingImagePreviewUrl, setPendingImagePreviewUrl] = useState<string | null>(null);
+
+    // 可見性狀態
+    const [visibility, setVisibility] = useState<Visibility>('private');
 
     // 管理 pendingImageFile 的 object URL 生命週期，避免記憶體洩漏
     useEffect(() => {
@@ -122,6 +126,9 @@ function CharacterEditorPageContent() {
                 // 載入標籤
                 const tags = await getEntityTags('character', characterId, user.user_id);
                 setSelectedTags(tags);
+
+                // 載入可見性
+                setVisibility(data.visibility || 'private');
             } catch (err: any) {
                 if (cancelled) return;
                 console.error('Failed to load character:', err);
@@ -235,6 +242,7 @@ function CharacterEditorPageContent() {
                     canonical_name: formData.canonical_name.trim(),
                     core_profile_text: formData.core_profile_text.trim(),
                     image_url: finalImageUrl,
+                    visibility: visibility,
                 });
 
                 // 更新標籤
@@ -393,6 +401,33 @@ function CharacterEditorPageContent() {
                                 placeholder="選擇或新增標籤..."
                             />
                         </div>
+
+                        {/* 可見性設定 */}
+                        {!isNewCharacter && (
+                            <div className="space-y-2 pt-4 border-t">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                        <Label className="flex items-center gap-2">
+                                            {visibility === 'public' ? (
+                                                <Globe className="h-4 w-4 text-green-500" />
+                                            ) : (
+                                                <Lock className="h-4 w-4 text-muted-foreground" />
+                                            )}
+                                            公開角色
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            {visibility === 'public'
+                                                ? '其他玩家可以在社群中看到並使用這個角色'
+                                                : '僅有你可以看到和使用這個角色'}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={visibility === 'public'}
+                                        onCheckedChange={(checked) => setVisibility(checked ? 'public' : 'private')}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                     <CardFooter className="flex justify-end gap-4 border-t pt-4">
                         <Button variant="outline" onClick={() => router.push('/characters')}>取消</Button>

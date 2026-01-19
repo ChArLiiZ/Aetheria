@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -10,7 +10,8 @@ import {
   upsertProviderSettings,
   deleteProviderSettings,
 } from '@/services/supabase/provider-settings';
-import { getUserById } from '@/services/supabase/users';
+import { getUserById, updateUserAvatar } from '@/services/supabase/users';
+import { uploadImage, deleteImage } from '@/services/supabase/storage';
 import {
   updateDisplayName,
   updatePassword,
@@ -31,11 +32,12 @@ import { Separator } from "@/components/ui/separator";
 import { Loader2, Save, Trash2, FlaskConical, Eye, EyeOff, Key, User, Server } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { MODEL_PRESETS, PROVIDER_INFO, Provider, PROVIDERS } from '@/lib/ai-providers';
+import { ImageUpload } from '@/components/image-upload';
 
 type MainTab = 'providers' | 'account';
 
 function SettingsPageContent() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
 
@@ -67,6 +69,25 @@ function SettingsPageContent() {
   // Account settings
   const [displayName, setDisplayName] = useState('');
   const [savingDisplayName, setSavingDisplayName] = useState(false);
+
+  // Avatar settings
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [pendingAvatarPreviewUrl, setPendingAvatarPreviewUrl] = useState<string | null>(null);
+  const [savingAvatar, setSavingAvatar] = useState(false);
+
+  // 管理 pendingAvatarFile 的 object URL 生命週期，避免記憶體洩漏
+  useEffect(() => {
+    if (pendingAvatarFile) {
+      const objectUrl = URL.createObjectURL(pendingAvatarFile);
+      setPendingAvatarPreviewUrl(objectUrl);
+      return () => {
+        URL.revokeObjectURL(objectUrl);
+      };
+    } else {
+      setPendingAvatarPreviewUrl(null);
+    }
+  }, [pendingAvatarFile]);
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -143,6 +164,7 @@ function SettingsPageContent() {
       const userData = await getUserById(user.user_id);
       if (userData) {
         setDisplayName(userData.display_name);
+        setCurrentAvatarUrl(userData.avatar_url || null);
       }
     } catch (err: any) {
       console.error('Failed to load settings:', err);
@@ -276,6 +298,53 @@ function SettingsPageContent() {
       toast.error(`更新失敗: ${err.message || '未知錯誤'}`);
     } finally {
       setSavingDisplayName(false);
+    }
+  };
+
+  const handleAvatarChange = (file: File | null) => {
+    setPendingAvatarFile(file);
+  };
+
+  const handleSaveAvatar = async () => {
+    if (!user || !pendingAvatarFile) return;
+
+    try {
+      setSavingAvatar(true);
+
+      // 上傳新頭像
+      const avatarUrl = await uploadImage('avatars', user.user_id, 'avatar', pendingAvatarFile);
+      await updateUserAvatar(user.user_id, avatarUrl);
+      setCurrentAvatarUrl(avatarUrl);
+      setPendingAvatarFile(null);
+      await refreshUser(); // 刷新 Header 顯示
+      toast.success('頭像更新成功！');
+    } catch (err: any) {
+      console.error('Failed to update avatar:', err);
+      toast.error(`頭像更新失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setSavingAvatar(false);
+    }
+  };
+
+  const handleDeleteAvatar = async () => {
+    if (!user || !currentAvatarUrl) return;
+
+    const isConfirmed = confirm('確定要刪除頭像嗎？');
+    if (!isConfirmed) return;
+
+    try {
+      setSavingAvatar(true);
+
+      await deleteImage('avatars', user.user_id, 'avatar');
+      await updateUserAvatar(user.user_id, null);
+      setCurrentAvatarUrl(null);
+      await refreshUser(); // 刷新 Header 顯示
+      toast.success('頭像已刪除！');
+    } catch (err: any) {
+      console.error('Failed to delete avatar:', err);
+      toast.error(`頭像刪除失敗: ${err.message || '未知錯誤'}`);
+    } finally {
+      setSavingAvatar(false);
     }
   };
 
@@ -571,19 +640,57 @@ function SettingsPageContent() {
                 <CardTitle>個人資料</CardTitle>
                 <CardDescription>管理您的顯示名稱與基本資訊</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="displayName">顯示名稱</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="displayName"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="您的顯示名稱"
+              <CardContent className="space-y-6">
+                {/* 頭像上傳 */}
+                <div className="flex flex-col md:flex-row gap-6 items-start">
+                  <div className="space-y-2">
+                    <Label>頭像</Label>
+                    <ImageUpload
+                      imageUrl={pendingAvatarPreviewUrl || currentAvatarUrl}
+                      onImageChange={handleAvatarChange}
+                      isLoading={savingAvatar}
+                      className="w-24 h-24"
+                      aspectRatio={1}
+                      cropShape="round"
                     />
-                    <Button onClick={handleSaveDisplayName} disabled={savingDisplayName}>
-                      {savingDisplayName ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : '儲存'}
-                    </Button>
+                    <div className="flex gap-2">
+                      {pendingAvatarFile && (
+                        <Button
+                          size="sm"
+                          onClick={handleSaveAvatar}
+                          disabled={savingAvatar}
+                        >
+                          {savingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : '儲存頭像'}
+                        </Button>
+                      )}
+                      {currentAvatarUrl && !pendingAvatarFile && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={handleDeleteAvatar}
+                          disabled={savingAvatar}
+                        >
+                          {savingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 space-y-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="displayName">顯示名稱</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="displayName"
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          placeholder="您的顯示名稱"
+                        />
+                        <Button onClick={handleSaveDisplayName} disabled={savingDisplayName}>
+                          {savingDisplayName ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : '儲存'}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

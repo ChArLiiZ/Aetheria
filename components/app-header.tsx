@@ -13,7 +13,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export function AppHeader() {
     const { user, logout } = useAuth();
@@ -23,12 +23,28 @@ export function AppHeader() {
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="container flex h-14 items-center mx-auto px-4">
-                <div className="mr-4 flex">
+                <div className="mr-4 flex items-center">
                     <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
                         <span className="font-bold inline-block">
                             Aetheria
                         </span>
                     </Link>
+                    {user && (
+                        <nav className="hidden md:flex items-center space-x-1">
+                            <Link href="/community">
+                                <Button variant="ghost" size="sm">社群</Button>
+                            </Link>
+                            <Link href="/worlds">
+                                <Button variant="ghost" size="sm">世界觀</Button>
+                            </Link>
+                            <Link href="/characters">
+                                <Button variant="ghost" size="sm">角色</Button>
+                            </Link>
+                            <Link href="/stories">
+                                <Button variant="ghost" size="sm">故事</Button>
+                            </Link>
+                        </nav>
+                    )}
                 </div>
                 <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
                     <div className="w-full flex-1 md:w-auto md:flex-none">
@@ -41,6 +57,7 @@ export function AppHeader() {
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                                         <Avatar className="h-8 w-8">
+                                            {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.display_name} />}
                                             <AvatarFallback>{initials}</AvatarFallback>
                                         </Avatar>
                                     </Button>

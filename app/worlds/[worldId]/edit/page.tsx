@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { World, WorldStateSchema, SchemaFieldType } from '@/types';
+import { World, WorldStateSchema, SchemaFieldType, Visibility } from '@/types';
 import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/supabase/worlds';
 import { uploadImage, deleteImage } from '@/services/supabase/storage';
 import {
@@ -70,6 +70,8 @@ import { TagSelector } from '@/components/tag-selector';
 import { Tag, getEntityTags, setEntityTags } from '@/services/supabase/tags';
 import type { WorldGenerationOutput, SchemaGenerationData } from '@/types/api/agents';
 import { ImageUpload } from '@/components/image-upload';
+import { Switch } from '@/components/ui/switch';
+import { Globe, Lock } from 'lucide-react';
 
 type Tab = 'basic' | 'states';
 
@@ -116,6 +118,9 @@ function WorldEditorPageContent() {
     const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
     const [shouldDeleteImage, setShouldDeleteImage] = useState(false);
     const [pendingImagePreviewUrl, setPendingImagePreviewUrl] = useState<string | null>(null);
+
+    // 可見性狀態
+    const [visibility, setVisibility] = useState<Visibility>('private');
 
     // 管理 pendingImageFile 的 object URL 生命週期，避免記憶體洩漏
     useEffect(() => {
@@ -199,6 +204,9 @@ function WorldEditorPageContent() {
                 const tags = await getEntityTags('world', worldId, user.user_id);
                 setSelectedTags(tags);
 
+                // 載入可見性
+                setVisibility(worldData.visibility || 'private');
+
                 setSchemas(schemasData);
             } catch (err: any) {
                 if (cancelled) return;
@@ -251,6 +259,9 @@ function WorldEditorPageContent() {
             // 載入標籤
             const tags = await getEntityTags('world', worldId, user.user_id);
             setSelectedTags(tags);
+
+            // 載入可見性
+            setVisibility(worldData.visibility || 'private');
 
             setSchemas(schemasData);
         } catch (err: any) {
@@ -381,6 +392,7 @@ function WorldEditorPageContent() {
                 description: basicFormData.description.trim(),
                 rules_text: basicFormData.rules_text.trim(),
                 image_url: finalImageUrl,
+                visibility: visibility,
             });
 
             // 更新標籤
@@ -867,6 +879,33 @@ function WorldEditorPageContent() {
                                         placeholder="選擇或新增標籤..."
                                     />
                                 </div>
+
+                                {/* 可見性設定 */}
+                                {!isNewWorld && (
+                                    <div className="space-y-2 pt-4 border-t">
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <Label className="flex items-center gap-2">
+                                                    {visibility === 'public' ? (
+                                                        <Globe className="h-4 w-4 text-green-500" />
+                                                    ) : (
+                                                        <Lock className="h-4 w-4 text-muted-foreground" />
+                                                    )}
+                                                    公開世界觀
+                                                </Label>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {visibility === 'public'
+                                                        ? '其他玩家可以在社群中看到並使用這個世界觀'
+                                                        : '僅有你可以看到和使用這個世界觀'}
+                                                </p>
+                                            </div>
+                                            <Switch
+                                                checked={visibility === 'public'}
+                                                onCheckedChange={(checked) => setVisibility(checked ? 'public' : 'private')}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>

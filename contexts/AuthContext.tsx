@@ -16,6 +16,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, displayName: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -26,24 +27,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const initAttempted = useRef(false);
 
+  // 用於追蹤組件是否已卸載的 ref
+  const cancelledRef = useRef(false);
+
+  // 外部可調用的 refreshUser 函式（例如從設定頁面更新頭像後）
+  const refreshUser = async (): Promise<void> => {
+    try {
+      const currentUser = await getCurrentUser();
+      // 檢查組件是否已卸載
+      if (!cancelledRef.current) {
+        setUser(currentUser);
+      }
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+    }
+  };
+
   // Load session on mount and listen for auth changes
   useEffect(() => {
     // 防止 StrictMode 重複執行
     if (initAttempted.current) return;
     initAttempted.current = true;
 
-    let cancelled = false;
+    // 重置 cancelled 狀態（組件重新掛載時）
+    cancelledRef.current = false;
 
-    const refreshUser = async (): Promise<User | null> => {
+    // 內部版本的 refreshUser，直接使用 cancelledRef
+    const refreshUserInternal = async (): Promise<void> => {
       try {
         const currentUser = await getCurrentUser();
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           setUser(currentUser);
         }
-        return currentUser;
       } catch (error) {
         console.error('Failed to refresh user:', error);
-        return null;
       }
     };
 
@@ -53,22 +70,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // 先嘗試從 Supabase 快取取得 session
         const { data: { session } } = await supabase.auth.getSession();
 
-        if (cancelled) return;
+        if (cancelledRef.current) return;
 
         if (session?.user) {
           // 有 session，嘗試載入完整用戶資料
-          await refreshUser();
+          await refreshUserInternal();
         } else {
           // 沒有 session，用戶未登入
           setUser(null);
         }
       } catch (error) {
-        if (cancelled) return;
+        if (cancelledRef.current) return;
         console.error('Failed to load user:', error);
         // 錯誤時，假設用戶未登入
         setUser(null);
       } finally {
-        if (!cancelled) {
+        if (!cancelledRef.current) {
           setLoading(false);
         }
       }
@@ -82,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // 注意：不要在這個回調中使用 async/await！
         // 這是 Supabase SDK 的已知問題，會導致死鎖。
         // 參考：https://github.com/supabase/supabase-js/issues/762
-        if (cancelled) return;
+        if (cancelledRef.current) return;
 
         console.log('Auth state changed:', event);
 
@@ -96,8 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (session?.user) {
             // 使用 setTimeout 延遲執行，避免死鎖
             setTimeout(() => {
-              if (!cancelled) {
-                refreshUser();
+              if (!cancelledRef.current) {
+                refreshUserInternal();
               }
             }, 0);
           }
@@ -107,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       subscription.unsubscribe();
     };
   }, []);
@@ -157,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     login,
     register,
     logout,
+    refreshUser,
     isAuthenticated: user !== null,
   };
 

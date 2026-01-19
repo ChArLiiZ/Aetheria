@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AppHeader } from '@/components/app-header';
-import { Globe, User, BookOpen, Settings, Book, AlertTriangle, Play, Loader2, Sparkles } from 'lucide-react';
+import { Globe, User, BookOpen, Settings, Book, AlertTriangle, Play, Loader2, Sparkles, Users } from 'lucide-react';
 import { Story } from '@/types';
 import { getStories } from '@/services/supabase/stories';
 import { getWorldsByUserId } from '@/services/supabase/worlds';
@@ -122,6 +122,12 @@ function DashboardContent() {
   }, [user?.user_id]);
 
   const quickActions = [
+    {
+      href: '/community',
+      icon: Users,
+      title: '社群',
+      description: '探索公開的世界觀與角色',
+    },
     {
       href: '/worlds',
       icon: Globe,

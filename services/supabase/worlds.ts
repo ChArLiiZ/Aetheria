@@ -7,13 +7,16 @@ import { withRetry } from '@/lib/supabase/retry';
 import type { World } from '@/types';
 
 /**
- * Get all worlds for a user
+ * Get all worlds for a user (include original author info for forked content)
  */
 export async function getWorldsByUserId(userId: string): Promise<World[]> {
   return withRetry(async () => {
-    const { data, error } = await supabase
-      .from('worlds')
-      .select('*')
+    const { data, error } = await (supabase
+      .from('worlds') as any)
+      .select(`
+        *,
+        original_author:original_author_id(display_name, avatar_url)
+      `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -21,21 +24,30 @@ export async function getWorldsByUserId(userId: string): Promise<World[]> {
       throw new Error('Failed to fetch worlds: ' + error.message);
     }
 
-    return (data || []) as World[];
+    // 合併原作者資訊到 world 物件
+    return (data || []).map((item: any) => ({
+      ...item,
+      original_author_name: item.original_author?.display_name || null,
+      original_author_avatar_url: item.original_author?.avatar_url || null,
+      original_author: undefined,
+    })) as World[];
   });
 }
 
 /**
- * Get world by ID
+ * Get world by ID (include original author info for forked content)
  */
 export async function getWorldById(
   worldId: string,
   userId: string
 ): Promise<World | null> {
   return withRetry(async () => {
-    const { data, error } = await supabase
-      .from('worlds')
-      .select('*')
+    const { data, error } = await (supabase
+      .from('worlds') as any)
+      .select(`
+        *,
+        original_author:original_author_id(display_name, avatar_url)
+      `)
       .eq('world_id', worldId)
       .eq('user_id', userId)
       .single();
@@ -48,7 +60,13 @@ export async function getWorldById(
       throw new Error('Failed to fetch world: ' + error.message);
     }
 
-    return data as World;
+    // 合併原作者資訊到 world 物件
+    return {
+      ...data,
+      original_author_name: data.original_author?.display_name || null,
+      original_author_avatar_url: data.original_author?.avatar_url || null,
+      original_author: undefined,
+    } as World;
   });
 }
 
@@ -93,7 +111,7 @@ export async function createWorld(
 export async function updateWorld(
   worldId: string,
   userId: string,
-  updates: Partial<Pick<World, 'name' | 'description' | 'rules_text' | 'image_url'>> & { tags?: string[] }
+  updates: Partial<Pick<World, 'name' | 'description' | 'rules_text' | 'image_url' | 'visibility'>> & { tags?: string[] }
 ): Promise<void> {
   return withRetry(async () => {
     const payload: any = {};
@@ -113,6 +131,37 @@ export async function updateWorld(
     }
     if (updates.tags !== undefined) {
       payload.tags_json = updates.tags.length > 0 ? JSON.stringify(updates.tags) : '';
+    }
+    if (updates.visibility !== undefined) {
+      // 查詢當前世界觀資訊（用於檢查是否為複製品和 published_at）
+      const { data: currentWorld, error: fetchError } = await (supabase
+        .from('worlds') as any)
+        .select('published_at, original_author_id')
+        .eq('world_id', worldId)
+        .eq('user_id', userId)
+        .single();
+
+      // 檢查查詢錯誤
+      if (fetchError) {
+        if (fetchError.code === 'PGRST116') {
+          throw new Error('找不到要更新的世界觀');
+        }
+        throw new Error('查詢世界觀資訊失敗: ' + fetchError.message);
+      }
+
+      // 禁止將複製品設為公開
+      if (updates.visibility === 'public' && currentWorld?.original_author_id) {
+        throw new Error('複製的世界觀無法設為公開');
+      }
+
+      payload.visibility = updates.visibility;
+      // 首次公開時設定 published_at（只有當 published_at 尚未設定時）
+      if (updates.visibility === 'public') {
+        // 只有在 published_at 為 null 時才設定
+        if (!currentWorld?.published_at) {
+          payload.published_at = new Date().toISOString();
+        }
+      }
     }
 
     const { error } = await (supabase

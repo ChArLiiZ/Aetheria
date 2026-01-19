@@ -7,13 +7,16 @@ import { withRetry } from '@/lib/supabase/retry';
 import type { Character } from '@/types';
 
 /**
- * Get all characters for a user
+ * Get all characters for a user (include original author info for forked content)
  */
 export async function getCharacters(userId: string): Promise<Character[]> {
   return withRetry(async () => {
-    const { data, error } = await supabase
-      .from('characters')
-      .select('*')
+    const { data, error } = await (supabase
+      .from('characters') as any)
+      .select(`
+        *,
+        original_author:original_author_id(display_name, avatar_url)
+      `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -21,21 +24,30 @@ export async function getCharacters(userId: string): Promise<Character[]> {
       throw new Error('Failed to fetch characters: ' + error.message);
     }
 
-    return (data || []) as Character[];
+    // 合併原作者資訊到 character 物件
+    return (data || []).map((item: any) => ({
+      ...item,
+      original_author_name: item.original_author?.display_name || null,
+      original_author_avatar_url: item.original_author?.avatar_url || null,
+      original_author: undefined,
+    })) as Character[];
   });
 }
 
 /**
- * Get a single character by ID
+ * Get a single character by ID (include original author info for forked content)
  */
 export async function getCharacterById(
   characterId: string,
   userId: string
 ): Promise<Character | null> {
   return withRetry(async () => {
-    const { data, error } = await supabase
-      .from('characters')
-      .select('*')
+    const { data, error } = await (supabase
+      .from('characters') as any)
+      .select(`
+        *,
+        original_author:original_author_id(display_name, avatar_url)
+      `)
       .eq('character_id', characterId)
       .eq('user_id', userId)
       .single();
@@ -47,7 +59,13 @@ export async function getCharacterById(
       throw new Error('Failed to fetch character: ' + error.message);
     }
 
-    return data as Character;
+    // 合併原作者資訊到 character 物件
+    return {
+      ...data,
+      original_author_name: data.original_author?.display_name || null,
+      original_author_avatar_url: data.original_author?.avatar_url || null,
+      original_author: undefined,
+    } as Character;
   });
 }
 
@@ -95,6 +113,7 @@ export async function updateCharacter(
     core_profile_text: string;
     tags?: string[];
     image_url: string | null;
+    visibility: 'private' | 'public';
   }>
 ): Promise<Character> {
   return withRetry(async () => {
@@ -111,6 +130,37 @@ export async function updateCharacter(
     }
     if (data.image_url !== undefined) {
       updatePayload.image_url = data.image_url;
+    }
+    if (data.visibility !== undefined) {
+      // 查詢當前角色資訊（用於檢查是否為複製品和 published_at）
+      const { data: currentCharacter, error: fetchError } = await (supabase
+        .from('characters') as any)
+        .select('published_at, original_author_id')
+        .eq('character_id', characterId)
+        .eq('user_id', userId)
+        .single();
+
+      // 檢查查詢錯誤
+      if (fetchError) {
+        if (fetchError.code === 'PGRST116') {
+          throw new Error('找不到要更新的角色');
+        }
+        throw new Error('查詢角色資訊失敗: ' + fetchError.message);
+      }
+
+      // 禁止將複製品設為公開
+      if (data.visibility === 'public' && currentCharacter?.original_author_id) {
+        throw new Error('複製的角色無法設為公開');
+      }
+
+      updatePayload.visibility = data.visibility;
+      // 首次公開時設定 published_at（只有當 published_at 尚未設定時）
+      if (data.visibility === 'public') {
+        // 只有在 published_at 為 null 時才設定
+        if (!currentCharacter?.published_at) {
+          updatePayload.published_at = new Date().toISOString();
+        }
+      }
     }
 
     const { data: updatedCharacter, error } = await (supabase

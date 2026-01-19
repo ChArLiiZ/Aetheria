@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { LongPressCard } from '@/components/ui/long-press-card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, User, Edit, Trash2, Calendar } from 'lucide-react';
+import { Loader2, Plus, User, Edit, Trash2, Calendar, Globe, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   ListToolbar,
@@ -329,10 +330,16 @@ function CharactersListPageContent() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredAndSortedCharacters.map((character) => (
-              <Card
+              <LongPressCard
                 key={character.character_id}
-                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} cursor-pointer overflow-hidden`}
-                onClick={isSelectMode ? () => handleToggleSelect(character.character_id) : () => setViewingCharacterId(character.character_id)}
+                className={`relative flex flex-col hover:shadow-lg transition-shadow ${selectedIds.has(character.character_id) ? 'ring-2 ring-primary' : ''} overflow-hidden`}
+                isSelectMode={isSelectMode}
+                onEnterSelectMode={() => {
+                  setIsSelectMode(true);
+                  setSelectedIds(new Set([character.character_id]));
+                }}
+                onClick={() => setViewingCharacterId(character.character_id)}
+                onSelectModeClick={() => handleToggleSelect(character.character_id)}
               >
                 <ListItemCheckbox
                   checked={selectedIds.has(character.character_id)}
@@ -356,7 +363,14 @@ function CharactersListPageContent() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="line-clamp-1">{character.canonical_name}</CardTitle>
+                        {character.visibility === 'public' ? (
+                          <Globe className="h-4 w-4 flex-shrink-0 text-green-500" aria-label="公開" />
+                        ) : (
+                          <Lock className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-label="私人" />
+                        )}
+                      </div>
                       {renderCharacterTags(character)}
                     </div>
                   </div>
@@ -365,9 +379,17 @@ function CharactersListPageContent() {
                   <p className="text-sm text-muted-foreground line-clamp-3 mb-4">
                     {character.core_profile_text}
                   </p>
-                  <div className="flex items-center text-xs text-muted-foreground mt-auto" suppressHydrationWarning>
-                    <Calendar className="mr-1 h-3 w-3" />
-                    建立於 {new Date(character.created_at).toLocaleDateString('zh-TW')}
+                  <div className="flex flex-col gap-1 mt-auto">
+                    {character.original_author_name && (
+                      <div className="flex items-center text-xs text-muted-foreground">
+                        <User className="mr-1 h-3 w-3" />
+                        原作者: {character.original_author_name}
+                      </div>
+                    )}
+                    <div className="flex items-center text-xs text-muted-foreground" suppressHydrationWarning>
+                      <Calendar className="mr-1 h-3 w-3" />
+                      建立於 {new Date(character.created_at).toLocaleDateString('zh-TW')}
+                    </div>
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
@@ -390,7 +412,7 @@ function CharactersListPageContent() {
                     )}
                   </Button>
                 </CardFooter>
-              </Card>
+              </LongPressCard>
             ))}
           </div>
         )}

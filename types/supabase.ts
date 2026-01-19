@@ -20,6 +20,7 @@ export interface Database {
           user_id: string
           email: string
           display_name: string
+          avatar_url: string | null
           password_hash: string
           created_at: string
           updated_at: string
@@ -30,6 +31,7 @@ export interface Database {
           user_id?: string
           email: string
           display_name: string
+          avatar_url?: string | null
           password_hash: string
           created_at?: string
           updated_at?: string
@@ -40,6 +42,7 @@ export interface Database {
           user_id?: string
           email?: string
           display_name?: string
+          avatar_url?: string | null
           password_hash?: string
           created_at?: string
           updated_at?: string
@@ -82,6 +85,8 @@ export interface Database {
           rules_text: string
           tags_json: string | null
           image_url: string | null
+          visibility: 'private' | 'public'
+          published_at: string | null
           created_at: string
           updated_at: string
         }
@@ -93,6 +98,8 @@ export interface Database {
           rules_text: string
           tags_json?: string | null
           image_url?: string | null
+          visibility?: 'private' | 'public'
+          published_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -104,6 +111,8 @@ export interface Database {
           rules_text?: string
           tags_json?: string | null
           image_url?: string | null
+          visibility?: 'private' | 'public'
+          published_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -160,6 +169,8 @@ export interface Database {
           core_profile_text: string
           tags_json: string
           image_url: string | null
+          visibility: 'private' | 'public'
+          published_at: string | null
           created_at: string
           updated_at: string
         }
@@ -170,6 +181,8 @@ export interface Database {
           core_profile_text: string
           tags_json?: string
           image_url?: string | null
+          visibility?: 'private' | 'public'
+          published_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -180,6 +193,8 @@ export interface Database {
           core_profile_text?: string
           tags_json?: string
           image_url?: string | null
+          visibility?: 'private' | 'public'
+          published_at?: string | null
           created_at?: string
           updated_at?: string
         }

@@ -29,6 +29,8 @@ interface ImageUploadProps {
     disabled?: boolean;
     /** 裁切比例 (預設 1:1) */
     aspectRatio?: number;
+    /** 裁切形狀 (預設 rect) */
+    cropShape?: 'rect' | 'round';
 }
 
 // 壓縮選項
@@ -102,6 +104,7 @@ export function ImageUpload({
     className,
     disabled = false,
     aspectRatio = 1,
+    cropShape = 'rect',
 }: ImageUploadProps) {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isCompressing, setIsCompressing] = useState(false);
@@ -269,7 +272,10 @@ export function ImageUpload({
                 {displayUrl ? (
                     // 有圖片時顯示預覽
                     <div className="relative group">
-                        <div className="relative w-full max-w-[200px] aspect-square rounded-lg overflow-hidden border bg-muted">
+                        <div className={cn(
+                            "relative w-full max-w-[200px] aspect-square overflow-hidden border bg-muted",
+                            cropShape === 'round' ? 'rounded-full' : 'rounded-lg'
+                        )}>
                             <img
                                 src={displayUrl}
                                 alt="預覽圖片"
@@ -359,6 +365,8 @@ export function ImageUpload({
                                     crop={crop}
                                     zoom={zoom}
                                     aspect={aspectRatio}
+                                    cropShape={cropShape}
+                                    showGrid={cropShape === 'rect'}
                                     onCropChange={setCrop}
                                     onCropComplete={onCropComplete}
                                     onZoomChange={setZoom}
