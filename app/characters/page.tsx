@@ -23,8 +23,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, User, Edit, Trash2, Calendar, Globe, Lock } from 'lucide-react';
+import { Loader2, Plus, User, Edit, Trash2, Calendar, Globe, Lock, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import {
+  checkCharacterForUpdates,
+  getCharacterDiff,
+  syncCharacterFromSource,
+  skipCharacterUpdate,
+  CharacterDiff,
+} from '@/services/supabase/community';
+import { SyncUpdateDialog } from '@/components/sync-update-dialog';
 import {
   ListToolbar,
   ListItemCheckbox,
@@ -62,6 +70,12 @@ function CharactersListPageContent() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
   const [viewingCharacterId, setViewingCharacterId] = useState<string | null>(null);
+
+  // 同步功能狀態
+  const [updateAvailable, setUpdateAvailable] = useState<Map<string, boolean>>(new Map());
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncingCharacter, setSyncingCharacter] = useState<CharacterWithTags | null>(null);
+  const [syncDiff, setSyncDiff] = useState<CharacterDiff | null>(null);
 
   // Load characters
   useEffect(() => {
@@ -132,6 +146,89 @@ function CharactersListPageContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 檢查複製品是否有更新
+  useEffect(() => {
+    const checkUpdates = async () => {
+      if (!user?.user_id || characters.length === 0) return;
+
+      const forkedCharacters = characters.filter(c => c.forked_from_id);
+      const updates = new Map<string, boolean>();
+
+      for (const char of forkedCharacters) {
+        try {
+          const result = await checkCharacterForUpdates(char.character_id, user.user_id);
+          updates.set(char.character_id, result.hasUpdate);
+        } catch {
+          updates.set(char.character_id, false);
+        }
+      }
+
+      setUpdateAvailable(updates);
+    };
+
+    checkUpdates();
+  }, [characters, user?.user_id]);
+
+  // 開啟同步對話框
+  const openSyncDialog = async (character: CharacterWithTags) => {
+    if (!user?.user_id) return;
+
+    try {
+      const diffResult = await getCharacterDiff(character.character_id, user.user_id);
+      if (diffResult) {
+        setSyncingCharacter(character);
+        setSyncDiff(diffResult.diff);
+        setSyncDialogOpen(true);
+      } else {
+        toast.error('無法取得更新資訊');
+      }
+    } catch (err: any) {
+      toast.error(err.message || '取得差異失敗');
+    }
+  };
+
+  // 執行同步
+  const handleSync = async () => {
+    if (!syncingCharacter || !user?.user_id) return;
+
+    // 核心同步操作 - 失敗時拋出錯誤讓對話框保持開啟
+    try {
+      await syncCharacterFromSource(syncingCharacter.character_id, user.user_id);
+    } catch (err: any) {
+      toast.error(err.message || '同步失敗');
+      throw err;
+    }
+
+    // 同步成功後的後續操作 - 失敗不應阻止對話框關閉
+    toast.success('同步成功');
+    try {
+      await loadCharacters();
+    } catch (err) {
+      console.error('[handleSync] 重新載入角色失敗:', err);
+    }
+  };
+
+  // 跳過更新
+  const handleSkipUpdate = async () => {
+    if (!syncingCharacter || !user?.user_id) return;
+
+    // 核心操作 - 失敗時拋出錯誤讓對話框保持開啟
+    try {
+      await skipCharacterUpdate(syncingCharacter.character_id, user.user_id);
+    } catch (err: any) {
+      toast.error(err.message || '操作失敗');
+      throw err;
+    }
+
+    // 操作成功後更新本地狀態
+    setUpdateAvailable(prev => {
+      const newMap = new Map(prev);
+      newMap.set(syncingCharacter.character_id, false);
+      return newMap;
+    });
+    toast.success('已跳過此版本');
   };
 
   // 從目前項目收集所有標籤名稱用於篩選
@@ -341,6 +438,12 @@ function CharactersListPageContent() {
                 onClick={() => setViewingCharacterId(character.character_id)}
                 onSelectModeClick={() => handleToggleSelect(character.character_id)}
               >
+                {/* 複製品更新徽章 - 放在卡片級別確保正確定位 */}
+                {character.forked_from_id && updateAvailable.get(character.character_id) && (
+                  <Badge variant="default" className="absolute top-2 right-2 bg-primary z-10">
+                    新版本
+                  </Badge>
+                )}
                 <ListItemCheckbox
                   checked={selectedIds.has(character.character_id)}
                   onChange={() => handleToggleSelect(character.character_id)}
@@ -393,12 +496,25 @@ function CharactersListPageContent() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
-                  <Link href={`/characters/${character.character_id}/edit`} className="flex-1">
-                    <Button variant="outline" className="w-full">
-                      <Edit className="mr-2 h-4 w-4" />
-                      編輯
+                  {character.forked_from_id ? (
+                    // 複製品：顯示同步按鈕
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => openSyncDialog(character)}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {updateAvailable.get(character.character_id) ? '有更新' : '檢視同步'}
                     </Button>
-                  </Link>
+                  ) : (
+                    // 原創：顯示編輯按鈕
+                    <Link href={`/characters/${character.character_id}/edit`} className="flex-1">
+                      <Button variant="outline" className="w-full">
+                        <Edit className="mr-2 h-4 w-4" />
+                        編輯
+                      </Button>
+                    </Link>
+                  )}
                   <Button
                     variant="destructive"
                     size="icon"
@@ -459,6 +575,19 @@ function CharactersListPageContent() {
           open={!!viewingCharacterId}
           onOpenChange={(open) => !open && setViewingCharacterId(null)}
         />
+
+        {/* 同步更新對話框 */}
+        {syncingCharacter && syncDiff && (
+          <SyncUpdateDialog
+            open={syncDialogOpen}
+            onOpenChange={setSyncDialogOpen}
+            type="character"
+            itemName={syncingCharacter.canonical_name}
+            diff={syncDiff}
+            onSync={handleSync}
+            onSkip={handleSkipUpdate}
+          />
+        )}
       </main>
     </div>
   );

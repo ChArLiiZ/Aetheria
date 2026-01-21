@@ -80,7 +80,8 @@ function CommunityContent() {
         const loadWorlds = async () => {
             try {
                 setLoadingWorlds(true);
-                const data = await getPublicWorlds();
+                // 排除當前用戶的內容
+                const data = await getPublicWorlds(user?.user_id);
                 setWorlds(data);
             } catch (err: any) {
                 console.error('Failed to load public worlds:', err);
@@ -90,14 +91,15 @@ function CommunityContent() {
             }
         };
         loadWorlds();
-    }, []);
+    }, [user?.user_id]);
 
     // Load public characters
     useEffect(() => {
         const loadCharacters = async () => {
             try {
                 setLoadingCharacters(true);
-                const data = await getPublicCharacters();
+                // 排除當前用戶的內容
+                const data = await getPublicCharacters(user?.user_id);
                 setCharacters(data);
             } catch (err: any) {
                 console.error('Failed to load public characters:', err);
@@ -107,7 +109,7 @@ function CommunityContent() {
             }
         };
         loadCharacters();
-    }, []);
+    }, [user?.user_id]);
 
     // Collect all unique tags for filtering
     const allWorldTags = useMemo(() => collectTagsFromItems(worlds), [worlds]);

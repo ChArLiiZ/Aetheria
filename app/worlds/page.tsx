@@ -23,9 +23,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Globe, Edit, Trash2, Calendar, Lock, User } from 'lucide-react';
+import { Loader2, Plus, Globe, Edit, Trash2, Calendar, Lock, User, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { LongPressCard } from '@/components/ui/long-press-card';
+import {
+  checkWorldForUpdates,
+  getWorldDiff,
+  syncWorldFromSource,
+  skipWorldUpdate,
+  WorldDiff,
+} from '@/services/supabase/community';
+import { SyncUpdateDialog } from '@/components/sync-update-dialog';
 import {
   ListToolbar,
   ListItemCheckbox,
@@ -65,6 +73,12 @@ function WorldsPageContent() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
   const [viewingWorldId, setViewingWorldId] = useState<string | null>(null);
+
+  // 同步功能狀態
+  const [updateAvailable, setUpdateAvailable] = useState<Map<string, boolean>>(new Map());
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncingWorld, setSyncingWorld] = useState<WorldWithTags | null>(null);
+  const [syncDiff, setSyncDiff] = useState<WorldDiff | null>(null);
 
   // Load worlds with cancellation support
   useEffect(() => {
@@ -140,6 +154,89 @@ function WorldsPageContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 檢查複製品是否有更新
+  useEffect(() => {
+    const checkUpdates = async () => {
+      if (!user?.user_id || worlds.length === 0) return;
+
+      const forkedWorlds = worlds.filter(w => w.forked_from_id);
+      const updates = new Map<string, boolean>();
+
+      for (const world of forkedWorlds) {
+        try {
+          const result = await checkWorldForUpdates(world.world_id, user.user_id);
+          updates.set(world.world_id, result.hasUpdate);
+        } catch {
+          updates.set(world.world_id, false);
+        }
+      }
+
+      setUpdateAvailable(updates);
+    };
+
+    checkUpdates();
+  }, [worlds, user?.user_id]);
+
+  // 開啟同步對話框
+  const openSyncDialog = async (world: WorldWithTags) => {
+    if (!user?.user_id) return;
+
+    try {
+      const diffResult = await getWorldDiff(world.world_id, user.user_id);
+      if (diffResult) {
+        setSyncingWorld(world);
+        setSyncDiff(diffResult.diff);
+        setSyncDialogOpen(true);
+      } else {
+        toast.error('無法取得更新資訊');
+      }
+    } catch (err: any) {
+      toast.error(err.message || '取得差異失敗');
+    }
+  };
+
+  // 執行同步
+  const handleSync = async () => {
+    if (!syncingWorld || !user?.user_id) return;
+
+    // 核心同步操作 - 失敗時拋出錯誤讓對話框保持開啟
+    try {
+      await syncWorldFromSource(syncingWorld.world_id, user.user_id);
+    } catch (err: any) {
+      toast.error(err.message || '同步失敗');
+      throw err;
+    }
+
+    // 同步成功後的後續操作 - 失敗不應阻止對話框關閉
+    toast.success('同步成功');
+    try {
+      await loadWorlds();
+    } catch (err) {
+      console.error('[handleSync] 重新載入世界觀失敗:', err);
+    }
+  };
+
+  // 跳過更新
+  const handleSkipUpdate = async () => {
+    if (!syncingWorld || !user?.user_id) return;
+
+    // 核心操作 - 失敗時拋出錯誤讓對話框保持開啟
+    try {
+      await skipWorldUpdate(syncingWorld.world_id, user.user_id);
+    } catch (err: any) {
+      toast.error(err.message || '操作失敗');
+      throw err;
+    }
+
+    // 操作成功後更新本地狀態
+    setUpdateAvailable(prev => {
+      const newMap = new Map(prev);
+      newMap.set(syncingWorld.world_id, false);
+      return newMap;
+    });
+    toast.success('已跳過此版本');
   };
 
   // 從目前項目收集所有標籤名稱用於篩選
@@ -360,6 +457,12 @@ function WorldsPageContent() {
                 onClick={() => setViewingWorldId(world.world_id)}
                 onSelectModeClick={() => handleToggleSelect(world.world_id)}
               >
+                {/* 複製品更新徽章 - 放在卡片級別確保正確定位 */}
+                {world.forked_from_id && updateAvailable.get(world.world_id) && (
+                  <Badge variant="default" className="absolute top-2 right-2 bg-primary z-10">
+                    新版本
+                  </Badge>
+                )}
                 <ListItemCheckbox
                   checked={selectedIds.has(world.world_id)}
                   onChange={() => handleToggleSelect(world.world_id)}
@@ -412,12 +515,25 @@ function WorldsPageContent() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex gap-2 pt-4 border-t" onClick={(e) => e.stopPropagation()}>
-                  <Link href={`/worlds/${world.world_id}/edit`} className="flex-1">
-                    <Button variant="outline" className="w-full">
-                      <Edit className="mr-2 h-4 w-4" />
-                      編輯
+                  {world.forked_from_id ? (
+                    // 複製品：顯示同步按鈕
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => openSyncDialog(world)}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {updateAvailable.get(world.world_id) ? '有更新' : '檢視同步'}
                     </Button>
-                  </Link>
+                  ) : (
+                    // 原創：顯示編輯按鈕
+                    <Link href={`/worlds/${world.world_id}/edit`} className="flex-1">
+                      <Button variant="outline" className="w-full">
+                        <Edit className="mr-2 h-4 w-4" />
+                        編輯
+                      </Button>
+                    </Link>
+                  )}
                   <Button
                     variant="destructive"
                     size="icon"
@@ -478,6 +594,19 @@ function WorldsPageContent() {
           open={!!viewingWorldId}
           onOpenChange={(open) => !open && setViewingWorldId(null)}
         />
+
+        {/* 同步更新對話框 */}
+        {syncingWorld && syncDiff && (
+          <SyncUpdateDialog
+            open={syncDialogOpen}
+            onOpenChange={setSyncDialogOpen}
+            type="world"
+            itemName={syncingWorld.name}
+            diff={syncDiff}
+            onSync={handleSync}
+            onSkip={handleSkipUpdate}
+          />
+        )}
       </main>
     </div>
   );

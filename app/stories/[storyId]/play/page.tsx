@@ -49,7 +49,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle, FileEdit, Globe, RefreshCw } from 'lucide-react';
+import { Loader2, Send, ArrowLeft, BookOpen, Bot, AlertCircle, Settings, Lightbulb, RotateCcw, AlertTriangle, FileEdit, Globe, RefreshCw, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -804,16 +804,39 @@ function StoryPlayPageContent() {
 
                         return (
                           <Card key={sc.story_character_id} className="overflow-hidden">
-                            <CardHeader className="p-4 pb-2">
-                              <div className="flex items-center justify-between">
-                                <div className="font-semibold flex items-center gap-2 truncate">
+                            {/* 角色頭部區域：圖片 + 名稱 */}
+                            <CardHeader className="p-4 pb-3">
+                              <div className="flex items-center gap-4">
+                                {/* 角色頭像 */}
+                                <button
+                                  className="shrink-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 rounded-full"
+                                  onClick={() => setViewingCharacterId(sc.character_id)}
+                                >
+                                  {char.image_url ? (
+                                    <img
+                                      src={char.image_url}
+                                      alt={sc.display_name_override || char.canonical_name}
+                                      className="w-14 h-14 rounded-full object-cover border-2 border-muted hover:border-primary transition-colors"
+                                    />
+                                  ) : (
+                                    <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center border-2 border-muted hover:border-primary transition-colors">
+                                      <User className="h-6 w-6 text-muted-foreground" />
+                                    </div>
+                                  )}
+                                </button>
+                                {/* 名稱區域 */}
+                                <div className="flex-1 min-w-0">
                                   <button
-                                    className="hover:underline hover:text-primary transition-colors focus:outline-none"
+                                    className="text-lg font-bold hover:text-primary transition-colors focus:outline-none truncate block"
                                     onClick={() => setViewingCharacterId(sc.character_id)}
                                   >
                                     {sc.display_name_override || char.canonical_name}
                                   </button>
-                                  {sc.is_player && <Badge variant="secondary" className="text-[10px] h-5 shrink-0">玩家</Badge>}
+                                  {sc.is_player && (
+                                    <Badge variant="secondary" className="text-[10px] h-5 mt-1">
+                                      玩家角色
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                             </CardHeader>
@@ -841,7 +864,7 @@ function StoryPlayPageContent() {
                                           displayValue = value ? '是' : '否';
                                         } else if (schema.type === 'text') {
                                           displayValue = String(value);
-                                          isLongText = String(value).length > 20; // 稍微放寬標準
+                                          isLongText = String(value).length > 20;
                                         } else {
                                           displayValue = String(value);
                                         }
@@ -873,7 +896,6 @@ function StoryPlayPageContent() {
                                         }
                                         try {
                                           const v = JSON.parse(sv.value_json);
-                                          // Handle both number type and string that is a valid number
                                           const n = Number(v);
                                           if (!isNaN(n) && v !== null && v !== '') {
                                             numericValue = n;
@@ -903,7 +925,6 @@ function StoryPlayPageContent() {
                                                 value={Math.min(100, Math.max(0, ((numericValue - (minVal || 0)) / (maxVal - (minVal || 0))) * 100))}
                                                 className="h-1.5"
                                               />
-                                              {/* Optional: Add percentage or ratio text if needed, but allow clutter free for now unless requested */}
                                             </div>
                                           )}
                                         </div>

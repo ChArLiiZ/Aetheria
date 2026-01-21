@@ -57,6 +57,7 @@ export interface World {
   forked_from_id?: string | null; // Fork 來源 ID
   original_author_name?: string | null; // 原作者顯示名稱（查詢時填充）
   original_author_avatar_url?: string | null; // 原作者頭像（查詢時填充）
+  last_synced_at?: string | null; // 最後同步時間（複製品用）
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +99,7 @@ export interface Character {
   forked_from_id?: string | null; // Fork 來源 ID
   original_author_name?: string | null; // 原作者顯示名稱（查詢時填充）
   original_author_avatar_url?: string | null; // 原作者頭像（查詢時填充）
+  last_synced_at?: string | null; // 最後同步時間（複製品用）
   created_at: string;
   updated_at: string;
 }
