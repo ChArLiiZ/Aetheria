@@ -121,10 +121,8 @@ export async function callSuggestionAgent(
     console.log('[callSuggestionAgent] 角色數量:', input.characters.length);
     console.log('[callSuggestionAgent] 最近回合數:', input.recent_turns.length);
 
-    // Use lower max_tokens since we only need short suggestions
     const defaultParams = {
         temperature: 0.8, // Slightly higher for creative suggestions
-        max_tokens: 500,
         top_p: 0.9,
         ...params,
     };

@@ -60,7 +60,6 @@ function SettingsPageContent() {
   const [usePreset, setUsePreset] = useState<"preset" | "custom">("preset");
   const [customModel, setCustomModel] = useState('');
   const [temperature, setTemperature] = useState(1.0);
-  const [maxTokens, setMaxTokens] = useState(4000);
   const [topP, setTopP] = useState(1.0);
   const [defaultContextTurns, setDefaultContextTurns] = useState(5);
   const [savingProvider, setSavingProvider] = useState(false);
@@ -118,7 +117,6 @@ function SettingsPageContent() {
       try {
         const params: AIParams = JSON.parse(settings.default_params_json || '{}');
         setTemperature(params.temperature ?? 1.0);
-        setMaxTokens(params.max_tokens ?? 4000);
         setTopP(params.top_p ?? 1.0);
       } catch (e) {
         console.error('Failed to parse params:', e);
@@ -132,7 +130,6 @@ function SettingsPageContent() {
       setCustomModel('');
       setUsePreset("preset");
       setTemperature(1.0);
-      setMaxTokens(4000);
       setTopP(1.0);
       setDefaultContextTurns(5);
     }
@@ -195,7 +192,6 @@ function SettingsPageContent() {
         default_model: model.trim(),
         default_params: {
           temperature,
-          max_tokens: maxTokens,
           top_p: topP,
         },
       });
@@ -559,21 +555,6 @@ function SettingsPageContent() {
                         step={0.1}
                         value={temperature}
                         onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Max Tokens (長度): {maxTokens}</Label>
-                      </div>
-                      <input
-                        type="range"
-                        min={100}
-                        max={128000}
-                        step={100}
-                        value={maxTokens}
-                        onChange={(e) => setMaxTokens(parseInt(e.target.value))}
                         className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
                       />
                     </div>

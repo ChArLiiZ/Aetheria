@@ -176,7 +176,6 @@ export async function generateWorld(
 
     const defaultParams = {
         temperature: 0.8,
-        max_tokens: 4000,
         top_p: 0.9,
         ...params,
     };
@@ -231,7 +230,6 @@ export async function generateCharacter(
 
     const defaultParams = {
         temperature: 0.8,
-        max_tokens: 2000,
         top_p: 0.9,
         ...params,
     };
@@ -299,10 +297,10 @@ ${sections.join('\n')}
     const basePrompt = `你是一個創意寫作助手，專門幫助使用者建立完整的互動小說設定。
 
 # 任務
-${hasCurrentData 
-    ? '根據使用者的指示，修改現有的互動小說設定。請保留使用者沒有要求修改的部分，只修改使用者指定要變更的內容。'
-    : '根據使用者的描述，一次性生成完整的互動小說設定，包括：\n1. 世界觀（名稱、描述、規則、標籤、狀態系統）\n2. 角色（根據使用者描述生成所有提到的角色，包含背景、標籤和初始狀態）\n3. 故事設定（標題、前提、模式、標籤、提示詞）'
-}
+${hasCurrentData
+            ? '根據使用者的指示，修改現有的互動小說設定。請保留使用者沒有要求修改的部分，只修改使用者指定要變更的內容。'
+            : '根據使用者的描述，一次性生成完整的互動小說設定，包括：\n1. 世界觀（名稱、描述、規則、標籤、狀態系統）\n2. 角色（根據使用者描述生成所有提到的角色，包含背景、標籤和初始狀態）\n3. 故事設定（標題、前提、模式、標籤、提示詞）'
+        }
 ${existingTagsSection}
 # 重要：世界觀與角色/故事的分離原則
 世界觀應該是「通用的背景設定」，可以支持多種不同的故事和角色，而不是被特定角色的能力或故事情節過度影響。
@@ -448,14 +446,14 @@ export async function generateFullStory(
     params?: Record<string, any>
 ): Promise<FullStoryGenerationOutput> {
     const hasCurrentData = !!input.currentData;
-    
+
     // 收集現有標籤
     const existingTags = {
         characterTags: input.existingCharacterTags,
         worldTags: input.existingWorldTags,
         storyTags: input.existingStoryTags,
     };
-    
+
     const messages: OpenRouterMessage[] = [
         {
             role: 'system',
@@ -482,14 +480,13 @@ export async function generateFullStory(
 
     const defaultParams = {
         temperature: 0.8,
-        max_tokens: 8000,
         top_p: 0.9,
         ...params,
     };
 
     try {
         console.log('[generateFullStory] 開始生成完整故事設定...');
-        
+
         const response = await callOpenRouterJsonWithRetry<FullStoryGenerationOutput>(
             apiKey,
             messages,
@@ -539,7 +536,7 @@ export async function generateFullStory(
         if (!hasPlayer) {
             parsed.characters[0].is_player = true;
         }
-        
+
         // 確保每個角色的 tags 是陣列，且 initial_states 存在
         for (const char of parsed.characters) {
             if (!Array.isArray(char.tags)) {

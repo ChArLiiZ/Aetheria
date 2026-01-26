@@ -72,6 +72,7 @@ export function AIGenerationDialog({
 }: AIGenerationDialogProps) {
     const { user } = useAuth();
     const [prompt, setPrompt] = useState('');
+    const [lastPrompt, setLastPrompt] = useState(''); // 記錄上次的輸入
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -141,6 +142,7 @@ export function AIGenerationDialog({
             }
 
             onGenerated(result);
+            setLastPrompt(prompt); // 保存這次的輸入
             setPrompt('');
             onOpenChange(false);
         } catch (err: any) {
@@ -176,6 +178,27 @@ export function AIGenerationDialog({
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
+                    {/* 顯示上次的輸入 */}
+                    {lastPrompt && (
+                        <div className="space-y-2 p-3 rounded-md bg-muted/50 border">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-medium text-muted-foreground">上次輸入的內容</Label>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-auto py-1 px-2 text-xs"
+                                    onClick={() => setPrompt(lastPrompt)}
+                                    disabled={loading}
+                                >
+                                    載入
+                                </Button>
+                            </div>
+                            <p className="text-sm text-foreground/80 whitespace-pre-wrap break-words">
+                                {lastPrompt}
+                            </p>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         <Label htmlFor="generation-prompt">描述你的需求</Label>
                         <Textarea

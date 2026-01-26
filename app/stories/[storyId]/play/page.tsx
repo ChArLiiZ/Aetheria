@@ -97,7 +97,6 @@ function StoryPlayPageContent() {
   const [tempModel, setTempModel] = useState<string>('');
   const [tempCustomModel, setTempCustomModel] = useState<string>('');
   const [tempTemperature, setTempTemperature] = useState<number>(0.7);
-  const [tempMaxTokens, setTempMaxTokens] = useState<number>(3000);
   const [tempContextTurns, setTempContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS);
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -171,7 +170,6 @@ function StoryPlayPageContent() {
           ? JSON.parse(storyData.params_override_json)
           : JSON.parse(settings.default_params_json || '{}');
         setTempTemperature(params.temperature ?? 0.7);
-        setTempMaxTokens(params.max_tokens ?? 3000);
         setTempContextTurns(storyData.context_turns_override ?? settings.default_context_turns ?? DEFAULT_CONTEXT_TURNS);
 
         // Load character states
@@ -316,7 +314,6 @@ function StoryPlayPageContent() {
         model: selectedModel,
         params: {
           temperature: tempTemperature,
-          max_tokens: tempMaxTokens,
         },
         contextTurns: tempContextTurns,
       });
@@ -375,7 +372,6 @@ function StoryPlayPageContent() {
         model: selectedModel,
         params: {
           temperature: tempTemperature,
-          max_tokens: tempMaxTokens,
         },
         contextTurns: tempContextTurns,
       });
@@ -510,7 +506,6 @@ function StoryPlayPageContent() {
         model_override: selectedModel,
         params_override_json: JSON.stringify({
           temperature: tempTemperature,
-          max_tokens: tempMaxTokens,
         }),
         context_turns_override: tempContextTurns,
       });
@@ -519,7 +514,6 @@ function StoryPlayPageContent() {
         model_override: selectedModel,
         params_override_json: JSON.stringify({
           temperature: tempTemperature,
-          max_tokens: tempMaxTokens,
         }),
         context_turns_override: tempContextTurns,
       });
@@ -736,18 +730,6 @@ function StoryPlayPageContent() {
                         step={0.1}
                       />
                       <p className="text-xs text-muted-foreground">0 = 保守穩定，2 = 創意多變</p>
-                    </div>
-
-                    {/* Max Tokens */}
-                    <div className="space-y-2">
-                      <Label>Max Tokens（回應長度上限）</Label>
-                      <Input
-                        type="number"
-                        value={tempMaxTokens}
-                        onChange={(e) => setTempMaxTokens(parseInt(e.target.value) || 1000)}
-                        min={100}
-                        max={8000}
-                      />
                     </div>
 
                     {/* Context Turns */}

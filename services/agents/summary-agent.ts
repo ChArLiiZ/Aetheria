@@ -105,7 +105,6 @@ export async function callSummaryAgent(
         temperature: 0.5,
         top_p: 0.9,
         ...params,
-        max_tokens: 4000,
     };
 
     try {
