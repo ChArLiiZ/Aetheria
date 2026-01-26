@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 專案概述
 
-**Aetheria** 是一個基於 Next.js 15 和 Supabase 構建的 AI 互動小說平台。使用者可以創建自訂世界觀及狀態系統、定義角色，並透過 AI 驅動的敘事引擎體驗遊戲。平台支援雙 AI 供應商（OpenRouter 與 OpenAI），並具備進階狀態管理、滾動摘要系統與 AI 輔助內容生成功能。
+**Aetheria** 是一個基於 Next.js 15 和 Supabase 構建的 AI 互動小說平台。使用者可以創建自訂世界觀及狀態系統、定義角色，並透過 AI 驅動的敘事引擎體驗遊戲。平台支援雙 AI 供應商（OpenRouter 與 OpenAI），並具備進階狀態管理、滾動摘要系統、AI 輔助內容生成、社群內容分享、Fork 與同步機制、圖片上傳等完整功能。
 
 ## 開發指令
 
@@ -36,11 +36,18 @@ npm run tauri            # Tauri CLI 指令
 
 ```
 World（世界規則、狀態 Schema）
+  ├─> visibility（private | public）
+  ├─> original_author_id、forked_from_id（Fork 追蹤）
   └─> Story（故事提示、模式、AI 設定）
        ├─> Story Characters（連結到 Character 定義）
        ├─> Story State Values（各角色狀態追蹤）
        └─> Story Turns（玩家輸入 → AI 敘事歷史）
             └─> Change Logs（狀態變更稽核記錄）
+
+Character（角色定義）
+  ├─> visibility（private | public）
+  ├─> original_author_id、forked_from_id（Fork 追蹤）
+  └─> image_url（圖片）
 ```
 
 ### 核心概念
@@ -57,6 +64,18 @@ World（世界規則、狀態 Schema）
 - `DIRECTOR` - 玩家導演所有角色和事件（全知視角）
 
 **滾動摘要系統（Rolling Summary System）**：每 N 個回合自動生成故事摘要（可透過 `context_turns_override` 設定），以維持 AI 長期記憶同時減少上下文大小。
+
+**可見性與 Fork 系統（Visibility & Fork System）**：
+- 世界觀與角色可設為 `private`（私人）或 `public`（公開）
+- 只有原創內容（`original_author_id` 為 NULL）才能設為公開
+- 複製品（`forked_from_id` 非 NULL）強制為私人，無法改為公開
+- 支援版本追蹤與同步更新（`last_synced_at`）
+- 保留原作者資訊供使用者瀏覽
+
+**圖片上傳系統（Image Upload System）**：
+- 世界觀、角色與使用者頭像支援圖片上傳
+- 使用 Supabase Storage，格式為 WebP
+- 路徑結構：`{entityType}/{userId}/{entityId}.webp`
 
 ### AI Agent 架構
 
@@ -118,10 +137,27 @@ services/
 ├── agents/          # AI Agent 實作
 ├── gameplay/        # 遊戲邏輯（execute-turn、rollback）
 ├── supabase/        # 資料庫 CRUD 操作（每個表一個檔案）
+│   ├── community.ts         # 公開內容查詢、Fork、版本同步
+│   ├── storage.ts           # 圖片上傳與管理
+│   ├── check-story-updates.ts  # 故事更新檢查
+│   ├── story-reset.ts       # 故事重置功能
+│   ├── tags.ts              # 標籤管理
+│   └── ...                  # 其他表對應的服務
 └── ai/              # AI 供應商整合（OpenRouter、OpenAI）
 ```
 
 **設計模式**：每個 Supabase 表都有對應的 Service 檔案，包含 CRUD 操作（例如：`services/supabase/worlds.ts` 對應 worlds 表）。
+
+**重要服務檔案**：
+- **community.ts**：處理公開內容的查詢、複製（Fork）、版本檢查與同步
+  - `getPublicWorlds()`、`getPublicCharacters()` - 取得公開內容
+  - `copyWorldToCollection()`、`copyCharacterToCollection()` - 複製到收藏
+  - `checkWorldForUpdates()`、`checkCharacterForUpdates()` - 檢查更新
+  - `getWorldDiff()`、`getCharacterDiff()` - 取得差異比對
+  - `syncWorldFromSource()`、`syncCharacterFromSource()` - 同步更新
+  - `skipWorldUpdate()`、`skipCharacterUpdate()` - 跳過更新
+- **storage.ts**：圖片上傳與管理（Supabase Storage）
+- **check-story-updates.ts**：檢查故事使用的世界觀/角色/Schema 是否有更新
 
 ### 元件模式
 
@@ -130,19 +166,48 @@ services/
 - **舊版元件**：`components/ui-legacy/` 包含舊元件（逐步淘汰中）
 - **認證**：`components/auth/ProtectedRoute.tsx` 中的 `ProtectedRoute` 包裝器
 
+### 頁面路由結構
+
+主要頁面路徑：
+- `/` - 首頁
+- `/login`、`/register` - 認證頁面
+- `/dashboard` - 使用者儀表板
+- `/settings` - 使用者設定
+- `/community` - 社群瀏覽頁面（公開世界觀與角色）
+- `/worlds` - 世界觀列表
+- `/worlds/[worldId]` - 世界觀詳情
+- `/worlds/[worldId]/edit` - 編輯世界觀與 Schema
+- `/characters` - 角色列表
+- `/characters/[characterId]` - 角色詳情
+- `/characters/[characterId]/edit` - 編輯角色
+- `/stories` - 故事列表
+- `/stories/generate` - AI 生成完整故事
+- `/stories/[storyId]` - 故事詳情與設定
+- `/stories/[storyId]/play` - 遊玩故事（主要遊戲介面）
+
 ### 型別系統
 
 核心型別位於 `types/database/index.ts`。主要介面：
 - `World`、`WorldStateSchema`
+  - 新增欄位：`visibility`、`image_url`、`original_author_id`、`forked_from_id`、`last_synced_at`、`published_at`
 - `Character`、`StoryCharacter`
+  - 新增欄位：`visibility`、`image_url`、`original_author_id`、`forked_from_id`、`last_synced_at`、`published_at`
+- `User`
+  - 新增欄位：`avatar_url`
 - `Story`、`StoryTurn`、`StoryStateValue`
 - `ProviderSettings`、`AIParams`
+- `Visibility` = `'private' | 'public'`
 
 Agent 型別位於 `types/api/agents.ts`：
 - `StoryAgentInput/Output`
 - `SuggestionAgentInput/Output`
 - `WorldGenerationInput/Output`、`CharacterGenerationInput/Output`
 - `FullStoryGenerationInput/Output`、`GeneratedCharacterData`
+
+社群功能型別（`services/supabase/community.ts`）：
+- `PublicWorld`、`PublicCharacter` - 包含作者資訊
+- `UpdateInfo` - 更新檢查結果
+- `WorldDiff`、`CharacterDiff` - 差異比對結果
 
 ### 路徑別名
 
@@ -178,10 +243,68 @@ Agent 型別位於 `types/api/agents.ts`：
 
 ### 標籤系統
 
-最近新增的標籤系統支援 Worlds、Stories 與 Characters：
-- 以 JSON 陣列形式儲存於 `tags_json` 欄位（例如：`["fantasy", "magic"]`）
-- 遷移檔：`010_add_tags_to_worlds_stories.sql`
-- 讀寫時需解析/序列化
+標籤系統支援 Worlds、Stories 與 Characters：
+- 使用關聯表儲存：`world_tags`、`story_tags`、`character_tags`
+- 標籤按使用者和類型分類儲存於 `tags` 表
+- 遷移檔：`010_add_tags_to_worlds_stories.sql`、`011_centralized_tags.sql`
+- 支援標籤篩選與批次刪除
+
+### 社群功能與 Fork 系統
+
+**可見性管理**：
+- 世界觀和角色可設為 `private`（預設）或 `public`
+- 只有原創內容才能設為公開（`original_author_id` 為 NULL）
+- 公開後會記錄 `published_at` 時間戳
+- 複製品（Fork）強制為私人，無法改為公開
+- RLS 政策確保只有公開內容可被其他使用者查看
+
+**Fork 機制**：
+- 使用者可從社群頁面（`/community`）瀏覽公開的世界觀與角色
+- 複製功能：`copyWorldToCollection()`、`copyCharacterToCollection()`
+- 複製時會：
+  1. 建立副本並設為私人
+  2. 保留原作者資訊（`original_author_id`）
+  3. 記錄 Fork 來源（`forked_from_id`）
+  4. 設定初始同步時間（`last_synced_at`）
+  5. 複製 Schema（僅世界觀）和標籤
+
+**版本同步**：
+- 檢查更新：`checkWorldForUpdates()`、`checkCharacterForUpdates()`
+- 差異比對：`getWorldDiff()`、`getCharacterDiff()` - 比較複製品與原始版本
+- 同步更新：`syncWorldFromSource()`、`syncCharacterFromSource()` - 覆蓋本地修改
+- 跳過更新：`skipWorldUpdate()`、`skipCharacterUpdate()` - 保留本地版本但標記為已讀
+- 遷移檔：`014_visibility.sql`、`016_public_content_rls.sql`、`017_fork_content_fields.sql`、`018_fork_content_rls.sql`、`019_sync_version_tracking.sql`
+
+### 圖片上傳系統
+
+使用 Supabase Storage 管理圖片：
+- 支援的實體類型：`characters`、`worlds`、`avatars`
+- 圖片格式：WebP（統一格式以優化效能）
+- 路徑結構：
+  - 角色/世界觀：`{entityType}/{userId}/{entityId}.webp`
+  - 使用者頭像：`avatars/{userId}/avatar.webp`
+- 主要函式（`services/supabase/storage.ts`）：
+  - `uploadImage()` - 上傳圖片（使用 upsert 模式）
+  - `deleteImage()` - 刪除圖片
+  - `getPublicUrl()` - 取得公開 URL
+  - `imageExists()` - 檢查圖片是否存在
+- 遷移檔：`013_image_upload.sql`、`015_user_avatar.sql`
+
+### 故事管理功能
+
+**故事更新檢查**：
+- `checkStoryUpdates()` 檢查故事使用的世界觀、Schema、角色是否有更新
+- 比較各資源的 `updated_at` 與故事的 `updated_at`
+- 在故事頁面顯示更新提示
+- 重新開始故事後會更新 `story.updated_at`，清除更新提示
+
+**故事重置**：
+- 允許使用者重新開始故事（刪除所有回合和狀態）
+- 保留故事設定和角色配置
+
+**重新生成回合**：
+- 允許使用者使用相同輸入重試先前的回合
+- 透過 rollback 後再次執行回合實現
 
 ## 測試與除錯
 
@@ -195,6 +318,9 @@ console.log('[functionName] 描述:', data)
 - `[callStoryAgent]` - AI 請求/回應
 - `[executeTurn]` - 回合執行步驟
 - `[applyStateChanges]` - 狀態修改
+- `[checkStoryUpdates]` - 故事更新檢查
+- `[copyWorldToCollection]`、`[copyCharacterToCollection]` - Fork 操作
+- `[syncWorldFromSource]`、`[syncCharacterFromSource]` - 版本同步
 
 ## 常見工作流程
 
@@ -224,6 +350,49 @@ console.log('[functionName] 描述:', data)
 3. 重新生成 Supabase 型別：檢查是否有型別生成腳本或手動更新
 4. 在 `services/supabase/` 新增對應的服務函式
 
+### 實作 Fork 與同步功能
+
+若需為新的資源類型（如 Stories）添加 Fork 功能：
+
+1. **資料庫 Schema**：
+   - 新增欄位：`visibility`、`original_author_id`、`forked_from_id`、`last_synced_at`、`published_at`
+   - 更新 RLS 政策以支援公開內容查詢
+
+2. **型別定義**：
+   - 在 `types/database/index.ts` 更新介面定義
+
+3. **服務函式**：
+   - 在 `services/supabase/community.ts` 或相關服務檔案中新增：
+     - `getPublicXXX()` - 查詢公開內容
+     - `copyXXXToCollection()` - 複製到收藏
+     - `checkXXXForUpdates()` - 檢查更新
+     - `getXXXDiff()` - 差異比對
+     - `syncXXXFromSource()` - 同步更新
+     - `skipXXXUpdate()` - 跳過更新
+
+4. **UI 元件**：
+   - 可見性設定切換（僅原創內容可用）
+   - 社群瀏覽頁面
+   - 更新提示與同步對話框
+   - 原作者資訊顯示
+
+### 整合圖片上傳功能
+
+為新的實體類型添加圖片上傳：
+
+1. **更新 Storage 服務**：
+   - 在 `services/supabase/storage.ts` 的 `ImageEntityType` 添加新類型
+   - 更新 `getImagePath()` 以支援新路徑結構
+
+2. **UI 元件**：
+   - 使用圖片上傳元件（通常包含預覽、裁切、刪除功能）
+   - 呼叫 `uploadImage()` 上傳檔案
+   - 將回傳的 `image_url` 儲存到資料庫
+
+3. **表單處理**：
+   - 處理圖片檔案與其他表單資料分開
+   - 先上傳圖片取得 URL，再更新資料庫記錄
+
 ## 效能考量
 
 - **上下文管理**：透過滾動摘要緩解大型回合歷史
@@ -233,7 +402,34 @@ console.log('[functionName] 描述:', data)
 
 ## 安全性注意事項
 
-- API 金鑰儲存於使用者的 `provider_settings` 表（由 RLS 保護）
-- 絕不將 `SUPABASE_SERVICE_ROLE_KEY` 暴露給客戶端
-- 所有資料庫操作透過 RLS 政策強制執行使用者擁有權
-- AI prompts 包含使用者生成的內容 - 適用標準注入防護
+- **API 金鑰保護**：API 金鑰儲存於使用者的 `provider_settings` 表（由 RLS 保護）
+- **服務金鑰隔離**：絕不將 `SUPABASE_SERVICE_ROLE_KEY` 暴露給客戶端
+- **RLS 政策**：
+  - 所有資料庫操作透過 RLS 政策強制執行使用者擁有權
+  - 公開內容查詢使用專門的 RLS 政策（`016_public_content_rls.sql`、`018_fork_content_rls.sql`）
+  - 複製品僅允許原擁有者修改，但保留原作者資訊供顯示
+- **可見性控制**：
+  - 只有原創內容才能設為公開
+  - Fork 的內容強制為私人，無法改為公開
+  - 前端 UI 需檢查 `original_author_id` 是否為 NULL 來決定是否顯示可見性切換
+- **圖片上傳**：
+  - Supabase Storage 的 RLS 政策控制存取權限
+  - 使用 `upsert: true` 模式避免重複上傳
+  - 刪除實體時應同時清理 Storage 中的圖片
+- **AI Prompt 注入防護**：AI prompts 包含使用者生成的內容 - 適用標準注入防護
+
+## 資料庫遷移歷史
+
+關鍵遷移檔案（按順序）：
+- `001-009` - 基礎 Schema、RLS、認證、摘要系統
+- `010-011` - 標籤系統（從 JSON 到關聯表）
+- `012` - 移除 Story Status 系統
+- `013` - 圖片上傳支援
+- `014` - 可見性欄位
+- `015` - 使用者頭像
+- `016` - 公開內容 RLS 政策
+- `017` - Fork 欄位（original_author_id、forked_from_id）
+- `018` - Fork RLS 政策
+- `019` - 版本同步追蹤（last_synced_at）
+
+遷移順序很重要，必須按編號順序套用。
