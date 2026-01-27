@@ -54,24 +54,40 @@ async function getCroppedImage(
         throw new Error('No 2d context');
     }
 
+    // 確保裁切區域不超出圖片範圍
+    const safeX = Math.max(0, Math.min(pixelCrop.x, image.width));
+    const safeY = Math.max(0, Math.min(pixelCrop.y, image.height));
+    const safeWidth = Math.min(pixelCrop.width, image.width - safeX);
+    const safeHeight = Math.min(pixelCrop.height, image.height - safeY);
+
+    // 四捨五入像素值以確保精確度
+    const x = Math.round(safeX);
+    const y = Math.round(safeY);
+    const width = Math.round(safeWidth);
+    const height = Math.round(safeHeight);
+
     // 設定 canvas 尺寸為裁切區域大小
-    canvas.width = pixelCrop.width;
-    canvas.height = pixelCrop.height;
+    canvas.width = width;
+    canvas.height = height;
+
+    // 啟用高品質圖像平滑
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
     // 繪製裁切區域
     ctx.drawImage(
         image,
-        pixelCrop.x,
-        pixelCrop.y,
-        pixelCrop.width,
-        pixelCrop.height,
+        x,
+        y,
+        width,
+        height,
         0,
         0,
-        pixelCrop.width,
-        pixelCrop.height
+        width,
+        height
     );
 
-    // 轉換為 Blob
+    // 轉換為 Blob，提高品質到 0.95
     return new Promise((resolve, reject) => {
         canvas.toBlob(
             (blob) => {
@@ -82,7 +98,7 @@ async function getCroppedImage(
                 }
             },
             'image/webp',
-            0.9
+            0.95
         );
     });
 }
@@ -358,7 +374,7 @@ export function ImageUpload({
 
                     <div className="space-y-4">
                         {/* 裁切區域 */}
-                        <div className="relative h-[300px] bg-muted rounded-lg overflow-hidden">
+                        <div className="relative h-[400px] bg-muted rounded-lg overflow-hidden">
                             {cropImageSrc && (
                                 <Cropper
                                     image={cropImageSrc}
@@ -370,6 +386,8 @@ export function ImageUpload({
                                     onCropChange={setCrop}
                                     onCropComplete={onCropComplete}
                                     onZoomChange={setZoom}
+                                    objectFit="contain"
+                                    minZoom={0.5}
                                 />
                             )}
                         </div>
@@ -378,16 +396,16 @@ export function ImageUpload({
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <Label>縮放</Label>
-                                <span className="text-sm text-muted-foreground">{zoom.toFixed(1)}x</span>
+                                <span className="text-sm text-muted-foreground">{zoom.toFixed(2)}x</span>
                             </div>
                             <div className="flex items-center gap-3">
                                 <ZoomOut className="h-4 w-4 text-muted-foreground" />
                                 <Slider
                                     value={[zoom]}
                                     onValueChange={(values) => setZoom(values[0])}
-                                    min={1}
-                                    max={3}
-                                    step={0.1}
+                                    min={0.5}
+                                    max={5}
+                                    step={0.05}
                                     className="flex-1"
                                 />
                                 <ZoomIn className="h-4 w-4 text-muted-foreground" />
@@ -395,7 +413,7 @@ export function ImageUpload({
                         </div>
 
                         <p className="text-xs text-muted-foreground text-center">
-                            拖曳圖片調整位置，使用滑桿調整縮放
+                            拖曳圖片調整位置，使用滑桿調整縮放。裁切框內的內容即為最終結果。
                         </p>
                     </div>
 

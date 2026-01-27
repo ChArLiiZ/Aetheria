@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,6 +57,7 @@ import { MODEL_PRESETS, PROVIDER_INFO, Provider, PROVIDERS, DEFAULT_PROVIDER, DE
 import { WorldDetailsDialog } from '@/components/world-details-dialog';
 import { CharacterDetailsDialog } from '@/components/character-details-dialog';
 import { StoryUpdateAlert } from '@/components/story-update-alert';
+import { TurnCard } from '@/components/story/turn-card';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
@@ -260,7 +261,7 @@ function StoryPlayPageContent() {
     }
   }, [userInput]);
 
-  const handleDeleteFromTurn = async (turnIndex: number) => {
+  const handleDeleteFromTurn = useCallback(async (turnIndex: number) => {
     if (!user || !story || deletingTurnIndex !== null || submitting) return;
 
     if (!confirm(`確定要刪除回合 ${turnIndex} 及其後所有內容嗎？\n\n此操作將回溯角色狀態，且無法復原。`)) {
@@ -283,9 +284,9 @@ function StoryPlayPageContent() {
     } finally {
       setDeletingTurnIndex(null);
     }
-  };
+  }, [user, story, deletingTurnIndex, submitting, storyId]);
 
-  const handleRegenerate = async (turnIndex: number, previousInput: string) => {
+  const handleRegenerate = useCallback(async (turnIndex: number, previousInput: string) => {
     if (!user || !story || !providerSettings || submitting || deletingTurnIndex !== null) return;
 
     try {
@@ -344,7 +345,7 @@ function StoryPlayPageContent() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [user, story, providerSettings, submitting, deletingTurnIndex, tempUsePreset, tempModel, tempCustomModel, tempTemperature, tempContextTurns, turns, storyId]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -955,69 +956,19 @@ function StoryPlayPageContent() {
             </CardContent>
           </Card>
 
-          {/* Turns */}
+          {/* Turns - 使用 TurnCard 組件以優化效能 */}
           {turns.map((turn, index) => (
-            <div key={turn.turn_id} className="space-y-6">
-              {/* User Input */}
-              <div className="flex justify-end pl-12">
-                <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 max-w-full md:max-w-[85%] shadow-sm">
-                  <p className="whitespace-pre-wrap leading-relaxed">{turn.user_input_text}</p>
-                </div>
-              </div>
-
-              {/* AI-Response */}
-              <div className="flex gap-4 pr-4">
-                <div className="shrink-0 mt-1">
-                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border">
-                    <Bot className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </div>
-                <div className="space-y-2 flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground font-medium">回合 {turn.turn_index}</span>
-                    <div className="flex items-center gap-2">
-                      {index === turns.length - 1 && ( // Note: 'questions' isn't available here, using turns.length check is fine. 'index' comes from map.
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-primary"
-                          onClick={() => handleRegenerate(turn.turn_index, turn.user_input_text)}
-                          disabled={submitting || deletingTurnIndex !== null}
-                          title="重新產生 (刪除此回應並重試)"
-                        >
-                          {submitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs text-muted-foreground hover:text-destructive p-0"
-                        onClick={() => handleDeleteFromTurn(turn.turn_index)}
-                        disabled={deletingTurnIndex !== null || submitting}
-                      >
-                        {deletingTurnIndex === turn.turn_index ? '刪除中...' : '回溯至此'}
-                      </Button>
-                    </div>
-                  </div>
-                  {/* Markdown Rendered Narrative */}
-                  <div className="prose dark:prose-invert max-w-none text-foreground leading-relaxed">
-                    <ReactMarkdown
-                      components={{
-                        blockquote: ({ children }) => (
-                          <div className="my-3 pl-4 py-2 border-l-4 border-primary bg-primary/5 dark:bg-primary/10 rounded-r-lg">
-                            <div className="text-foreground [&>p]:m-0 [&>p>strong]:text-primary [&>p>strong]:font-semibold">
-                              {children}
-                            </div>
-                          </div>
-                        ),
-                      }}
-                    >
-                      {turn.narrative_text}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <TurnCard
+              key={turn.turn_id}
+              turn={turn}
+              isLast={index === turns.length - 1}
+              storyCharacters={storyCharacters}
+              characters={characters}
+              submitting={submitting}
+              deletingTurnIndex={deletingTurnIndex}
+              onRegenerate={handleRegenerate}
+              onDeleteFromTurn={handleDeleteFromTurn}
+            />
           ))}
 
           {/* Empty State */}
@@ -1080,10 +1031,10 @@ function StoryPlayPageContent() {
 
           <div ref={chatEndRef} />
         </div>
-      </ScrollArea>
+      </ScrollArea >
 
       {/* Input Area */}
-      <div className="flex-none p-4 bg-background border-t">
+      < div className="flex-none p-4 bg-background border-t" >
         <div className="max-w-3xl mx-auto relative space-y-2">
           {/* Suggestions Display */}
           {suggestions.length > 0 && (
@@ -1142,10 +1093,10 @@ function StoryPlayPageContent() {
             {PROVIDER_INFO[tempProvider].name}: {tempUsePreset === 'preset' ? tempModel : tempCustomModel} | 上下文: {tempContextTurns} 回合
           </p>
         </div>
-      </div>
+      </div >
 
       {/* Reset Story Confirmation Dialog */}
-      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+      < AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog} >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
@@ -1187,7 +1138,7 @@ function StoryPlayPageContent() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+      </AlertDialog >
       <WorldDetailsDialog
         worldId={viewingWorldId}
         open={!!viewingWorldId}
@@ -1199,7 +1150,7 @@ function StoryPlayPageContent() {
         open={!!viewingCharacterId}
         onOpenChange={(open) => !open && setViewingCharacterId(null)}
       />
-    </div>
+    </div >
   );
 }
 

@@ -508,7 +508,11 @@ function CharactersListPageContent() {
                     </Button>
                   ) : (
                     // 原創：顯示編輯按鈕
-                    <Link href={`/characters/${character.character_id}/edit`} className="flex-1">
+                    <Link
+                      href={`/characters/${character.character_id}/edit`}
+                      className="flex-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Button variant="outline" className="w-full">
                         <Edit className="mr-2 h-4 w-4" />
                         編輯

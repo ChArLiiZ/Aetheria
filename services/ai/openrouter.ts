@@ -155,7 +155,7 @@ export async function callOpenRouterJsonWithRetry<T>(
 }
 
 /**
- * Parse JSON response with error handling
+ * Parse JSON response with error handling and multiple fallback strategies
  */
 export function parseJsonResponse<T>(content: string): T | null {
   // Log the first 500 characters for debugging
@@ -166,44 +166,94 @@ export function parseJsonResponse<T>(content: string): T | null {
     console.log('[parseJsonResponse] 原始內容（前 500 字）:', content.substring(0, 500));
   }
 
-  try {
-    // Strategy 1: Try to extract JSON from markdown code blocks (```json ... ```)
-    const jsonCodeBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonCodeBlockMatch) {
-      console.log('[parseJsonResponse] 使用策略 1: Markdown JSON 區塊');
-      return JSON.parse(jsonCodeBlockMatch[1]);
-    }
+  // 預處理：移除可能的 BOM 和修復常見問題
+  const preprocessJson = (str: string): string => {
+    return str
+      // 移除 BOM
+      .replace(/^\uFEFF/, '')
+      // 修復中文引號
+      .replace(/[""]/g, '"')
+      .replace(/['']/g, "'")
+      // 移除控制字符（除了 \n \r \t）
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+      // 移除尾隨逗號（在 ] 或 } 之前）
+      .replace(/,(\s*[}\]])/g, '$1');
+  };
 
-    // Strategy 2: Try to extract JSON from generic code blocks (``` ... ```)
-    const codeBlockMatch = content.match(/```\s*([\s\S]*?)\s*```/);
-    if (codeBlockMatch) {
-      try {
-        console.log('[parseJsonResponse] 使用策略 2: 一般程式碼區塊');
-        return JSON.parse(codeBlockMatch[1]);
-      } catch {
-        // Not valid JSON, continue to next strategy
-      }
+  const tryParse = (str: string, strategyName: string): T | null => {
+    try {
+      const processed = preprocessJson(str);
+      const result = JSON.parse(processed);
+      console.log(`[parseJsonResponse] 成功使用策略: ${strategyName}`);
+      return result;
+    } catch (e) {
+      return null;
     }
+  };
 
-    // Strategy 3: Try to find JSON object boundaries { ... }
-    const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonObjectMatch) {
-      try {
-        console.log('[parseJsonResponse] 使用策略 3: JSON 物件邊界');
-        return JSON.parse(jsonObjectMatch[0]);
-      } catch {
-        // Not valid JSON, continue to next strategy
-      }
-    }
-
-    // Strategy 4: Try to parse the whole content directly
-    console.log('[parseJsonResponse] 使用策略 4: 直接解析');
-    return JSON.parse(content);
-  } catch (error) {
-    console.error('[parseJsonResponse] 所有策略都失敗。原始回應:', content);
-    console.error('[parseJsonResponse] 解析錯誤:', error);
-    return null;
+  // Strategy 1: Try to extract JSON from markdown code blocks (```json ... ```)
+  const jsonCodeBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+  if (jsonCodeBlockMatch) {
+    const result = tryParse(jsonCodeBlockMatch[1], 'Markdown JSON 區塊');
+    if (result) return result;
   }
+
+  // Strategy 2: Try to extract JSON from generic code blocks (``` ... ```)
+  const codeBlockMatch = content.match(/```\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    const result = tryParse(codeBlockMatch[1], '一般程式碼區塊');
+    if (result) return result;
+  }
+
+  // Strategy 3: Try to find the outermost JSON object { ... }
+  // 使用更精確的 JSON 物件匹配（處理嵌套）
+  const firstBrace = content.indexOf('{');
+  const lastBrace = content.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const jsonCandidate = content.substring(firstBrace, lastBrace + 1);
+    const result = tryParse(jsonCandidate, 'JSON 物件邊界（首尾括號）');
+    if (result) return result;
+  }
+
+  // Strategy 4: Try greedy JSON object match
+  const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+  if (jsonObjectMatch) {
+    const result = tryParse(jsonObjectMatch[0], 'JSON 物件邊界（貪婪匹配）');
+    if (result) return result;
+  }
+
+  // Strategy 5: Try to parse the whole content directly
+  const directResult = tryParse(content, '直接解析');
+  if (directResult) return directResult;
+
+  // Strategy 6: 嘗試修復不完整的 JSON（可能被截斷）
+  // 這是最後的嘗試，嘗試補全可能缺失的括號
+  if (firstBrace !== -1) {
+    let fixedJson = content.substring(firstBrace);
+    // 計算括號平衡
+    let braceCount = 0;
+    let bracketCount = 0;
+    for (const char of fixedJson) {
+      if (char === '{') braceCount++;
+      if (char === '}') braceCount--;
+      if (char === '[') bracketCount++;
+      if (char === ']') bracketCount--;
+    }
+    // 補全缺失的括號
+    while (bracketCount > 0) {
+      fixedJson += ']';
+      bracketCount--;
+    }
+    while (braceCount > 0) {
+      fixedJson += '}';
+      braceCount--;
+    }
+    const fixedResult = tryParse(fixedJson, '修復不完整 JSON');
+    if (fixedResult) return fixedResult;
+  }
+
+  console.error('[parseJsonResponse] 所有策略都失敗。原始回應:', content);
+  return null;
 }
 
 /**

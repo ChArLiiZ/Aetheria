@@ -352,26 +352,48 @@ async function applyStateChanges(
 
   // Apply state changes
   for (const change of agentOutput.state_changes) {
+    console.log('[applyStateChanges] 處理狀態變更:', {
+      target: change.target_story_character_id,
+      schema_key: change.schema_key,
+      op: change.op,
+      value: change.value,
+    });
+
     const schema = worldSchema.find((s) => s.schema_key === change.schema_key);
-    if (!schema) continue;
+
+    // Fallback: 如果找不到 schema_key，嘗試用 display_name 匹配（AI 有時會混淆）
+    const actualSchema = schema || worldSchema.find((s) => s.display_name === change.schema_key);
+
+    if (!actualSchema) {
+      console.warn(`[applyStateChanges] 找不到 schema "${change.schema_key}"，跳過此變更`);
+      continue;
+    }
+
+    // 如果使用了 fallback，記錄警告
+    if (!schema && actualSchema) {
+      console.warn(`[applyStateChanges] AI 使用了 display_name "${change.schema_key}" 而非 schema_key "${actualSchema.schema_key}"，已自動修正`);
+    }
+
+    console.log('[applyStateChanges] 找到 schema:', actualSchema.schema_key, 'type:', actualSchema.type);
 
     // ⭐ 驗證操作類型是否與 schema 類型匹配
-    const isValidOperation = validateStateOperation(schema.type, change.op);
+    const isValidOperation = validateStateOperation(actualSchema.type, change.op);
     if (!isValidOperation) {
       console.warn(
-        `[applyStateChanges] 無效的操作組合: schema "${schema.schema_key}" (type: ${schema.type}) 不支援操作 "${change.op}"`
+        `[applyStateChanges] 無效的操作組合: schema "${actualSchema.schema_key}" (type: ${actualSchema.type}) 不支援操作 "${change.op}"`
       );
       console.warn(`[applyStateChanges] 跳過此狀態變更以防止資料損壞`);
       continue; // 跳過這個無效的變更
     }
 
-    const stateKey = `${change.target_story_character_id}:${change.schema_key}`;
+    // 使用 actualSchema.schema_key 而不是 change.schema_key，確保使用正確的 key
+    const stateKey = `${change.target_story_character_id}:${actualSchema.schema_key}`;
     const beforeValue = stateMap.get(stateKey);
     let newValue = change.value;
 
     // 處理 inc 操作（只對 number 類型有效）
     if (change.op === 'inc') {
-      if (schema.type !== 'number') {
+      if (actualSchema.type !== 'number') {
         // 這不應該發生，因為上面已經驗證過，但為了安全起見再檢查一次
         console.error(`[applyStateChanges] 內部錯誤: inc 操作應該只用於 number 類型`);
         continue;
@@ -383,17 +405,17 @@ async function applyStateChanges(
       if (beforeValue !== undefined) {
         currentValue = beforeValue as number;
       } else {
-        const defaultValue = getSchemaDefaultValue(schema);
+        const defaultValue = getSchemaDefaultValue(actualSchema);
         currentValue = typeof defaultValue === 'number' ? defaultValue : 0;
         console.warn(
-          `[applyStateChanges] 找不到狀態 "${change.schema_key}" 的現有值，使用 schema 預設值: ${currentValue}`
+          `[applyStateChanges] 找不到狀態 "${actualSchema.schema_key}" 的現有值，使用 schema 預設值: ${currentValue}`
         );
       }
 
       newValue = currentValue + (change.value as number);
 
-      if (schema.number_constraints_json) {
-        const constraints = JSON.parse(schema.number_constraints_json);
+      if (actualSchema.number_constraints_json) {
+        const constraints = JSON.parse(actualSchema.number_constraints_json);
         if (constraints.min !== undefined) {
           newValue = Math.max(newValue as number, constraints.min);
         }
@@ -404,12 +426,12 @@ async function applyStateChanges(
     }
 
     // Enum 值驗證（只對 set 操作）
-    if (schema.type === 'enum' && schema.enum_options_json && change.op === 'set') {
+    if (actualSchema.type === 'enum' && actualSchema.enum_options_json && change.op === 'set') {
       try {
-        const validOptions = JSON.parse(schema.enum_options_json) as string[];
+        const validOptions = JSON.parse(actualSchema.enum_options_json) as string[];
         if (!validOptions.includes(newValue as string)) {
           console.warn(
-            `[applyStateChanges] 無效的 Enum 值 "${newValue}" 對於 schema "${schema.schema_key}". 有效選項:`,
+            `[applyStateChanges] 無效的 Enum 值 "${newValue}" 對於 schema "${actualSchema.schema_key}". 有效選項:`,
             validOptions
           );
           console.warn(`[applyStateChanges] 跳過此狀態變更`);
@@ -421,9 +443,9 @@ async function applyStateChanges(
     }
 
     // 數字限制驗證（對 set 操作）
-    if (schema.type === 'number' && change.op === 'set' && schema.number_constraints_json) {
+    if (actualSchema.type === 'number' && change.op === 'set' && actualSchema.number_constraints_json) {
       try {
-        const constraints = JSON.parse(schema.number_constraints_json);
+        const constraints = JSON.parse(actualSchema.number_constraints_json);
         if (constraints.min !== undefined && (newValue as number) < constraints.min) {
           console.warn(
             `[applyStateChanges] 數值 ${newValue} 小於最小值 ${constraints.min}，已調整`
@@ -444,7 +466,7 @@ async function applyStateChanges(
     await setStateValue(userId, {
       story_id: story.story_id,
       story_character_id: change.target_story_character_id,
-      schema_key: change.schema_key,
+      schema_key: actualSchema.schema_key,
       value_json: JSON.stringify(newValue),
     });
 
@@ -454,7 +476,7 @@ async function applyStateChanges(
       user_id: userId,
       entity_type: 'state',
       target_story_character_id: change.target_story_character_id,
-      schema_key: change.schema_key,
+      schema_key: actualSchema.schema_key,
       op: change.op,
       before_value_json: serializeValue(beforeValue),
       after_value_json: serializeValue(newValue),
@@ -466,20 +488,30 @@ async function applyStateChanges(
   for (const listOp of agentOutput.list_ops) {
     // 驗證 schema 是否存在且類型為 list_text
     const schema = worldSchema.find((s) => s.schema_key === listOp.schema_key);
-    if (!schema) {
+
+    // Fallback: 如果找不到 schema_key，嘗試用 display_name 匹配
+    const actualSchema = schema || worldSchema.find((s) => s.display_name === listOp.schema_key);
+
+    if (!actualSchema) {
       console.warn(`[applyStateChanges] 找不到 schema "${listOp.schema_key}"，跳過列表操作`);
       continue;
     }
 
-    if (schema.type !== 'list_text') {
+    // 如果使用了 fallback，記錄警告
+    if (!schema && actualSchema) {
+      console.warn(`[applyStateChanges] AI 使用了 display_name "${listOp.schema_key}" 而非 schema_key "${actualSchema.schema_key}"，已自動修正`);
+    }
+
+    if (actualSchema.type !== 'list_text') {
       console.warn(
-        `[applyStateChanges] 無效的列表操作: schema "${schema.schema_key}" (type: ${schema.type}) 不是 list_text 類型`
+        `[applyStateChanges] 無效的列表操作: schema "${actualSchema.schema_key}" (type: ${actualSchema.type}) 不是 list_text 類型`
       );
       console.warn(`[applyStateChanges] 跳過此列表操作以防止資料損壞`);
       continue;
     }
 
-    const stateKey = `${listOp.target_story_character_id}:${listOp.schema_key}`;
+    // 使用 actualSchema.schema_key 確保正確的 key
+    const stateKey = `${listOp.target_story_character_id}:${actualSchema.schema_key}`;
     const beforeValue = stateMap.get(stateKey);
     const currentList = Array.isArray(beforeValue) ? beforeValue : [];
 
@@ -505,7 +537,7 @@ async function applyStateChanges(
     await setStateValue(userId, {
       story_id: story.story_id,
       story_character_id: listOp.target_story_character_id,
-      schema_key: listOp.schema_key,
+      schema_key: actualSchema.schema_key,
       value_json: JSON.stringify(newList),
     });
 
@@ -515,7 +547,7 @@ async function applyStateChanges(
       user_id: userId,
       entity_type: 'state',
       target_story_character_id: listOp.target_story_character_id,
-      schema_key: listOp.schema_key,
+      schema_key: actualSchema.schema_key,
       op: listOp.op,
       before_value_json: serializeValue(currentList),
       after_value_json: serializeValue(newList),
