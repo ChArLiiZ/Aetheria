@@ -7,7 +7,13 @@ import { StoryMode } from '../database';
  */
 export interface StoryAgentInput {
   story_mode: StoryMode;
+  /** 世界描述（簡短概述） */
+  world_description: string;
+  /** 世界規則（詳細設定） */
   world_rules: string;
+  /** 故事前提（背景設定） */
+  story_premise: string;
+  /** 故事提示（給 AI 的指導） */
   story_prompt: string;
   characters: StoryCharacterContext[];
   world_schema: SchemaContext[];

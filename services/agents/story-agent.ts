@@ -14,15 +14,21 @@ import type {
  * Build the system prompt for the story agent
  */
 function buildStorySystemPrompt(input: StoryAgentInput): string {
-    const { story_mode, world_rules, story_prompt, characters, world_schema, current_states } = input;
+    const { story_mode, world_description, world_rules, story_premise, story_prompt, characters, world_schema, current_states } = input;
 
     // Find the player character using is_player field
     const playerCharacter = characters.find(c => c.is_player);
 
     let prompt = `You are an AI storyteller managing a living, breathing story world.
 
+# World Overview
+${world_description}
+
 # World Rules
 ${world_rules}
+
+# Story Premise
+${story_premise}
 
 # Story Prompt
 ${story_prompt}

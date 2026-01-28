@@ -285,9 +285,14 @@ async function buildStoryAgentInput(
   }
 
   // Prompt 統計（用於監控優化效果）
-  const systemPromptLength = (world.rules_text.length + story.story_prompt.length +
+  const systemPromptLength = (
+    (world.description?.length || 0) +
+    world.rules_text.length +
+    (story.premise_text?.length || 0) +
+    story.story_prompt.length +
     characters.map(c => c.core_profile.length).reduce((a, b) => a + b, 0) +
-    (applicableSummary?.summary_text.length || 0));
+    (applicableSummary?.summary_text.length || 0)
+  );
 
   const recentTurnsLength = recentTurnContexts
     .map(t => t.user_input.length + t.narrative.length)
@@ -304,7 +309,9 @@ async function buildStoryAgentInput(
   return {
     input: {
       story_mode: story.story_mode,
+      world_description: world.description,
       world_rules: world.rules_text,
+      story_premise: story.premise_text,
       story_prompt: story.story_prompt,
       characters,
       world_schema: schemaContexts,
