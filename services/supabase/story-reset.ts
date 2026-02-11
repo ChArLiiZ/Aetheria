@@ -8,6 +8,7 @@
 import { supabase } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { Story, StoryCharacter, WorldStateSchema } from '@/types';
+import { GLOBAL_STATE_ID } from '@/types';
 import { getStoryById } from './stories';
 import { getStoryCharacters } from './story-characters';
 import { getSchemaByWorldId } from './world-schema';
@@ -100,8 +101,12 @@ export async function resetStory(
       value_json: string;
     }> = [];
 
+    const characterSchemas = worldSchema.filter((s) => s.scope !== 'global');
+    const globalSchemas = worldSchema.filter((s) => s.scope === 'global');
+
+    // Character-scoped states: one per character per schema
     storyCharacters.forEach((sc) => {
-      worldSchema.forEach((schema) => {
+      characterSchemas.forEach((schema) => {
         const defaultValue = getSchemaDefaultValue(schema);
         stateValues.push({
           story_id: storyId,
@@ -109,6 +114,17 @@ export async function resetStory(
           schema_key: schema.schema_key,
           value_json: JSON.stringify(defaultValue),
         });
+      });
+    });
+
+    // Global-scoped states: one per schema using sentinel ID
+    globalSchemas.forEach((schema) => {
+      const defaultValue = getSchemaDefaultValue(schema);
+      stateValues.push({
+        story_id: storyId,
+        story_character_id: GLOBAL_STATE_ID,
+        schema_key: schema.schema_key,
+        value_json: JSON.stringify(defaultValue),
       });
     });
 

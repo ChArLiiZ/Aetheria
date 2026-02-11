@@ -1,4 +1,4 @@
-import { StoryMode } from '../database';
+import { StoryMode, SchemaScope } from '../database';
 
 // ==================== Story Agent (合併版) ====================
 
@@ -18,6 +18,10 @@ export interface StoryAgentInput {
   characters: StoryCharacterContext[];
   world_schema: SchemaContext[];
   current_states: CurrentStateContext[];
+  /** 全局狀態 Schema（不綁定角色的世界狀態） */
+  global_schema: SchemaContext[];
+  /** 當前全局狀態值 */
+  global_states: CurrentStateContext[];
   recent_turns: RecentTurnContext[];
   user_input: string;
   /** 滾動摘要（前情提要） */
@@ -58,6 +62,7 @@ export interface SchemaContext {
   schema_key: string;
   display_name: string;
   type: 'number' | 'text' | 'bool' | 'enum' | 'list_text';
+  scope: SchemaScope;
   ai_description: string;
   enum_options?: string[];
   number_constraints?: {
@@ -160,6 +165,7 @@ export interface SchemaGenerationData {
   schema_key: string;
   display_name: string;
   type: 'text' | 'number' | 'bool' | 'enum' | 'list_text';
+  scope?: SchemaScope;
   ai_description: string;
   default_value?: string;
   enum_options?: string[];

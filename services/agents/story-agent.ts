@@ -14,7 +14,7 @@ import type {
  * Build the system prompt for the story agent
  */
 function buildStorySystemPrompt(input: StoryAgentInput): string {
-    const { story_mode, world_description, world_rules, story_premise, story_prompt, characters, world_schema, current_states } = input;
+    const { story_mode, world_description, world_rules, story_premise, story_prompt, characters, world_schema, current_states, global_schema, global_states } = input;
 
     // Find the player character using is_player field
     const playerCharacter = characters.find(c => c.is_player);
@@ -90,6 +90,37 @@ ${current_states.length > 0
             : 'No state values set yet.'
         }
 
+${global_schema.length > 0 ? `# Global State Schema (World-level, not tied to any character)
+${global_schema
+                .map((schema) => {
+                    let desc = `**${schema.display_name}** (${schema.schema_key}): ${schema.ai_description}`;
+                    if (schema.type === 'enum' && schema.enum_options) {
+                        desc += ` [${schema.enum_options.join(', ')}]`;
+                    }
+                    if (schema.type === 'number' && schema.number_constraints) {
+                        const c = schema.number_constraints;
+                        const parts = [];
+                        if (c.min !== undefined) parts.push(`min:${c.min}`);
+                        if (c.max !== undefined) parts.push(`max:${c.max}`);
+                        if (c.unit) parts.push(c.unit);
+                        if (parts.length > 0) desc += ` (${parts.join(', ')})`;
+                    }
+                    return desc;
+                })
+                .join('\n')}
+
+# Current Global State Values
+${global_states.length > 0
+                ? global_states
+                    .map((state) => {
+                        const schema = global_schema.find((s) => s.schema_key === state.schema_key);
+                        return `${schema?.display_name || state.schema_key}: ${JSON.stringify(state.current_value)}`;
+                    })
+                    .join('\n')
+                : 'No global state values set yet.'
+            }
+` : ''}
+
 # CRITICAL: Living World State System
 
 Every character is a living entity that exists continuously in the story world, not just when mentioned in the narrative.
@@ -101,6 +132,7 @@ After generating your narrative, systematically review ALL characters' states, n
    - Resources that regenerate/deplete (stamina, mana, hunger)
    - Status effects with durations (buffs, debuffs, injuries)
    - Environmental conditions (weather, time of day)
+   - **Global states** such as current time, weather, world events
 
 2. **Background Activities**: What are off-screen characters doing?
    - Location changes from their ongoing activities
@@ -127,8 +159,9 @@ After generating your narrative, systematically review ALL characters' states, n
 - Even characters not traveling: update their activities in that timeframe
 
 **Review Checklist:**
-□ Time passage → Update time-dependent states for ALL characters
+□ Time passage → Update time-dependent states for ALL characters AND global states
 □ Each character → What are they doing? Update location/activity states
+□ Global states → Update world-level states (time, weather, etc.)
 □ Narrative events → Update directly-affected states
 □ Resource usage → Update costs (mana, items, stamina)
 
@@ -151,14 +184,18 @@ Based on the user's input, generate:
 {
   "narrative": "敘事文字，對話用 > **角色名**：「對話」",
   "state_changes": [
-    {"target_story_character_id": "id", "schema_key": "key",
-     "op": "set|inc", "value": <value>, "reason": "explanation"}
+    {"target_story_character_id": "character-id", "schema_key": "key",
+     "op": "set|inc", "value": <value>, "reason": "explanation"},
+    {"target_story_character_id": "__GLOBAL__", "schema_key": "global-key",
+     "op": "set", "value": <value>, "reason": "explanation"}
   ],
   "list_ops": [
-    {"target_story_character_id": "id", "schema_key": "key",
+    {"target_story_character_id": "id-or-__GLOBAL__", "schema_key": "key",
      "op": "push|remove|set", "value": "item", "reason": "explanation"}
   ]
 }
+
+Note: For global states (not tied to any character), use "__GLOBAL__" as target_story_character_id.
 
 Note: Empty arrays acceptable only if truly no changes occurred.
 
@@ -229,6 +266,7 @@ export async function callStoryAgent(
     console.log('[callStoryAgent] 最近回合數:', input.recent_turns.length);
     console.log('[callStoryAgent] 玩家角色:', playerChar?.display_name || '無（導演模式）');
     console.log('[callStoryAgent] 狀態 Schema 數量:', input.world_schema.length);
+    console.log('[callStoryAgent] 全局 Schema 數量:', input.global_schema.length);
 
     // Default parameters
     const defaultParams = {

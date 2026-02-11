@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import { World, WorldStateSchema, SchemaFieldType, Visibility } from '@/types';
+import { World, WorldStateSchema, SchemaFieldType, Visibility, SchemaScope } from '@/types';
 import { getWorldById, createWorld, updateWorld, worldNameExists } from '@/services/supabase/worlds';
 import { uploadImage, deleteImage } from '@/services/supabase/storage';
 import {
@@ -79,6 +79,7 @@ interface SchemaFormData {
     schema_key: string;
     display_name: string;
     type: SchemaFieldType;
+    scope: SchemaScope;
     ai_description: string;
     default_value: string;
     enum_options: string[];
@@ -142,6 +143,7 @@ function WorldEditorPageContent() {
         schema_key: '',
         display_name: '',
         type: 'text',
+        scope: 'character',
         ai_description: '',
         default_value: '',
         enum_options: [''],
@@ -335,6 +337,7 @@ function WorldEditorPageContent() {
                     schema_key: schema.schema_key,
                     display_name: schema.display_name,
                     type: schema.type,
+                    scope: schema.scope,
                     ai_description: schema.ai_description,
                     default_value_json: schema.default_value_json,
                     enum_options_json: schema.enum_options_json,
@@ -406,6 +409,7 @@ function WorldEditorPageContent() {
                         schema_key: schema.schema_key,
                         display_name: schema.display_name,
                         type: schema.type,
+                        scope: schema.scope,
                         ai_description: schema.ai_description,
                         default_value_json: schema.default_value_json,
                         enum_options_json: schema.enum_options_json,
@@ -466,6 +470,7 @@ function WorldEditorPageContent() {
             schema_key: '',
             display_name: '',
             type: 'text',
+            scope: 'character',
             ai_description: '',
             default_value: '',
             enum_options: [''],
@@ -515,6 +520,7 @@ function WorldEditorPageContent() {
             schema_key: schema.schema_key,
             display_name: schema.display_name,
             type: schema.type,
+            scope: schema.scope,
             ai_description: schema.ai_description,
             default_value: schema.type === 'list_text' ? '' : (schema.default_value_json || ''),
             enum_options: enumOptions.length > 0 ? enumOptions : [''],
@@ -585,6 +591,7 @@ function WorldEditorPageContent() {
                 schema_key: schemaFormData.schema_key.trim(),
                 display_name: schemaFormData.display_name.trim(),
                 type: schemaFormData.type,
+                scope: schemaFormData.scope,
                 ai_description: schemaFormData.ai_description.trim(),
                 default_value_json: schemaFormData.default_value.trim(),
                 enum_options_json: '',
@@ -723,6 +730,7 @@ function WorldEditorPageContent() {
                     schema_key: s.schema_key,
                     display_name: s.display_name,
                     type: s.type as SchemaFieldType,
+                    scope: s.scope || 'character',
                     ai_description: s.ai_description,
                     default_value_json: s.default_value || '',
                     enum_options_json: s.enum_options ? JSON.stringify(s.enum_options) : '',
@@ -928,6 +936,7 @@ function WorldEditorPageContent() {
                                         <TableHead className="w-[50px]"></TableHead>
                                         <TableHead className="w-[120px]">Key</TableHead>
                                         <TableHead className="w-[100px] whitespace-nowrap">名稱</TableHead>
+                                        <TableHead className="w-[80px]">範圍</TableHead>
                                         <TableHead className="w-[80px]">類型</TableHead>
                                         <TableHead className="hidden md:table-cell">AI 描述</TableHead>
                                         <TableHead className="w-[80px] text-right">動作</TableHead>
@@ -969,6 +978,11 @@ function WorldEditorPageContent() {
                                                 </TableCell>
                                                 <TableCell className="font-mono text-xs font-medium break-all">{schema.schema_key}</TableCell>
                                                 <TableCell className="whitespace-nowrap">{schema.display_name}</TableCell>
+                                                <TableCell>
+                                                    <Badge variant={schema.scope === 'global' ? 'default' : 'secondary'}>
+                                                        {schema.scope === 'global' ? '世界' : '角色'}
+                                                    </Badge>
+                                                </TableCell>
                                                 <TableCell>
                                                     <Badge variant="outline" className="text-xs px-1">{schema.type}</Badge>
                                                 </TableCell>
@@ -1024,6 +1038,29 @@ function WorldEditorPageContent() {
                                     />
                                     {schemaErrors.display_name && <p className="text-sm text-destructive">{schemaErrors.display_name}</p>}
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>狀態範圍</Label>
+                                <Select
+                                    value={schemaFormData.scope}
+                                    onValueChange={(value: SchemaScope) =>
+                                        setSchemaFormData({ ...schemaFormData, scope: value })
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="character">角色狀態 (Character Scope)</SelectItem>
+                                        <SelectItem value="global">世界狀態 (Global Scope)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    {schemaFormData.scope === 'character'
+                                        ? '每個角色都會擁有此狀態，例如：生命值、心情'
+                                        : '整個世界共用的狀態，例如：當前時間、天氣'}
+                                </p>
                             </div>
 
                             <div className="space-y-2">

@@ -400,6 +400,18 @@ export function ImageUpload({
                                     onZoomChange={setZoom}
                                     objectFit="contain"
                                     minZoom={0.5}
+                                    rotation={0}
+                                    maxZoom={5}
+                                    zoomSpeed={1}
+                                    style={{}}
+                                    classes={{}}
+                                    restrictPosition={false}
+                                    mediaProps={{}}
+                                    cropperProps={{}}
+                                    keyboardStep={1}
+                                    onInteractionStart={() => { }}
+                                    onInteractionEnd={() => { }}
+                                    onMediaLoaded={() => { }}
                                 />
                             )}
                         </div>

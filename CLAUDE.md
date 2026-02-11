@@ -53,6 +53,9 @@ Character（角色定義）
 ### 核心概念
 
 **World State Schema（世界狀態 Schema）**：定義自訂狀態欄位（HP、MP、物品欄等），支援類型：
+- `scope` - 狀態範圍：
+  - `character` - 角色狀態（預設）
+  - `global` - 世界狀態（全局共用，如時間、天氣）
 - `number` - 數值，可設定最小/最大值限制
 - `text` - 字串值
 - `bool` - 布林值
@@ -453,5 +456,6 @@ console.log('[functionName] 描述:', data)
 - `017` - Fork 欄位（original_author_id、forked_from_id）
 - `018` - Fork RLS 政策
 - `019` - 版本同步追蹤（last_synced_at）
+- `020` - 全局狀態範圍（world_state_schema.scope）
 
 遷移順序很重要，必須按編號順序套用。

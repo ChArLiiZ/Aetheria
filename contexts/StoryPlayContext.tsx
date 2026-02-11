@@ -44,6 +44,7 @@ import {
   DEFAULT_PROVIDER,
   DEFAULT_MODELS,
 } from '@/lib/ai-providers';
+import { PlaySkeleton } from '@/components/story/play-skeleton';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
@@ -295,8 +296,8 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
         setTempTemperature(aiParams.temperature ?? 0.7);
         setTempContextTurns(
           storyData.context_turns_override ??
-            settings.default_context_turns ??
-            DEFAULT_CONTEXT_TURNS
+          settings.default_context_turns ??
+          DEFAULT_CONTEXT_TURNS
         );
 
         // Load character states

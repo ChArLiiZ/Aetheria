@@ -4,7 +4,7 @@
 
 import { supabase } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
-import type { WorldStateSchema, SchemaFieldType } from '@/types';
+import type { WorldStateSchema, SchemaFieldType, SchemaScope } from '@/types';
 
 // Alias to match existing service naming
 export type WorldStateSchemaItem = WorldStateSchema;
@@ -68,6 +68,7 @@ export async function createSchemaItem(
     schema_key: string;
     display_name: string;
     type: SchemaFieldType;
+    scope?: SchemaScope;
     ai_description: string;
     default_value_json?: string;
     enum_options_json?: string;
@@ -89,6 +90,7 @@ export async function createSchemaItem(
         schema_key: data.schema_key,
         display_name: data.display_name,
         type: data.type,
+        scope: data.scope || 'character',
         ai_description: data.ai_description,
         default_value_json: data.default_value_json || '',
         enum_options_json: data.enum_options_json || '',
@@ -118,6 +120,7 @@ export async function updateSchemaItem(
       | 'schema_key'
       | 'display_name'
       | 'type'
+      | 'scope'
       | 'ai_description'
       | 'default_value_json'
       | 'enum_options_json'

@@ -12,6 +12,7 @@ import type {
   World,
   WorldStateSchema,
 } from '@/types';
+import { GLOBAL_STATE_ID } from '@/types';
 
 import type {
   StoryAgentInput,
@@ -132,17 +133,24 @@ async function buildStoryAgentInput(
   const characterDetails = storyCharacters.map((sc) => characterMap.get(sc.character_id) || null);
   console.log('[buildStoryAgentInput] 角色詳細資料取得完成');
 
+  // Separate character and global schemas
+  const characterSchemas = worldSchema.filter((s) => s.scope !== 'global');
+  const globalSchemas = worldSchema.filter((s) => s.scope === 'global');
+
   // Build schema contexts (需要在狀態補全前建構，因為補全邏輯需要使用)
-  const schemaContexts: SchemaContext[] = worldSchema.map((schema) => ({
+  const toSchemaContext = (schema: WorldStateSchema): SchemaContext => ({
     schema_key: schema.schema_key,
     display_name: schema.display_name,
     type: schema.type,
+    scope: schema.scope,
     ai_description: schema.ai_description,
     enum_options: schema.enum_options_json ? JSON.parse(schema.enum_options_json) : undefined,
     number_constraints: schema.number_constraints_json
       ? JSON.parse(schema.number_constraints_json)
       : undefined,
-  }));
+  });
+  const schemaContexts: SchemaContext[] = characterSchemas.map(toSchemaContext);
+  const globalSchemaContexts: SchemaContext[] = globalSchemas.map(toSchemaContext);
 
   // 狀態自動補全：確保所有角色都有所有 Schema 的狀態值
   // 重要：必須在建構 character contexts 之前完成，確保狀態摘要使用完整的資料
@@ -160,12 +168,11 @@ async function buildStoryAgentInput(
     value_json: string;
   }> = [];
 
-  // 檢查每個角色是否有所有 Schema 的狀態
+  // 檢查每個角色是否有所有 character Schema 的狀態
   for (const sc of storyCharacters) {
-    for (const schema of worldSchema) {
+    for (const schema of characterSchemas) {
       const key = `${sc.story_character_id}:${schema.schema_key}`;
       if (!stateMap.has(key)) {
-        // 狀態缺失，建立預設值
         const defaultValue = getSchemaDefaultValue(schema);
         console.log(`[buildStoryAgentInput] 缺失狀態: ${sc.story_character_id}:${schema.schema_key}, 使用預設值:`, defaultValue);
 
@@ -176,7 +183,6 @@ async function buildStoryAgentInput(
           value_json: JSON.stringify(defaultValue),
         });
 
-        // 同時加入到記憶體的 stateValues 中，確保這次回合能使用
         const newStateValue: StoryStateValue = {
           user_id: userId,
           story_id: story.story_id,
@@ -188,6 +194,33 @@ async function buildStoryAgentInput(
         stateValues.push(newStateValue);
         stateMap.set(key, newStateValue);
       }
+    }
+  }
+
+  // 檢查全局 Schema 的狀態（使用哨兵值 GLOBAL_STATE_ID）
+  for (const schema of globalSchemas) {
+    const key = `${GLOBAL_STATE_ID}:${schema.schema_key}`;
+    if (!stateMap.has(key)) {
+      const defaultValue = getSchemaDefaultValue(schema);
+      console.log(`[buildStoryAgentInput] 缺失全局狀態: ${schema.schema_key}, 使用預設值:`, defaultValue);
+
+      missingStates.push({
+        story_id: story.story_id,
+        story_character_id: GLOBAL_STATE_ID,
+        schema_key: schema.schema_key,
+        value_json: JSON.stringify(defaultValue),
+      });
+
+      const newStateValue: StoryStateValue = {
+        user_id: userId,
+        story_id: story.story_id,
+        story_character_id: GLOBAL_STATE_ID,
+        schema_key: schema.schema_key,
+        value_json: JSON.stringify(defaultValue),
+        updated_at: new Date().toISOString(),
+      };
+      stateValues.push(newStateValue);
+      stateMap.set(key, newStateValue);
     }
   }
 
@@ -253,12 +286,22 @@ async function buildStoryAgentInput(
   // Find the player character for logging
   const playerCharacter = characters.find(c => c.is_player);
 
-  // Build current state contexts (與 characters 使用相同的補全後狀態)
-  const currentStates: CurrentStateContext[] = stateValues.map((sv) => ({
-    story_character_id: sv.story_character_id,
-    schema_key: sv.schema_key,
-    current_value: JSON.parse(sv.value_json),
-  }));
+  // Build current state contexts — separate character and global states
+  const currentStates: CurrentStateContext[] = stateValues
+    .filter((sv) => sv.story_character_id !== GLOBAL_STATE_ID)
+    .map((sv) => ({
+      story_character_id: sv.story_character_id,
+      schema_key: sv.schema_key,
+      current_value: JSON.parse(sv.value_json),
+    }));
+
+  const globalStates: CurrentStateContext[] = stateValues
+    .filter((sv) => sv.story_character_id === GLOBAL_STATE_ID)
+    .map((sv) => ({
+      story_character_id: GLOBAL_STATE_ID,
+      schema_key: sv.schema_key,
+      current_value: JSON.parse(sv.value_json),
+    }));
 
   // Build recent turn contexts (使用指定的上下文回合數)
   const recentTurnContexts: RecentTurnContext[] = recentTurns.slice(-contextTurns).map((turn) => ({
@@ -272,8 +315,10 @@ async function buildStoryAgentInput(
   console.log('  - story_mode:', story.story_mode);
   console.log('  - 玩家角色:', playerCharacter?.display_name || '無（導演模式）');
   console.log('  - 角色數量:', characters.length);
-  console.log('  - 狀態 Schema 數量:', schemaContexts.length);
-  console.log('  - 當前狀態數量:', currentStates.length);
+  console.log('  - 角色 Schema 數量:', schemaContexts.length);
+  console.log('  - 全局 Schema 數量:', globalSchemaContexts.length);
+  console.log('  - 角色狀態數量:', currentStates.length);
+  console.log('  - 全局狀態數量:', globalStates.length);
   console.log('  - 最近回合數:', recentTurnContexts.length);
   console.log('  - 摘要:', applicableSummary ? '有' : '無');
 
@@ -317,6 +362,8 @@ async function buildStoryAgentInput(
       characters,
       world_schema: schemaContexts,
       current_states: currentStates,
+      global_schema: globalSchemaContexts,
+      global_states: globalStates,
       recent_turns: recentTurnContexts,
       user_input: userInput,
       story_summary: applicableSummary?.summary_text,

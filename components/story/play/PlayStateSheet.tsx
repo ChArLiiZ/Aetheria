@@ -15,6 +15,114 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { BookOpen, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { GLOBAL_STATE_ID, StoryStateValue, WorldStateSchema } from '@/types';
+
+function StateValueItem({
+  sv,
+  schema,
+}: {
+  sv: StoryStateValue;
+  schema: WorldStateSchema;
+}) {
+  let displayValue;
+  let isLongText = false;
+  try {
+    const value = JSON.parse(sv.value_json);
+    if (schema.type === 'list_text') {
+      displayValue = Array.isArray(value) ? value.join(', ') : value;
+      isLongText = true;
+    } else if (typeof value === 'boolean') {
+      displayValue = value ? '是' : '否';
+    } else if (schema.type === 'text') {
+      displayValue = String(value);
+      isLongText = String(value).length > 20;
+    } else {
+      displayValue = String(value);
+    }
+  } catch {
+    displayValue = sv.value_json;
+  }
+
+  let unit = '';
+  let maxVal: number | undefined = undefined;
+  let minVal: number | undefined = undefined;
+  let numericValue: number | undefined = undefined;
+
+  if (schema.type === 'number') {
+    if (schema.number_constraints_json) {
+      try {
+        const constraints = JSON.parse(schema.number_constraints_json);
+        unit = constraints.unit || '';
+
+        if (
+          constraints.max !== undefined &&
+          constraints.max !== null &&
+          constraints.max !== ''
+        ) {
+          const m = Number(constraints.max);
+          if (!isNaN(m)) maxVal = m;
+        }
+
+        if (
+          constraints.min !== undefined &&
+          constraints.min !== null &&
+          constraints.min !== ''
+        ) {
+          const m = Number(constraints.min);
+          if (!isNaN(m)) minVal = m;
+        }
+      } catch { }
+    }
+    try {
+      const v = JSON.parse(sv.value_json);
+      const n = Number(v);
+      if (!isNaN(n) && v !== null && v !== '') {
+        numericValue = n;
+      }
+    } catch { }
+  }
+
+  return (
+    <div className="border-b last:border-0 py-2 border-muted overflow-hidden">
+      <div
+        className={cn(
+          'flex gap-3',
+          isLongText ? 'flex-col' : 'items-center justify-between'
+        )}
+      >
+        <span className="text-muted-foreground shrink-0 whitespace-nowrap">
+          {schema.display_name}
+        </span>
+        <span
+          className={cn(
+            'font-medium whitespace-pre-wrap break-words',
+            isLongText ? 'text-foreground leading-relaxed' : 'text-right'
+          )}
+        >
+          {displayValue}
+          {unit && ` ${unit}`}
+        </span>
+      </div>
+      {maxVal !== undefined &&
+        numericValue !== undefined &&
+        maxVal - (minVal || 0) > 0 && (
+          <div className="mt-1.5 flex items-center gap-2">
+            <Progress
+              value={Math.min(
+                100,
+                Math.max(
+                  0,
+                  ((numericValue - (minVal || 0)) / (maxVal - (minVal || 0))) *
+                  100
+                )
+              )}
+              className="h-1.5"
+            />
+          </div>
+        )}
+    </div>
+  );
+}
 
 export function PlayStateSheet() {
   const {
@@ -41,11 +149,65 @@ export function PlayStateSheet() {
       >
         <div className="p-6 pb-2 shrink-0">
           <SheetHeader>
-            <SheetTitle>角色狀態</SheetTitle>
+            <SheetTitle>世界與角色狀態</SheetTitle>
           </SheetHeader>
         </div>
         <ScrollArea className="flex-1 w-full">
           <div className="p-6 pt-0 space-y-4">
+            {/* Global States Section */}
+            {(() => {
+              const globalStates = stateValues.filter(
+                (sv) => sv.story_character_id === GLOBAL_STATE_ID
+              );
+
+              if (globalStates.length > 0) {
+                return (
+                  <Card className="overflow-hidden border-primary/20 bg-primary/5">
+                    <CardHeader className="p-4 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <BookOpen className="h-4 w-4 text-primary" />
+                        </div>
+                        <h3 className="text-lg font-bold text-primary">世界狀態</h3>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <div className="space-y-2 text-sm">
+                        {globalStates
+                          .sort((a, b) => {
+                            const schemaA = worldSchema.find(
+                              (s) => s.schema_key === a.schema_key
+                            );
+                            const schemaB = worldSchema.find(
+                              (s) => s.schema_key === b.schema_key
+                            );
+                            return (
+                              (schemaA?.sort_order ?? 999) -
+                              (schemaB?.sort_order ?? 999)
+                            );
+                          })
+                          .map((sv) => {
+                            const schema = worldSchema.find(
+                              (s) => s.schema_key === sv.schema_key
+                            );
+                            if (!schema) return null;
+                            return (
+                              <StateValueItem
+                                key={sv.schema_key}
+                                sv={sv}
+                                schema={schema}
+                              />
+                            );
+                          })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Character States Section */}
             {[...storyCharacters]
               .sort((a, b) => (b.is_player ? 1 : 0) - (a.is_player ? 1 : 0))
               .map((sc) => {
@@ -68,7 +230,9 @@ export function PlayStateSheet() {
                           {char.image_url ? (
                             <img
                               src={char.image_url}
-                              alt={sc.display_name_override || char.canonical_name}
+                              alt={
+                                sc.display_name_override || char.canonical_name
+                              }
                               className="w-14 h-14 rounded-full object-cover border-2 border-muted hover:border-primary transition-colors"
                             />
                           ) : (
@@ -81,12 +245,17 @@ export function PlayStateSheet() {
                         <div className="flex-1 min-w-0">
                           <button
                             className="text-lg font-bold hover:text-primary transition-colors focus:outline-none truncate block"
-                            onClick={() => setViewingCharacterId(sc.character_id)}
+                            onClick={() =>
+                              setViewingCharacterId(sc.character_id)
+                            }
                           >
                             {sc.display_name_override || char.canonical_name}
                           </button>
                           {sc.is_player && (
-                            <Badge variant="secondary" className="text-[10px] h-5 mt-1">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] h-5 mt-1"
+                            >
                               玩家角色
                             </Badge>
                           )}
@@ -104,7 +273,10 @@ export function PlayStateSheet() {
                               const schemaB = worldSchema.find(
                                 (s) => s.schema_key === b.schema_key
                               );
-                              return (schemaA?.sort_order ?? 999) - (schemaB?.sort_order ?? 999);
+                              return (
+                                (schemaA?.sort_order ?? 999) -
+                                (schemaB?.sort_order ?? 999)
+                              );
                             })
                             .map((sv) => {
                               const schema = worldSchema.find(
@@ -112,120 +284,19 @@ export function PlayStateSheet() {
                               );
                               if (!schema) return null;
 
-                              let displayValue;
-                              let isLongText = false;
-                              try {
-                                const value = JSON.parse(sv.value_json);
-                                if (schema.type === 'list_text') {
-                                  displayValue = Array.isArray(value)
-                                    ? value.join(', ')
-                                    : value;
-                                  isLongText = true;
-                                } else if (typeof value === 'boolean') {
-                                  displayValue = value ? '是' : '否';
-                                } else if (schema.type === 'text') {
-                                  displayValue = String(value);
-                                  isLongText = String(value).length > 20;
-                                } else {
-                                  displayValue = String(value);
-                                }
-                              } catch {
-                                displayValue = sv.value_json;
-                              }
-
-                              let unit = '';
-                              let maxVal: number | undefined = undefined;
-                              let minVal: number | undefined = undefined;
-                              let numericValue: number | undefined = undefined;
-
-                              if (schema.type === 'number') {
-                                if (schema.number_constraints_json) {
-                                  try {
-                                    const constraints = JSON.parse(
-                                      schema.number_constraints_json
-                                    );
-                                    unit = constraints.unit || '';
-
-                                    if (
-                                      constraints.max !== undefined &&
-                                      constraints.max !== null &&
-                                      constraints.max !== ''
-                                    ) {
-                                      const m = Number(constraints.max);
-                                      if (!isNaN(m)) maxVal = m;
-                                    }
-
-                                    if (
-                                      constraints.min !== undefined &&
-                                      constraints.min !== null &&
-                                      constraints.min !== ''
-                                    ) {
-                                      const m = Number(constraints.min);
-                                      if (!isNaN(m)) minVal = m;
-                                    }
-                                  } catch {}
-                                }
-                                try {
-                                  const v = JSON.parse(sv.value_json);
-                                  const n = Number(v);
-                                  if (!isNaN(n) && v !== null && v !== '') {
-                                    numericValue = n;
-                                  }
-                                } catch {}
-                              }
-
                               return (
-                                <div
+                                <StateValueItem
                                   key={sv.schema_key}
-                                  className="border-b last:border-0 py-2 border-muted overflow-hidden"
-                                >
-                                  <div
-                                    className={cn(
-                                      'flex gap-3',
-                                      isLongText
-                                        ? 'flex-col'
-                                        : 'items-center justify-between'
-                                    )}
-                                  >
-                                    <span className="text-muted-foreground shrink-0 whitespace-nowrap">
-                                      {schema.display_name}
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        'font-medium whitespace-pre-wrap break-words',
-                                        isLongText
-                                          ? 'text-foreground leading-relaxed'
-                                          : 'text-right'
-                                      )}
-                                    >
-                                      {displayValue}
-                                      {unit && ` ${unit}`}
-                                    </span>
-                                  </div>
-                                  {maxVal !== undefined &&
-                                    numericValue !== undefined &&
-                                    maxVal - (minVal || 0) > 0 && (
-                                      <div className="mt-1.5 flex items-center gap-2">
-                                        <Progress
-                                          value={Math.min(
-                                            100,
-                                            Math.max(
-                                              0,
-                                              ((numericValue - (minVal || 0)) /
-                                                (maxVal - (minVal || 0))) *
-                                                100
-                                            )
-                                          )}
-                                          className="h-1.5"
-                                        />
-                                      </div>
-                                    )}
-                                </div>
+                                  sv={sv}
+                                  schema={schema}
+                                />
                               );
                             })}
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">尚無狀態</span>
+                        <span className="text-xs text-muted-foreground">
+                          尚無狀態
+                        </span>
                       )}
                     </CardContent>
                   </Card>

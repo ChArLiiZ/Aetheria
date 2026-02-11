@@ -3,7 +3,11 @@
 export type StoryMode = 'PLAYER_CHARACTER' | 'DIRECTOR';
 export type UserStatus = 'active' | 'disabled';
 export type SchemaFieldType = 'number' | 'text' | 'bool' | 'enum' | 'list_text';
+export type SchemaScope = 'character' | 'global';
 export type EntityType = 'state';
+
+// Sentinel value for global state (not bound to any character)
+export const GLOBAL_STATE_ID = '__GLOBAL__';
 export type Visibility = 'private' | 'public';
 
 // State operation types
@@ -80,6 +84,7 @@ export interface WorldStateSchema {
   default_value_json: string; // JSON string
   enum_options_json?: string; // JSON array string
   number_constraints_json?: string; // JSON object string
+  scope: SchemaScope;
   sort_order: number;
   updated_at: string;
 }

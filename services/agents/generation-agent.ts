@@ -60,7 +60,14 @@ ${existingSchemas}
   - "bool": 布林值（如 是否中毒）
   - "enum": 列舉（如 職業：戰士/法師/盜賊）
   - "list_text": 文字列表（如 物品欄）
+- scope: 狀態範圍，可選值：
+  - "character": 角色個別擁有的狀態（預設，如 HP、物品欄）
+  - "global": 全世界共用的狀態（如 時間、天氣、世界局勢）
 - ai_description: 給 AI 的描述，說明這個狀態的含義和用途
+
+# 重要：請包含以下全局狀態（除非不適用）：
+1. current_time (text, global): 記錄當前時間（如「正午」、「深夜」）
+2. weather (enum, global): 記錄當前天氣
 - default_value: 預設值（數字請填數字字串如 "100"）
 - enum_options: 僅 enum 類型需要，列舉選項陣列
 - number_min/number_max: 僅 number 類型可選，數值範圍
@@ -325,6 +332,9 @@ ${existingTagsSection}
   - "bool": 布林值（如 是否中毒）
   - "enum": 列舉（如 職業：戰士/法師/盜賊）
   - "list_text": 文字列表（如 物品欄）
+- scope: 狀態範圍，可選值：
+  - "character": 角色個別擁有的狀態（預設）
+  - "global": 全世界共用的狀態（如 時間、天氣）
 - ai_description: 給 AI 的描述，說明這個狀態的含義和用途
 - default_value: 預設值（數字請填數字字串如 "100"）
 - enum_options: 僅 enum 類型需要，列舉選項陣列
