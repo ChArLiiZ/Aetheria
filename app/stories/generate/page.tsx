@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { getProviderSettings } from '@/services/supabase/provider-settings';
-import { generateFullStory } from '@/services/agents/generation-agent';
+import { apiPost } from '@/lib/api-client';
 import { createWorld, updateWorld as updateWorldRecord } from '@/services/supabase/worlds';
 import { createSchemaItem } from '@/services/supabase/world-schema';
 import { createCharacter, updateCharacter as updateCharacterRecord } from '@/services/supabase/characters';
@@ -183,16 +183,14 @@ function GenerateStoryPageContent() {
                 throw new Error('請先在設定頁面配置 AI 供應商和 API Key');
             }
 
-            const result = await generateFullStory(
-                settings.api_key,
-                settings.default_model,
-                {
+            const result = await apiPost<FullStoryGenerationOutput>('/api/generate', {
+                input: {
                     userPrompt: prompt,
                     existingCharacterTags,
                     existingWorldTags,
                     existingStoryTags,
-                }
-            );
+                },
+            });
 
             setEditData(result);
             setStep('edit');
@@ -221,17 +219,15 @@ function GenerateStoryPageContent() {
                 throw new Error('請先在設定頁面配置 AI 供應商和 API Key');
             }
 
-            const result = await generateFullStory(
-                settings.api_key,
-                settings.default_model,
-                {
+            const result = await apiPost<FullStoryGenerationOutput>('/api/generate', {
+                input: {
                     userPrompt: aiChatInput,
                     currentData: editData,
                     existingCharacterTags,
                     existingWorldTags,
                     existingStoryTags,
-                }
-            );
+                },
+            });
 
             setEditData(result);
             setAiChatInput('');

@@ -26,8 +26,8 @@ import { callStoryAgent } from '@/services/agents/story-agent';
 import { callSummaryAgent } from '@/services/agents/summary-agent';
 import { getStoryTurns, createStoryTurn, markTurnAsError } from '@/services/supabase/story-turns';
 import { getStoryCharacters } from '@/services/supabase/story-characters';
-import { getCharacterById } from '@/services/supabase/characters';
-import { getAllStateValuesForStory, setStateValue, setMultipleStateValues } from '@/services/supabase/story-state-values';
+import { getCharactersByIds } from '@/services/supabase/characters';
+import { getAllStateValuesForStory, setMultipleStateValues } from '@/services/supabase/story-state-values';
 import { getWorldById } from '@/services/supabase/worlds';
 import { getSchemaByWorldId } from '@/services/supabase/world-schema';
 import { updateStory } from '@/services/supabase/stories';
@@ -124,11 +124,12 @@ async function buildStoryAgentInput(
     throw new Error('World not found');
   }
 
-  // Fetch character details
+  // Fetch character details (batch query to avoid N+1)
   console.log(`[buildStoryAgentInput] 取得 ${storyCharacters.length} 個角色的詳細資料...`);
-  const characterDetails = await Promise.all(
-    storyCharacters.map((sc) => getCharacterById(sc.character_id, userId))
-  );
+  const characterIds = storyCharacters.map((sc) => sc.character_id);
+  const characterList = await getCharactersByIds(characterIds, userId);
+  const characterMap = new Map(characterList.map((c) => [c.character_id, c]));
+  const characterDetails = storyCharacters.map((sc) => characterMap.get(sc.character_id) || null);
   console.log('[buildStoryAgentInput] 角色詳細資料取得完成');
 
   // Build schema contexts (需要在狀態補全前建構，因為補全邏輯需要使用)
@@ -341,7 +342,6 @@ async function applyStateChanges(
   console.log('[applyStateChanges] 使用', preInitializedStates ? '預先初始化的狀態' : '從資料庫重新查詢的狀態');
 
   // 使用預先初始化的狀態（如果有），否則從資料庫查詢
-  // 這確保了如果 buildStoryAgentInput 的初始化失敗，我們仍使用記憶體中的補全狀態
   const currentStates = preInitializedStates ?? await getAllStateValuesForStory(story.story_id, userId);
 
   const stateMap = new Map<string, any>();
@@ -357,7 +357,15 @@ async function applyStateChanges(
   const serializeValue = (value: any): string | null =>
     value === undefined ? null : JSON.stringify(value);
 
-  // Apply state changes
+  // 收集所有待寫入的狀態變更（先計算，後批次寫入）
+  const pendingWrites: Array<{
+    story_id: string;
+    story_character_id: string;
+    schema_key: string;
+    value_json: string;
+  }> = [];
+
+  // 計算 state changes（不寫入資料庫）
   for (const change of agentOutput.state_changes) {
     console.log('[applyStateChanges] 處理狀態變更:', {
       target: change.target_story_character_id,
@@ -367,8 +375,6 @@ async function applyStateChanges(
     });
 
     const schema = worldSchema.find((s) => s.schema_key === change.schema_key);
-
-    // Fallback: 如果找不到 schema_key，嘗試用 display_name 匹配（AI 有時會混淆）
     const actualSchema = schema || worldSchema.find((s) => s.display_name === change.schema_key);
 
     if (!actualSchema) {
@@ -376,93 +382,65 @@ async function applyStateChanges(
       continue;
     }
 
-    // 如果使用了 fallback，記錄警告
     if (!schema && actualSchema) {
       console.warn(`[applyStateChanges] AI 使用了 display_name "${change.schema_key}" 而非 schema_key "${actualSchema.schema_key}"，已自動修正`);
     }
 
-    console.log('[applyStateChanges] 找到 schema:', actualSchema.schema_key, 'type:', actualSchema.type);
-
-    // ⭐ 驗證操作類型是否與 schema 類型匹配
     const isValidOperation = validateStateOperation(actualSchema.type, change.op);
     if (!isValidOperation) {
-      console.warn(
-        `[applyStateChanges] 無效的操作組合: schema "${actualSchema.schema_key}" (type: ${actualSchema.type}) 不支援操作 "${change.op}"`
-      );
-      console.warn(`[applyStateChanges] 跳過此狀態變更以防止資料損壞`);
-      continue; // 跳過這個無效的變更
+      console.warn(`[applyStateChanges] 無效的操作組合: schema "${actualSchema.schema_key}" (type: ${actualSchema.type}) 不支援操作 "${change.op}"`);
+      continue;
     }
 
-    // 使用 actualSchema.schema_key 而不是 change.schema_key，確保使用正確的 key
     const stateKey = `${change.target_story_character_id}:${actualSchema.schema_key}`;
     const beforeValue = stateMap.get(stateKey);
     let newValue = change.value;
 
-    // 處理 inc 操作（只對 number 類型有效）
     if (change.op === 'inc') {
       if (actualSchema.type !== 'number') {
-        // 這不應該發生，因為上面已經驗證過，但為了安全起見再檢查一次
         console.error(`[applyStateChanges] 內部錯誤: inc 操作應該只用於 number 類型`);
         continue;
       }
 
-      // ⭐ 修復：如果找不到現有值，使用 schema 的預設值而不是硬編碼的 0
-      // 這解決了當狀態初始化失敗時，inc 操作會從錯誤的基準值開始計算的問題
       let currentValue: number;
       if (beforeValue !== undefined) {
         currentValue = beforeValue as number;
       } else {
         const defaultValue = getSchemaDefaultValue(actualSchema);
         currentValue = typeof defaultValue === 'number' ? defaultValue : 0;
-        console.warn(
-          `[applyStateChanges] 找不到狀態 "${actualSchema.schema_key}" 的現有值，使用 schema 預設值: ${currentValue}`
-        );
+        console.warn(`[applyStateChanges] 找不到狀態 "${actualSchema.schema_key}" 的現有值，使用 schema 預設值: ${currentValue}`);
       }
 
       newValue = currentValue + (change.value as number);
 
       if (actualSchema.number_constraints_json) {
         const constraints = JSON.parse(actualSchema.number_constraints_json);
-        if (constraints.min !== undefined) {
-          newValue = Math.max(newValue as number, constraints.min);
-        }
-        if (constraints.max !== undefined) {
-          newValue = Math.min(newValue as number, constraints.max);
-        }
+        if (constraints.min !== undefined) newValue = Math.max(newValue as number, constraints.min);
+        if (constraints.max !== undefined) newValue = Math.min(newValue as number, constraints.max);
       }
     }
 
-    // Enum 值驗證（只對 set 操作）
     if (actualSchema.type === 'enum' && actualSchema.enum_options_json && change.op === 'set') {
       try {
         const validOptions = JSON.parse(actualSchema.enum_options_json) as string[];
         if (!validOptions.includes(newValue as string)) {
-          console.warn(
-            `[applyStateChanges] 無效的 Enum 值 "${newValue}" 對於 schema "${actualSchema.schema_key}". 有效選項:`,
-            validOptions
-          );
-          console.warn(`[applyStateChanges] 跳過此狀態變更`);
-          continue; // 跳過這個無效的變更
+          console.warn(`[applyStateChanges] 無效的 Enum 值 "${newValue}" 對於 schema "${actualSchema.schema_key}". 有效選項:`, validOptions);
+          continue;
         }
       } catch (error) {
         console.error(`[applyStateChanges] 無法解析 enum_options_json:`, error);
       }
     }
 
-    // 數字限制驗證（對 set 操作）
     if (actualSchema.type === 'number' && change.op === 'set' && actualSchema.number_constraints_json) {
       try {
         const constraints = JSON.parse(actualSchema.number_constraints_json);
         if (constraints.min !== undefined && (newValue as number) < constraints.min) {
-          console.warn(
-            `[applyStateChanges] 數值 ${newValue} 小於最小值 ${constraints.min}，已調整`
-          );
+          console.warn(`[applyStateChanges] 數值 ${newValue} 小於最小值 ${constraints.min}，已調整`);
           newValue = constraints.min;
         }
         if (constraints.max !== undefined && (newValue as number) > constraints.max) {
-          console.warn(
-            `[applyStateChanges] 數值 ${newValue} 大於最大值 ${constraints.max}，已調整`
-          );
+          console.warn(`[applyStateChanges] 數值 ${newValue} 大於最大值 ${constraints.max}，已調整`);
           newValue = constraints.max;
         }
       } catch (error) {
@@ -470,14 +448,14 @@ async function applyStateChanges(
       }
     }
 
-    await setStateValue(userId, {
+    // 記錄計算結果（暫不寫入資料庫）
+    stateMap.set(stateKey, newValue);
+    pendingWrites.push({
       story_id: story.story_id,
       story_character_id: change.target_story_character_id,
       schema_key: actualSchema.schema_key,
       value_json: JSON.stringify(newValue),
     });
-
-    stateMap.set(stateKey, newValue);
     changeLogs.push({
       story_id: story.story_id,
       user_id: userId,
@@ -491,12 +469,9 @@ async function applyStateChanges(
     });
   }
 
-  // Apply list operations
+  // 計算 list operations（不寫入資料庫）
   for (const listOp of agentOutput.list_ops) {
-    // 驗證 schema 是否存在且類型為 list_text
     const schema = worldSchema.find((s) => s.schema_key === listOp.schema_key);
-
-    // Fallback: 如果找不到 schema_key，嘗試用 display_name 匹配
     const actualSchema = schema || worldSchema.find((s) => s.display_name === listOp.schema_key);
 
     if (!actualSchema) {
@@ -504,20 +479,15 @@ async function applyStateChanges(
       continue;
     }
 
-    // 如果使用了 fallback，記錄警告
     if (!schema && actualSchema) {
       console.warn(`[applyStateChanges] AI 使用了 display_name "${listOp.schema_key}" 而非 schema_key "${actualSchema.schema_key}"，已自動修正`);
     }
 
     if (actualSchema.type !== 'list_text') {
-      console.warn(
-        `[applyStateChanges] 無效的列表操作: schema "${actualSchema.schema_key}" (type: ${actualSchema.type}) 不是 list_text 類型`
-      );
-      console.warn(`[applyStateChanges] 跳過此列表操作以防止資料損壞`);
+      console.warn(`[applyStateChanges] 無效的列表操作: schema "${actualSchema.schema_key}" (type: ${actualSchema.type}) 不是 list_text 類型`);
       continue;
     }
 
-    // 使用 actualSchema.schema_key 確保正確的 key
     const stateKey = `${listOp.target_story_character_id}:${actualSchema.schema_key}`;
     const beforeValue = stateMap.get(stateKey);
     const currentList = Array.isArray(beforeValue) ? beforeValue : [];
@@ -541,14 +511,13 @@ async function applyStateChanges(
         continue;
     }
 
-    await setStateValue(userId, {
+    stateMap.set(stateKey, newList);
+    pendingWrites.push({
       story_id: story.story_id,
       story_character_id: listOp.target_story_character_id,
       schema_key: actualSchema.schema_key,
       value_json: JSON.stringify(newList),
     });
-
-    stateMap.set(stateKey, newList);
     changeLogs.push({
       story_id: story.story_id,
       user_id: userId,
@@ -560,6 +529,13 @@ async function applyStateChanges(
       after_value_json: serializeValue(newList),
       reason_text: listOp.reason || 'list change',
     });
+  }
+
+  // 批次寫入所有狀態變更（原子操作：全部成功或全部不變）
+  if (pendingWrites.length > 0) {
+    console.log(`[applyStateChanges] 批次寫入 ${pendingWrites.length} 個狀態變更...`);
+    await setMultipleStateValues(userId, pendingWrites);
+    console.log('[applyStateChanges] 批次寫入完成');
   }
 
   return changeLogs;

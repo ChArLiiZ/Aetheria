@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import Cropper, { Area } from 'react-easy-crop';
+import dynamic from 'next/dynamic';
+import type { Area } from 'react-easy-crop';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -13,8 +14,17 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Loader2, Upload, X, Image as ImageIcon, ZoomIn, ZoomOut } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
 import { cn } from '@/lib/utils';
+
+// 動態載入重型套件 — 只在開啟裁切對話框時載入
+const Cropper = dynamic(() => import('react-easy-crop').then(mod => mod.default), {
+    ssr: false,
+    loading: () => (
+        <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+    ),
+});
 
 interface ImageUploadProps {
     /** 當前圖片 URL（用於預覽） */
@@ -144,6 +154,8 @@ export function ImageUpload({
             setIsCompressing(true);
             setError(null);
 
+            // 動態載入 browser-image-compression（只在需要時載入）
+            const { default: imageCompression } = await import('browser-image-compression');
             // 將 Blob 轉換為 File
             const file = new File([blob], 'image.webp', { type: 'image/webp' });
             const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);

@@ -70,6 +70,38 @@ export async function getCharacterById(
 }
 
 /**
+ * Get multiple characters by IDs (batch query to avoid N+1)
+ */
+export async function getCharactersByIds(
+  characterIds: string[],
+  userId: string
+): Promise<Character[]> {
+  if (characterIds.length === 0) return [];
+
+  return withRetry(async () => {
+    const { data, error } = await (supabase
+      .from('characters') as any)
+      .select(`
+        *,
+        original_author:original_author_id(display_name, avatar_url)
+      `)
+      .in('character_id', characterIds)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new Error('Failed to fetch characters by IDs: ' + error.message);
+    }
+
+    return (data || []).map((item: any) => ({
+      ...item,
+      original_author_name: item.original_author?.display_name || null,
+      original_author_avatar_url: item.original_author?.avatar_url || null,
+      original_author: undefined,
+    })) as Character[];
+  });
+}
+
+/**
  * Create a new character
  */
 export async function createCharacter(

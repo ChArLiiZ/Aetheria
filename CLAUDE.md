@@ -85,7 +85,7 @@ Character（角色定義）
    - 主要敘事生成
    - 回傳：`{ narrative, state_changes[], list_ops[] }`
    - 單次 API 呼叫同時處理敘事與狀態判定
-   - System prompt 包含世界規則、角色、Schema、最近回合與可選的摘要
+   - System prompt 包含世界描述（`world_description`）、故事前提（`story_premise`）、世界規則、角色、Schema、最近回合與可選的摘要
 
 2. **Summary Agent**（`services/agents/summary-agent.ts`）
    - 生成滾動故事摘要
@@ -107,13 +107,15 @@ Character（角色定義）
 
 `services/gameplay/execute-turn.ts` 中的 `executeTurn()` 函式編排完整的回合流程：
 
-1. **建構上下文**：收集世界、角色、Schema、狀態值、最近回合與適用的摘要
-2. **呼叫 AI**：單次 Story Agent 呼叫回傳敘事 + 狀態變更
-3. **套用狀態**：套用 state_changes 和 list_ops，並驗證限制條件
-4. **儲存回合**：將回合與敘事存入資料庫
-5. **記錄變更**：記錄所有狀態變更的前後值
-6. **更新故事**：遞增 turn_count
-7. **檢查摘要**：若 `turn_index % context_turns === 0`，則觸發摘要生成
+1. **狀態自動補齊**：檢查所有角色是否具備所有 Schema 狀態，自動初始化缺失狀態（批次寫入資料庫）
+2. **建構上下文**：收集世界描述、故事前提、世界規則、角色、Schema、狀態值、最近回合與適用的摘要
+3. **呼叫 AI**：單次 Story Agent 呼叫回傳敘事 + 狀態變更
+4. **驗證操作**：`validateStateOperation()` 驗證操作類型與欄位類型的匹配（例如 `inc` 僅限數字欄位），跳過無效操作
+5. **套用狀態**：套用 state_changes 和 list_ops，支援 Schema key 與 display_name 的自動 fallback 匹配
+6. **儲存回合**：將回合與敘事存入資料庫
+7. **記錄變更**：記錄所有狀態變更的前後值
+8. **更新故事**：遞增 turn_count
+9. **檢查摘要**：若 `turn_index % context_turns === 0`，則觸發摘要生成（非阻塞，失敗不影響主流程）
 
 **上下文視窗管理**：AI 上下文中包含的最近回合數量由以下控制：
 - `story.context_turns_override`（故事層級）
@@ -165,6 +167,14 @@ services/
 - **頁面元件**：Next.js App Router 頁面位於 `app/`
 - **舊版元件**：`components/ui-legacy/` 包含舊元件（逐步淘汰中）
 - **認證**：`components/auth/ProtectedRoute.tsx` 中的 `ProtectedRoute` 包裝器
+- **故事元件**：`components/story/turn-card.tsx` - 效能優化的回合顯示元件（使用 `memo()` 防止不必要的重新渲染）
+- **功能元件**：
+  - `components/story-update-alert.tsx` - 故事資源更新提示
+  - `components/sync-update-dialog.tsx` - Fork 同步差異比對對話框
+  - `components/image-upload.tsx` - 圖片上傳（含裁切、縮放控制）
+  - `components/ai-generation-dialog.tsx` - AI 輔助生成對話框
+  - `components/character-details-dialog.tsx` - 角色快速檢視
+  - `components/world-details-dialog.tsx` - 世界觀快速檢視
 
 ### 頁面路由結構
 
@@ -199,7 +209,7 @@ services/
 - `Visibility` = `'private' | 'public'`
 
 Agent 型別位於 `types/api/agents.ts`：
-- `StoryAgentInput/Output`
+- `StoryAgentInput/Output` - 包含 `world_description`、`story_premise` 等上下文欄位
 - `SuggestionAgentInput/Output`
 - `WorldGenerationInput/Output`、`CharacterGenerationInput/Output`
 - `FullStoryGenerationInput/Output`、`GeneratedCharacterData`
@@ -222,7 +232,19 @@ Agent 型別位於 `types/api/agents.ts`：
 - 支援 OpenRouter（Claude、GPT、Gemini、Llama 等）與 OpenAI
 - 供應商設定按使用者儲存於 `provider_settings` 表
 - 模型選擇可透過 `story.model_override` 針對每個故事覆寫
-- AI 參數（temperature、max_tokens、top_p）可針對每個故事設定
+- AI 參數（temperature、top_p）可針對每個故事設定（`max_tokens` 已從 UI 移除，但保留在 `AIParams` 型別中供 API 相容性）
+
+### AI JSON 回應解析
+
+OpenRouter 服務（`services/ai/openrouter.ts`）使用 6 層 fallback 策略解析 AI 的 JSON 回應：
+1. 從 Markdown JSON 程式碼區塊提取
+2. 從一般程式碼區塊提取
+3. 尋找最外層 JSON 物件（首尾大括號）
+4. Greedy JSON 物件 regex 匹配
+5. 直接解析完整內容
+6. 自動修復不完整的 JSON（平衡大括號/方括號）
+
+解析前會預處理：移除 BOM、修正中文引號、移除控制字元、移除尾隨逗號。
 
 ### Markdown 渲染
 
@@ -298,8 +320,8 @@ Agent 型別位於 `types/api/agents.ts`：
 - 在故事頁面顯示更新提示
 - 重新開始故事後會更新 `story.updated_at`，清除更新提示
 
-**故事重置**：
-- 允許使用者重新開始故事（刪除所有回合和狀態）
+**故事重置**（`services/supabase/story-reset.ts`）：
+- `resetStory()` 允許使用者重新開始故事（刪除所有回合、摘要，重設狀態值至預設）
 - 保留故事設定和角色配置
 
 **重新生成回合**：

@@ -1,9 +1,67 @@
 import { OpenRouterMessage, OpenRouterRequest, OpenRouterResponse } from '@/types';
+import { AIServiceError } from '@/lib/errors';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // API 請求超時時間（毫秒）
 const API_TIMEOUT_MS = 60000; // 60 秒
+
+/**
+ * 根據 HTTP 狀態碼分類錯誤
+ */
+function classifyApiError(status: number, body: string): AIServiceError {
+  // 嘗試解析 Retry-After header 值（從 body 中）
+  let retryAfter: number | undefined;
+
+  switch (status) {
+    case 401:
+    case 403:
+      return new AIServiceError(
+        'API 金鑰無效或已過期',
+        status,
+        'auth'
+      );
+    case 402:
+      return new AIServiceError(
+        'API 額度不足，請檢查您的供應商帳戶',
+        status,
+        'quota'
+      );
+    case 429: {
+      // 嘗試從 body 解析 retry-after 資訊
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed?.error?.metadata?.retry_after != null) {
+          const val = Number(parsed.error.metadata.retry_after);
+          if (!Number.isNaN(val)) {
+            retryAfter = val;
+          }
+        }
+      } catch {}
+      return new AIServiceError(
+        '請求過於頻繁，請稍候再試',
+        429,
+        'rate_limit',
+        retryAfter
+      );
+    }
+    case 500:
+    case 502:
+    case 503:
+    case 504:
+      return new AIServiceError(
+        'AI 服務暫時不可用，請稍後再試',
+        status,
+        'server'
+      );
+    default:
+      return new AIServiceError(
+        `OpenRouter API 錯誤 (${status}): ${body.substring(0, 200)}`,
+        status,
+        'unknown'
+      );
+  }
+}
 
 /**
  * Call OpenRouter API with timeout
@@ -40,9 +98,19 @@ export async function callOpenRouter(
     console.log('[callOpenRouter] 收到回應，狀態碼:', response.status);
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('[callOpenRouter] API 錯誤:', response.status, error);
-      throw new Error(`OpenRouter API error: ${response.status} - ${error}`);
+      const errorBody = await response.text();
+      console.error('[callOpenRouter] API 錯誤:', response.status, errorBody);
+
+      const retryAfterHeader = response.headers.get('Retry-After');
+      const classifiedError = classifyApiError(response.status, errorBody);
+
+      // 如果 header 有 Retry-After 且錯誤是 rate_limit，覆寫 retryAfter
+      if (retryAfterHeader && classifiedError.errorType === 'rate_limit') {
+        const parsed = Number(retryAfterHeader);
+        classifiedError.retryAfter = Number.isNaN(parsed) ? undefined : parsed;
+      }
+
+      throw classifiedError;
     }
 
     const data = await response.json();
@@ -51,14 +119,30 @@ export async function callOpenRouter(
   } catch (error: any) {
     clearTimeout(timeoutId);
 
+    // 已經是 AIServiceError 就直接拋出
+    if (error instanceof AIServiceError) {
+      throw error;
+    }
+
     if (error.name === 'AbortError') {
-      throw new Error(`OpenRouter API 請求逾時 (${API_TIMEOUT_MS / 1000} 秒)，請檢查網路連線或稍後再試`);
+      throw new AIServiceError(
+        `請求逾時 (${API_TIMEOUT_MS / 1000} 秒)，請檢查網路連線或稍後再試`,
+        0,
+        'timeout'
+      );
     }
 
     console.error('[callOpenRouter] 請求失敗:', error);
-    throw error;
+    throw new AIServiceError(
+      error.message || '未知的網路錯誤',
+      0,
+      'unknown'
+    );
   }
 }
+
+/** 不應重試的錯誤類型 */
+const NON_RETRYABLE_ERRORS: Set<string> = new Set(['auth', 'quota']);
 
 /**
  * Call OpenRouter with retry logic for JSON parsing errors
@@ -90,16 +174,24 @@ export async function callOpenRouterWithRetry(
     } catch (error) {
       lastError = error as Error;
 
-      // If it's a JSON parsing error and we have retries left, add a correction message
-      if (attempt < maxRetries && error instanceof SyntaxError) {
-        messages.push({
-          role: 'user',
-          content:
-            'The previous response had a JSON parsing error. Please provide a valid JSON response following the exact schema specified.',
-        });
-      } else if (attempt < maxRetries) {
-        // For other errors, just retry
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+      // 不可重試的錯誤直接拋出
+      if (error instanceof AIServiceError && NON_RETRYABLE_ERRORS.has(error.errorType)) {
+        throw error;
+      }
+
+      if (attempt < maxRetries) {
+        // rate_limit 使用 retryAfter，否則 exponential backoff
+        if (error instanceof AIServiceError && error.errorType === 'rate_limit' && error.retryAfter) {
+          await new Promise((resolve) => setTimeout(resolve, error.retryAfter! * 1000));
+        } else if (error instanceof SyntaxError) {
+          messages.push({
+            role: 'user',
+            content:
+              'The previous response had a JSON parsing error. Please provide a valid JSON response following the exact schema specified.',
+          });
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
       }
     }
   }
@@ -133,20 +225,31 @@ export async function callOpenRouterJsonWithRetry<T>(
       const parsed = parseJsonResponse<T>(content);
 
       if (!parsed) {
-        throw new SyntaxError('Failed to parse JSON response');
+        throw new AIServiceError('AI 回應格式異常，無法解析 JSON', 0, 'parse');
       }
 
       return { parsed, usage: response.usage, raw: content };
     } catch (error) {
       lastError = error as Error;
 
+      // 不可重試的錯誤直接拋出
+      if (error instanceof AIServiceError && NON_RETRYABLE_ERRORS.has(error.errorType)) {
+        throw error;
+      }
+
       if (attempt < maxRetries) {
-        workingMessages.push({
-          role: 'user',
-          content:
-            'The previous response had a JSON parsing error. Please provide a valid JSON response following the exact schema specified.',
-        });
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        if (error instanceof AIServiceError && error.errorType === 'rate_limit' && error.retryAfter) {
+          await new Promise((resolve) => setTimeout(resolve, error.retryAfter! * 1000));
+        } else if (error instanceof AIServiceError && error.errorType === 'parse') {
+          workingMessages.push({
+            role: 'user',
+            content:
+              'The previous response had a JSON parsing error. Please provide a valid JSON response following the exact schema specified.',
+          });
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
       }
     }
   }

@@ -16,7 +16,7 @@ import {
   updateDisplayName,
   updatePassword,
 } from '@/services/supabase/auth';
-import { testProviderConnection } from '@/services/api/provider-test';
+import { apiPost } from '@/lib/api-client';
 import { toast } from 'sonner';
 
 import { AppHeader } from '@/components/app-header';
@@ -249,8 +249,12 @@ function SettingsPageContent() {
     try {
       setTestingProvider(true);
 
-      // Test actual API connection
-      const result = await testProviderConnection(selectedProvider, apiKey.trim(), model.trim());
+      // Test actual API connection via server-side API route
+      const result = await apiPost<{ success: boolean; message: string; details?: string }>('/api/provider/test', {
+        provider: selectedProvider,
+        model: model.trim(),
+        apiKey: apiKey.trim(),
+      });
 
       if (result.success) {
         toast.success(result.message, {
