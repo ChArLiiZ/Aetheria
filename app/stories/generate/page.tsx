@@ -23,6 +23,7 @@ import type {
     SchemaGenerationData,
     GeneratedCharacterData,
 } from '@/types/api/agents';
+import { GLOBAL_STATE_ID } from '@/types';
 import { AppHeader } from '@/components/app-header';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -267,6 +268,7 @@ function GenerateStoryPageContent() {
             schema_key: 'new_field',
             display_name: '新欄位',
             type: 'number',
+            scope: 'character',
             ai_description: '',
             default_value: '0',
         };
@@ -418,6 +420,7 @@ function GenerateStoryPageContent() {
                     schema_key: schema.schema_key,
                     display_name: schema.display_name,
                     type: schema.type,
+                    scope: schema.scope || 'character',
                     ai_description: schema.ai_description,
                     default_value_json: schema.default_value ? JSON.stringify(schema.default_value) : '',
                     enum_options_json: schema.enum_options ? JSON.stringify(schema.enum_options) : '',
@@ -506,6 +509,10 @@ function GenerateStoryPageContent() {
 
                 if (charData.initial_states) {
                     for (const [schemaKey, value] of Object.entries(charData.initial_states)) {
+                        // 跳過全域狀態的 key（不應出現在角色的 initial_states 中，但以防萬一）
+                        const schemaItem = editData.world.schemas.find(s => s.schema_key === schemaKey);
+                        if (schemaItem && (schemaItem.scope || 'character') === 'global') continue;
+
                         stateValues.push({
                             story_id: story.story_id,
                             story_character_id: storyCharacter.story_character_id,
@@ -514,6 +521,19 @@ function GenerateStoryPageContent() {
                         });
                     }
                 }
+            }
+
+            // 設定全域狀態的初始值
+            const globalSchemas = editData.world.schemas.filter(s => (s.scope || 'character') === 'global');
+            for (const schema of globalSchemas) {
+                const defaultValue = schema.default_value ?? '';
+                const typedValue = parseStateValue(schema, defaultValue);
+                stateValues.push({
+                    story_id: story.story_id,
+                    story_character_id: GLOBAL_STATE_ID,
+                    schema_key: schema.schema_key,
+                    value_json: JSON.stringify(typedValue),
+                });
             }
 
             if (stateValues.length > 0) {
@@ -803,7 +823,7 @@ function GenerateStoryPageContent() {
                                         {editData.world.schemas.map((schema, idx) => (
                                             <div key={idx} className="border rounded-lg p-4 space-y-3">
                                                 <div className="flex items-center justify-between">
-                                                    <div className="grid gap-3 md:grid-cols-3 flex-1">
+                                                    <div className="grid gap-3 md:grid-cols-4 flex-1">
                                                         <div className="space-y-1">
                                                             <Label className="text-xs text-muted-foreground">顯示名稱</Label>
                                                             <Input
@@ -835,6 +855,21 @@ function GenerateStoryPageContent() {
                                                                     <SelectItem value="bool">布林值</SelectItem>
                                                                     <SelectItem value="enum">列舉</SelectItem>
                                                                     <SelectItem value="list_text">文字列表</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-xs text-muted-foreground">範圍</Label>
+                                                            <Select
+                                                                value={schema.scope || 'character'}
+                                                                onValueChange={(value) => updateSchema(idx, 'scope', value)}
+                                                            >
+                                                                <SelectTrigger className="h-8">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="character">角色</SelectItem>
+                                                                    <SelectItem value="global">全域</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
@@ -973,7 +1008,7 @@ function GenerateStoryPageContent() {
                                             <div className="space-y-3">
                                                 <Label className="text-muted-foreground">初始狀態</Label>
                                                 <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                                                    {editData.world.schemas.map((schema) => (
+                                                    {editData.world.schemas.filter((schema) => (schema.scope || 'character') === 'character').map((schema) => (
                                                         <div key={schema.schema_key} className="space-y-1">
                                                             <Label className="text-xs">{schema.display_name}</Label>
                                                             {schema.type === 'bool' ? (

@@ -84,6 +84,7 @@ ${existingSchemas}
       "schema_key": "health_points",
       "display_name": "生命值",
       "type": "number",
+      "scope": "character",
       "ai_description": "角色的生命值，歸零時角色死亡",
       "default_value": "100",
       "number_min": 0,
@@ -93,7 +94,25 @@ ${existingSchemas}
       "schema_key": "inventory",
       "display_name": "物品欄",
       "type": "list_text",
+      "scope": "character",
       "ai_description": "角色攜帶的物品列表"
+    },
+    {
+      "schema_key": "current_time",
+      "display_name": "當前時間",
+      "type": "text",
+      "scope": "global",
+      "ai_description": "當前的時間（如「清晨」、「正午」、「黃昏」、「深夜」）",
+      "default_value": "正午"
+    },
+    {
+      "schema_key": "weather",
+      "display_name": "天氣",
+      "type": "enum",
+      "scope": "global",
+      "ai_description": "當前的天氣狀況",
+      "default_value": "晴天",
+      "enum_options": ["晴天", "陰天", "下雨", "暴風雨", "下雪"]
     }
   ]
 }
@@ -380,6 +399,7 @@ ${existingTagsSection}
         "schema_key": "health_points",
         "display_name": "生命值",
         "type": "number",
+        "scope": "character",
         "ai_description": "角色的生命值，歸零時角色死亡",
         "default_value": "100",
         "number_min": 0,
@@ -389,19 +409,30 @@ ${existingTagsSection}
         "schema_key": "appearance",
         "display_name": "外觀",
         "type": "text",
+        "scope": "character",
         "ai_description": "角色當前的穿著打扮，格式：上半身：xxx\\n下半身：xxx"
       },
       {
         "schema_key": "location",
         "display_name": "位置",
         "type": "text",
+        "scope": "character",
         "ai_description": "角色當前所在的地點"
       },
       {
         "schema_key": "inventory",
         "display_name": "物品欄",
         "type": "list_text",
+        "scope": "character",
         "ai_description": "角色攜帶的物品列表"
+      },
+      {
+        "schema_key": "current_time",
+        "display_name": "當前時間",
+        "type": "text",
+        "scope": "global",
+        "ai_description": "當前的時間",
+        "default_value": "正午"
       }
     ]
   },
@@ -436,7 +467,7 @@ ${existingTagsSection}
 - 重要：生成使用者描述中提到的所有角色，不要遺漏任何角色（至少一個玩家角色）
 - 重要：角色的 core_profile_text 必須使用結構化格式（## 基本資訊、## 外貌、## 背景故事、## 性格特質、## 動機與目標、## 說話風格），這樣能讓 AI 更準確地理解和扮演角色
 - 每個區塊都要有具體內容，避免籠統的描述
-- 角色的 initial_states 必須對應 world.schemas 中定義的 schema_key
+- 角色的 initial_states 只需對應 world.schemas 中 scope 為 "character" 的 schema_key（不要包含 scope 為 "global" 的狀態）
 - schema_key 只能使用小寫字母和底線
 - 故事標題要吸引人，前提要能引起玩家興趣
 - story_prompt 是給 AI 的指導，說明敘事風格和注意事項
