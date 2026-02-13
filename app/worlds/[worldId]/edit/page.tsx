@@ -159,12 +159,30 @@ function WorldEditorPageContent() {
 
     const isNewWorld = worldId === 'new';
 
+    // 預設的 current_time 全局 Schema（建立新世界時預填）
+    const defaultCurrentTimeSchema: WorldStateSchema = {
+        schema_id: 'temp-current-time',
+        world_id: '',
+        user_id: user?.user_id || '',
+        schema_key: 'current_time',
+        display_name: '當前時間',
+        type: 'text' as SchemaFieldType,
+        scope: 'global' as SchemaScope,
+        ai_description: 'The current in-story time. Update this as time passes in the narrative (e.g., "清晨", "下午三點", "深夜").',
+        default_value_json: JSON.stringify('未設定'),
+        enum_options_json: '',
+        number_constraints_json: '',
+        sort_order: 1,
+        updated_at: new Date().toISOString(),
+    };
+
     // Load data with cancellation support to prevent race conditions
     useEffect(() => {
         let cancelled = false;
 
         const fetchData = async () => {
             if (isNewWorld) {
+                setSchemas([defaultCurrentTimeSchema]);
                 setLoading(false);
                 return;
             }

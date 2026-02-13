@@ -7,7 +7,7 @@ import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import { getProviderSettings } from '@/services/supabase/provider-settings';
 import { apiPost } from '@/lib/api-client';
 import { createWorld, updateWorld as updateWorldRecord } from '@/services/supabase/worlds';
-import { createSchemaItem } from '@/services/supabase/world-schema';
+import { createSchemaItem, getSchemaByWorldId, updateSchemaItem } from '@/services/supabase/world-schema';
 import { createCharacter, updateCharacter as updateCharacterRecord } from '@/services/supabase/characters';
 import { createStory } from '@/services/supabase/stories';
 import { addStoryCharacter } from '@/services/supabase/story-characters';
@@ -415,19 +415,39 @@ function GenerateStoryPageContent() {
 
             // 2. 建立狀態 Schema
             setCreateProgress('正在建立狀態系統...');
+            // 安全防護：檢查是否有已存在的 Schema，避免重複 schema_key 衝突
+            const existingSchemas = await getSchemaByWorldId(world.world_id, user.user_id);
+            const existingKeyMap = new Map(existingSchemas.map(s => [s.schema_key, s]));
+
             for (const schema of editData.world.schemas) {
-                await createSchemaItem(world.world_id, user.user_id, {
-                    schema_key: schema.schema_key,
-                    display_name: schema.display_name,
-                    type: schema.type,
-                    scope: schema.scope || 'character',
-                    ai_description: schema.ai_description,
-                    default_value_json: schema.default_value ? JSON.stringify(schema.default_value) : '',
-                    enum_options_json: schema.enum_options ? JSON.stringify(schema.enum_options) : '',
-                    number_constraints_json: (schema.number_min !== undefined || schema.number_max !== undefined)
-                        ? JSON.stringify({ min: schema.number_min, max: schema.number_max })
-                        : '',
-                });
+                const existingSchema = existingKeyMap.get(schema.schema_key);
+                if (existingSchema) {
+                    // 已存在的 schema_key，用 AI 生成的內容更新
+                    await updateSchemaItem(existingSchema.schema_id, user.user_id, {
+                        display_name: schema.display_name,
+                        type: schema.type,
+                        scope: schema.scope || 'character',
+                        ai_description: schema.ai_description,
+                        default_value_json: schema.default_value ? JSON.stringify(schema.default_value) : '',
+                        enum_options_json: schema.enum_options ? JSON.stringify(schema.enum_options) : '',
+                        number_constraints_json: (schema.number_min !== undefined || schema.number_max !== undefined)
+                            ? JSON.stringify({ min: schema.number_min, max: schema.number_max })
+                            : '',
+                    });
+                } else {
+                    await createSchemaItem(world.world_id, user.user_id, {
+                        schema_key: schema.schema_key,
+                        display_name: schema.display_name,
+                        type: schema.type,
+                        scope: schema.scope || 'character',
+                        ai_description: schema.ai_description,
+                        default_value_json: schema.default_value ? JSON.stringify(schema.default_value) : '',
+                        enum_options_json: schema.enum_options ? JSON.stringify(schema.enum_options) : '',
+                        number_constraints_json: (schema.number_min !== undefined || schema.number_max !== undefined)
+                            ? JSON.stringify({ min: schema.number_min, max: schema.number_max })
+                            : '',
+                    });
+                }
             }
 
             // 3. 建立角色

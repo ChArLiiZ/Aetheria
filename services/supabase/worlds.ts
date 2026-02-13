@@ -103,23 +103,6 @@ export async function createWorld(
 
     const world = newWorld as World;
 
-    // Create default global schema: "current_time"
-    try {
-      const { createSchemaItem } = await import('./world-schema');
-      await createSchemaItem(world.world_id, userId, {
-        schema_key: 'current_time',
-        display_name: '當前時間',
-        type: 'text',
-        scope: 'global',
-        ai_description: 'The current in-story time. Update this as time passes in the narrative (e.g., "清晨", "下午三點", "深夜").',
-        default_value_json: JSON.stringify('未設定'),
-      });
-      console.log('[createWorld] Created default global schema: current_time');
-    } catch (err) {
-      console.warn('[createWorld] Failed to create default global schema:', err);
-      // Non-critical, continue
-    }
-
     return world;
   });
 }
