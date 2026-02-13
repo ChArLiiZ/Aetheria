@@ -2,7 +2,7 @@
  * Characters Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { Character } from '@/types';
 
@@ -74,12 +74,14 @@ export async function getCharacterById(
  */
 export async function getCharactersByIds(
   characterIds: string[],
-  userId: string
+  userId: string,
+  db?: DbClient
 ): Promise<Character[]> {
   if (characterIds.length === 0) return [];
+  const client = db || supabase;
 
   return withRetry(async () => {
-    const { data, error } = await (supabase
+    const { data, error } = await (client
       .from('characters') as any)
       .select(`
         *,

@@ -3,7 +3,7 @@
  * 管理滾動摘要歷史
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { StorySummary } from '@/types';
 
@@ -16,8 +16,10 @@ export async function createStorySummary(
         story_id: string;
         generated_at_turn: number;
         summary_text: string;
-    }
+    },
+    db?: DbClient
 ): Promise<StorySummary> {
+    const client = db || supabase;
     const payload = {
         user_id: userId,
         story_id: data.story_id,
@@ -26,7 +28,7 @@ export async function createStorySummary(
     };
 
     return withRetry(async () => {
-        const { data: newSummary, error } = await (supabase
+        const { data: newSummary, error } = await (client
             .from('story_summaries') as any)
             .insert(payload)
             .select()
@@ -47,10 +49,12 @@ export async function createStorySummary(
 export async function getLatestSummaryForTurn(
     storyId: string,
     turnIndex: number,
-    userId: string
+    userId: string,
+    db?: DbClient
 ): Promise<StorySummary | null> {
+    const client = db || supabase;
     return withRetry(async () => {
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('story_summaries')
             .select('*')
             .eq('story_id', storyId)

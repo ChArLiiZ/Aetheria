@@ -2,7 +2,7 @@
  * Stories Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { Story, StoryMode } from '@/types';
 
@@ -103,8 +103,10 @@ export async function createStory(
 export async function updateStory(
   storyId: string,
   userId: string,
-  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'turn_count' | 'player_character_id' | 'context_turns_override'>> & { tags?: string[] }
+  updates: Partial<Pick<Story, 'title' | 'premise_text' | 'story_prompt' | 'model_override' | 'params_override_json' | 'turn_count' | 'player_character_id' | 'context_turns_override'>> & { tags?: string[] },
+  db?: DbClient
 ): Promise<void> {
+  const client = db || supabase;
   return withRetry(async () => {
     const payload: any = { ...updates };
 
@@ -114,7 +116,7 @@ export async function updateStory(
       delete payload.tags;
     }
 
-    const { error } = await (supabase
+    const { error } = await (client
       .from('stories') as any)
       .update(payload)
       .eq('story_id', storyId)

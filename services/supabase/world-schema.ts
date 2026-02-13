@@ -2,7 +2,7 @@
  * WorldStateSchema Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { WorldStateSchema, SchemaFieldType, SchemaScope } from '@/types';
 
@@ -14,10 +14,12 @@ export type WorldStateSchemaItem = WorldStateSchema;
  */
 export async function getSchemaByWorldId(
   worldId: string,
-  userId: string
+  userId: string,
+  db?: DbClient
 ): Promise<WorldStateSchemaItem[]> {
+  const client = db || supabase;
   return withRetry(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('world_state_schema')
       .select('*')
       .eq('world_id', worldId)

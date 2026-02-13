@@ -35,6 +35,7 @@ import { updateStory } from '@/services/supabase/stories';
 import { createChangeLogs, ChangeLogInsert } from '@/services/supabase/change-log';
 import { getLatestSummaryForTurn, createStorySummary } from '@/services/supabase/story-summaries';
 import { getSchemaDefaultValue } from '@/utils/schema-defaults';
+import type { DbClient } from '@/lib/supabase/client';
 
 // 預設上下文回合數
 const DEFAULT_CONTEXT_TURNS = 5;
@@ -82,6 +83,8 @@ export interface ExecuteTurnInput {
   params?: Record<string, any>;
   /** 上下文回合數覆蓋 */
   contextTurns?: number;
+  /** 伺服器端 DB client（繞過 RLS），從 API route 傳入 */
+  db?: DbClient;
 }
 
 export interface ExecuteTurnResult {
@@ -100,7 +103,8 @@ async function buildStoryAgentInput(
   userInput: string,
   userId: string,
   contextTurns: number,
-  currentTurnIndex: number
+  currentTurnIndex: number,
+  db?: DbClient
 ): Promise<{
   input: StoryAgentInput;
   stateValues: StoryStateValue[];
@@ -111,12 +115,12 @@ async function buildStoryAgentInput(
   // Fetch all required data in parallel (including applicable summary)
   const [world, storyCharacters, recentTurns, stateValues, worldSchema, applicableSummary] =
     await Promise.all([
-      getWorldById(story.world_id, userId),
-      getStoryCharacters(story.story_id, userId),
-      getStoryTurns(story.story_id, userId),
-      getAllStateValuesForStory(story.story_id, userId),
-      getSchemaByWorldId(story.world_id, userId),
-      getLatestSummaryForTurn(story.story_id, currentTurnIndex, userId),
+      getWorldById(story.world_id, userId, db),
+      getStoryCharacters(story.story_id, userId, db),
+      getStoryTurns(story.story_id, userId, db),
+      getAllStateValuesForStory(story.story_id, userId, db),
+      getSchemaByWorldId(story.world_id, userId, db),
+      getLatestSummaryForTurn(story.story_id, currentTurnIndex, userId, db),
     ]);
   console.log('[buildStoryAgentInput] 所有平行查詢完成');
   console.log('[buildStoryAgentInput] 適用摘要:', applicableSummary ? `回合 ${applicableSummary.generated_at_turn}` : '無');
@@ -128,7 +132,7 @@ async function buildStoryAgentInput(
   // Fetch character details (batch query to avoid N+1)
   console.log(`[buildStoryAgentInput] 取得 ${storyCharacters.length} 個角色的詳細資料...`);
   const characterIds = storyCharacters.map((sc) => sc.character_id);
-  const characterList = await getCharactersByIds(characterIds, userId);
+  const characterList = await getCharactersByIds(characterIds, userId, db);
   const characterMap = new Map(characterList.map((c) => [c.character_id, c]));
   const characterDetails = storyCharacters.map((sc) => characterMap.get(sc.character_id) || null);
   console.log('[buildStoryAgentInput] 角色詳細資料取得完成');
@@ -228,7 +232,7 @@ async function buildStoryAgentInput(
   if (missingStates.length > 0) {
     console.log(`[buildStoryAgentInput] 發現 ${missingStates.length} 個缺失狀態，正在初始化...`);
     try {
-      await setMultipleStateValues(userId, missingStates);
+      await setMultipleStateValues(userId, missingStates, db);
       console.log('[buildStoryAgentInput] 狀態初始化完成');
     } catch (error) {
       console.error('[buildStoryAgentInput] 狀態初始化失敗:', error);
@@ -382,14 +386,15 @@ async function applyStateChanges(
   agentOutput: StoryAgentOutput,
   userId: string,
   worldSchema: WorldStateSchema[],
-  preInitializedStates?: StoryStateValue[]
+  preInitializedStates?: StoryStateValue[],
+  db?: DbClient
 ): Promise<ChangeLogDraft[]> {
   const changeLogs: ChangeLogDraft[] = [];
 
   console.log('[applyStateChanges] 使用', preInitializedStates ? '預先初始化的狀態' : '從資料庫重新查詢的狀態');
 
   // 使用預先初始化的狀態（如果有），否則從資料庫查詢
-  const currentStates = preInitializedStates ?? await getAllStateValuesForStory(story.story_id, userId);
+  const currentStates = preInitializedStates ?? await getAllStateValuesForStory(story.story_id, userId, db);
 
   const stateMap = new Map<string, any>();
   currentStates.forEach((state) => {
@@ -581,7 +586,7 @@ async function applyStateChanges(
   // 批次寫入所有狀態變更（原子操作：全部成功或全部不變）
   if (pendingWrites.length > 0) {
     console.log(`[applyStateChanges] 批次寫入 ${pendingWrites.length} 個狀態變更...`);
-    await setMultipleStateValues(userId, pendingWrites);
+    await setMultipleStateValues(userId, pendingWrites, db);
     console.log('[applyStateChanges] 批次寫入完成');
   }
 
@@ -592,7 +597,7 @@ async function applyStateChanges(
  * Execute a full turn (簡化版 - 單次 AI 呼叫)
  */
 export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnResult> {
-  const { story, userInput, userId, apiKey, model, params, contextTurns } = input;
+  const { story, userInput, userId, apiKey, model, params, contextTurns, db } = input;
 
   console.log('[executeTurn] 開始執行回合...');
 
@@ -604,7 +609,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
 
   // Get current turn count
   console.log('[executeTurn] 步驟 0: 取得目前回合數...');
-  const currentTurns = await getStoryTurns(story.story_id, userId);
+  const currentTurns = await getStoryTurns(story.story_id, userId, db);
   const nextTurnIndex =
     currentTurns.length > 0
       ? Math.max(...currentTurns.map((turn) => turn.turn_index)) + 1
@@ -618,7 +623,8 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
     userInput,
     userId,
     effectiveContextTurns,
-    nextTurnIndex
+    nextTurnIndex,
+    db
   );
   console.log('[executeTurn] 步驟 1a 完成: 輸入已建構');
 
@@ -628,7 +634,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
 
   // Step 2: Apply state changes (傳入補全後的狀態，確保與 AI 輸入一致)
   console.log('[executeTurn] 步驟 2: 套用狀態變更...');
-  const changeLogs = await applyStateChanges(story, agentOutput, userId, worldSchema, stateValues);
+  const changeLogs = await applyStateChanges(story, agentOutput, userId, worldSchema, stateValues, db);
   console.log(`[executeTurn] 步驟 2 完成: 套用了 ${changeLogs.length} 個狀態變更`);
 
   // Step 3: Save turn
@@ -638,7 +644,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
     turn_index: nextTurnIndex,
     user_input_text: userInput,
     narrative_text: agentOutput.narrative,
-  });
+  }, db);
   console.log('[executeTurn] 步驟 3 完成: 回合已儲存');
 
   // Step 4: Write change logs
@@ -649,17 +655,17 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
     }));
 
     try {
-      await createChangeLogs(entries);
+      await createChangeLogs(entries, db);
     } catch (error) {
       console.error('Failed to create change logs:', error);
-      await markTurnAsError(turn.turn_id, userId);
+      await markTurnAsError(turn.turn_id, userId, db);
     }
   }
 
   // Step 5: Update story turn count
   await updateStory(story.story_id, userId, {
     turn_count: nextTurnIndex,
-  });
+  }, db);
 
   // Step 6: Check if we need to generate a new summary
   // 在回合數達到上下文窗口倍數時觸發摘要生成
@@ -669,7 +675,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
     console.log(`[executeTurn] 步驟 6: 觸發摘要生成（回合 ${nextTurnIndex}）...`);
     try {
       // 取得需要摘要的回合（上一次摘要之後到現在的所有回合）
-      const latestSummary = await getLatestSummaryForTurn(story.story_id, nextTurnIndex + 1, userId);
+      const latestSummary = await getLatestSummaryForTurn(story.story_id, nextTurnIndex + 1, userId, db);
       const summaryStartTurn = latestSummary ? latestSummary.generated_at_turn : 0;
 
       // 篩選需要摘要的回合
@@ -700,7 +706,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
           story_id: story.story_id,
           generated_at_turn: nextTurnIndex,
           summary_text: newSummary,
-        });
+        }, db);
 
         console.log(`[executeTurn] 步驟 6 完成: 摘要已生成並儲存`);
       }

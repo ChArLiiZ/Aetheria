@@ -2,7 +2,7 @@
  * Worlds Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { World } from '@/types';
 
@@ -39,10 +39,12 @@ export async function getWorldsByUserId(userId: string): Promise<World[]> {
  */
 export async function getWorldById(
   worldId: string,
-  userId: string
+  userId: string,
+  db?: DbClient
 ): Promise<World | null> {
+  const client = db || supabase;
   return withRetry(async () => {
-    const { data, error } = await (supabase
+    const { data, error } = await (client
       .from('worlds') as any)
       .select(`
         *,

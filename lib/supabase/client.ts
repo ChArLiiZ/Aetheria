@@ -21,3 +21,6 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
   },
 });
+
+/** Supabase client type alias for dependency injection (server-side uses supabaseAdmin) */
+export type DbClient = typeof supabase;

@@ -2,7 +2,7 @@
  * Story State Values Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { StoryStateValue } from '@/types';
 
@@ -35,10 +35,12 @@ export async function getStateValues(
  */
 export async function getAllStateValuesForStory(
   storyId: string,
-  userId: string
+  userId: string,
+  db?: DbClient
 ): Promise<StoryStateValue[]> {
+  const client = db || supabase;
   return withRetry(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('story_state_values')
       .select('*')
       .eq('story_id', storyId)
@@ -130,15 +132,17 @@ export async function setMultipleStateValues(
     story_character_id: string;
     schema_key: string;
     value_json: string;
-  }>
+  }>,
+  db?: DbClient
 ): Promise<StoryStateValue[]> {
+  const client = db || supabase;
   const payload = values.map((v) => ({
     user_id: userId,
     ...v,
   }));
 
   return withRetry(async () => {
-    const { data: stateValues, error } = await (supabase
+    const { data: stateValues, error } = await (client
       .from('story_state_values') as any)
       .upsert(payload, {
         onConflict: 'story_id,story_character_id,schema_key',

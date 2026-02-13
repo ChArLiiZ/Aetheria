@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser, isAuthError, getUserProviderSettings } from '@/lib/supabase/auth-helpers';
+import { supabaseAdmin } from '@/lib/supabase/server';
 import { executeTurn } from '@/services/gameplay/execute-turn';
 import { AIServiceError } from '@/lib/errors';
 
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
       model,
       params,
       contextTurns,
+      db: supabaseAdmin,
     });
 
     return NextResponse.json(result);

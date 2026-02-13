@@ -2,7 +2,7 @@
  * Change Log Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { ChangeLog } from '@/types';
 
@@ -11,11 +11,12 @@ export type ChangeLogInsert = Omit<ChangeLog, 'change_id'>;
 /**
  * Create change log entries
  */
-export async function createChangeLogs(entries: ChangeLogInsert[]): Promise<void> {
+export async function createChangeLogs(entries: ChangeLogInsert[], db?: DbClient): Promise<void> {
   if (!entries.length) return;
+  const client = db || supabase;
 
   return withRetry(async () => {
-    const { error } = await (supabase
+    const { error } = await (client
       .from('change_log') as any)
       .insert(entries);
 

@@ -2,7 +2,7 @@
  * Story Turns Service (Supabase)
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { supabase, type DbClient } from '@/lib/supabase/client';
 import { withRetry } from '@/lib/supabase/retry';
 import type { StoryTurn } from '@/types';
 
@@ -11,10 +11,12 @@ import type { StoryTurn } from '@/types';
  */
 export async function getStoryTurns(
   storyId: string,
-  userId: string
+  userId: string,
+  db?: DbClient
 ): Promise<StoryTurn[]> {
+  const client = db || supabase;
   return withRetry(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('story_turns')
       .select('*')
       .eq('story_id', storyId)
@@ -66,8 +68,10 @@ export async function createStoryTurn(
     user_input_text: string;
     narrative_text: string;
     token_usage_json?: string;
-  }
+  },
+  db?: DbClient
 ): Promise<StoryTurn> {
+  const client = db || supabase;
   const payload = {
     user_id: userId,
     story_id: data.story_id,
@@ -79,7 +83,7 @@ export async function createStoryTurn(
   };
 
   return withRetry(async () => {
-    const { data: newTurn, error } = await (supabase
+    const { data: newTurn, error } = await (client
       .from('story_turns') as any)
       .insert(payload)
       .select()
@@ -98,10 +102,12 @@ export async function createStoryTurn(
  */
 export async function markTurnAsError(
   turnId: string,
-  userId: string
+  userId: string,
+  db?: DbClient
 ): Promise<void> {
+  const client = db || supabase;
   return withRetry(async () => {
-    const { error } = await (supabase
+    const { error } = await (client
       .from('story_turns') as any)
       .update({ error_flag: true })
       .eq('turn_id', turnId)
