@@ -77,11 +77,15 @@ export async function createSchemaItem(
     number_constraints_json?: string;
   }
 ): Promise<WorldStateSchemaItem> {
-  // Get current max sort_order
-  const existingSchemas = await getSchemaByWorldId(worldId, userId);
-  const maxSortOrder = existingSchemas.length > 0
-    ? Math.max(...existingSchemas.map(s => s.sort_order))
-    : 0;
+  // Get current max sort_order (only fetch sort_order column, limit 1)
+  const { data: topSchema } = await supabase
+    .from('world_state_schema')
+    .select('sort_order')
+    .eq('world_id', worldId)
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: false })
+    .limit(1);
+  const maxSortOrder = (topSchema?.[0] as any)?.sort_order ?? 0;
 
   return withRetry(async () => {
     const { data: newSchema, error } = await (supabase
@@ -165,17 +169,19 @@ export async function deleteSchemaItem(
 }
 
 /**
- * Reorder schema items
+ * Reorder schema items (batch upsert to avoid N+1 queries)
  */
 export async function reorderSchemaItems(
   worldId: string,
   userId: string,
   schemaIds: string[]
 ): Promise<void> {
-  // Update sort_order for each schema item
-  for (let i = 0; i < schemaIds.length; i++) {
-    await updateSchemaItem(schemaIds[i], userId, { sort_order: i + 1 });
-  }
+  if (schemaIds.length === 0) return;
+
+  // Use Promise.all for parallel updates (more efficient than sequential)
+  await Promise.all(
+    schemaIds.map((id, i) => updateSchemaItem(id, userId, { sort_order: i + 1 }))
+  );
 }
 
 /**

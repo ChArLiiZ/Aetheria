@@ -165,7 +165,7 @@ export async function hasStoryProgress(
   userId: string
 ): Promise<boolean> {
   return withRetry(async () => {
-    const { data, error } = await supabase
+    const { count, error } = await supabase
       .from('story_turns')
       .select('turn_id', { count: 'exact', head: true })
       .eq('story_id', storyId)
@@ -177,6 +177,6 @@ export async function hasStoryProgress(
       return false;
     }
 
-    return (data?.length ?? 0) > 0;
+    return (count ?? 0) > 0;
   });
 }

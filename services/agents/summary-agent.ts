@@ -104,6 +104,7 @@ export async function callSummaryAgent(
     const defaultParams = {
         temperature: 0.5,
         top_p: 0.9,
+        max_tokens: 2048,
         ...params,
     };
 

@@ -1,14 +1,15 @@
 /**
  * Rollback story state to a specific turn index by removing that turn and all
  * subsequent turns, while restoring state values.
- * 
+ *
  * 注意：已移除 relationship 功能，只回溯 state 變更。
  */
 
 import type { StoryTurn } from '@/types';
+import { supabase } from '@/lib/supabase/client';
 import { getStoryTurns, deleteStoryTurnsFromIndex } from '@/services/supabase/story-turns';
 import { getChangeLogsByTurnIds } from '@/services/supabase/change-log';
-import { setStateValue, deleteStateValue } from '@/services/supabase/story-state-values';
+import { setMultipleStateValues, deleteStateValue } from '@/services/supabase/story-state-values';
 import { updateStory } from '@/services/supabase/stories';
 
 const parseJson = (value?: string | null) => {
@@ -46,31 +47,58 @@ export async function rollbackStoryToTurn(
     return a.change_id.localeCompare(b.change_id);
   });
 
-  // Revert state changes in reverse order
+  // Compute final before-values for each state key (batch approach)
+  // 對每個 state key，只需最早的 before_value（即最終要還原的值）
+  const restoreMap = new Map<string, { before: any; storyCharacterId: string; schemaKey: string }>();
+  const deleteKeys = new Set<string>();
+
   for (const log of sortedLogs) {
-    if (log.entity_type === 'state') {
-      if (!log.target_story_character_id || !log.schema_key) continue;
-      const beforeValue = parseJson(log.before_value_json);
-      if (beforeValue === null) {
-        await deleteStateValue(
-          storyId,
-          log.target_story_character_id,
-          log.schema_key,
-          userId
-        );
-      } else {
-        await setStateValue(userId, {
-          story_id: storyId,
-          story_character_id: log.target_story_character_id,
-          schema_key: log.schema_key,
-          value_json: JSON.stringify(beforeValue),
-        });
-      }
+    if (log.entity_type !== 'state') continue;
+    if (!log.target_story_character_id || !log.schema_key) continue;
+
+    const key = `${log.target_story_character_id}:${log.schema_key}`;
+    // 倒序遍歷，後處理（較早的 turn）會覆蓋前面的，最終得到最早的 before_value
+    const beforeValue = parseJson(log.before_value_json);
+    if (beforeValue === null) {
+      deleteKeys.add(key);
+      restoreMap.delete(key);
+    } else {
+      deleteKeys.delete(key);
+      restoreMap.set(key, {
+        before: beforeValue,
+        storyCharacterId: log.target_story_character_id,
+        schemaKey: log.schema_key,
+      });
     }
-    // 注意：relationship 類型已移除，不再處理
   }
 
+  // Batch restore state values (single DB call instead of N calls)
+  if (restoreMap.size > 0) {
+    const valuesToRestore = Array.from(restoreMap.values()).map((v) => ({
+      story_id: storyId,
+      story_character_id: v.storyCharacterId,
+      schema_key: v.schemaKey,
+      value_json: JSON.stringify(v.before),
+    }));
+    await setMultipleStateValues(userId, valuesToRestore);
+  }
+
+  // Delete state values that didn't exist before (sequential, usually rare)
+  for (const key of deleteKeys) {
+    const [storyCharacterId, schemaKey] = key.split(':');
+    await deleteStateValue(storyId, storyCharacterId, schemaKey, userId);
+  }
+
+  // Delete turns (change_log cascade deletes automatically)
   await deleteStoryTurnsFromIndex(storyId, fromTurnIndex, userId);
+
+  // Clean up stale summaries generated at or after the rollback point
+  await supabase
+    .from('story_summaries')
+    .delete()
+    .eq('story_id', storyId)
+    .eq('user_id', userId)
+    .gte('generated_at_turn', fromTurnIndex);
 
   const remainingTurns = turns.filter((turn) => turn.turn_index < fromTurnIndex);
   const newTurnCount = remainingTurns.reduce(

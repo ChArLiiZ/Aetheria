@@ -104,7 +104,8 @@ async function buildStoryAgentInput(
   userId: string,
   contextTurns: number,
   currentTurnIndex: number,
-  db?: DbClient
+  db?: DbClient,
+  prefetchedTurns?: StoryTurn[]
 ): Promise<{
   input: StoryAgentInput;
   stateValues: StoryStateValue[];
@@ -113,11 +114,12 @@ async function buildStoryAgentInput(
   console.log('[buildStoryAgentInput] 開始取得所有必要資料...');
 
   // Fetch all required data in parallel (including applicable summary)
+  // 如果已有預先查詢的 turns，跳過重複查詢
   const [world, storyCharacters, recentTurns, stateValues, worldSchema, applicableSummary] =
     await Promise.all([
       getWorldById(story.world_id, userId, db),
       getStoryCharacters(story.story_id, userId, db),
-      getStoryTurns(story.story_id, userId, db),
+      prefetchedTurns ? Promise.resolve(prefetchedTurns) : getStoryTurns(story.story_id, userId, db),
       getAllStateValuesForStory(story.story_id, userId, db),
       getSchemaByWorldId(story.world_id, userId, db),
       getLatestSummaryForTurn(story.story_id, currentTurnIndex, userId, db),
@@ -607,12 +609,12 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
   // Get context turns (優先順序: input > story override > default)
   const effectiveContextTurns = contextTurns ?? story.context_turns_override ?? DEFAULT_CONTEXT_TURNS;
 
-  // Get current turn count
+  // Get current turn count (此查詢結果也會傳入 buildStoryAgentInput 避免重複查詢)
   console.log('[executeTurn] 步驟 0: 取得目前回合數...');
   const currentTurns = await getStoryTurns(story.story_id, userId, db);
   const nextTurnIndex =
     currentTurns.length > 0
-      ? Math.max(...currentTurns.map((turn) => turn.turn_index)) + 1
+      ? currentTurns.reduce((max, turn) => Math.max(max, turn.turn_index), 0) + 1
       : 1;
   console.log(`[executeTurn] 步驟 0 完成: 目前有 ${currentTurns.length} 個回合，下一個回合索引: ${nextTurnIndex}`);
 
@@ -624,7 +626,8 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
     userId,
     effectiveContextTurns,
     nextTurnIndex,
-    db
+    db,
+    currentTurns // 傳入已查詢的 turns，避免重複查詢
   );
   console.log('[executeTurn] 步驟 1a 完成: 輸入已建構');
 
@@ -658,7 +661,12 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnR
       await createChangeLogs(entries, db);
     } catch (error) {
       console.error('Failed to create change logs:', error);
-      await markTurnAsError(turn.turn_id, userId, db);
+      try {
+        await markTurnAsError(turn.turn_id, userId, db);
+      } catch (markError) {
+        console.error('Failed to mark turn as error:', markError);
+      }
+      throw new Error('變更日誌寫入失敗，回合已標記為錯誤');
     }
   }
 

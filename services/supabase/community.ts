@@ -21,10 +21,12 @@ export interface PublicCharacter extends Character {
 }
 
 /**
- * 取得所有公開世界觀（排除當前用戶的內容）
+ * 取得公開世界觀（排除當前用戶的內容，支援分頁）
  * @param excludeUserId 要排除的用戶 ID（選填）
+ * @param limit 每頁數量（預設 50）
+ * @param offset 偏移量（預設 0）
  */
-export async function getPublicWorlds(excludeUserId?: string): Promise<PublicWorld[]> {
+export async function getPublicWorlds(excludeUserId?: string, limit = 50, offset = 0): Promise<PublicWorld[]> {
     let query = (supabase
         .from('worlds') as any)
         .select(`
@@ -39,7 +41,9 @@ export async function getPublicWorlds(excludeUserId?: string): Promise<PublicWor
         query = query.neq('user_id', excludeUserId);
     }
 
-    const { data, error } = await query.order('published_at', { ascending: false });
+    const { data, error } = await query
+        .order('published_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
     if (error) {
         console.error('Failed to fetch public worlds:', error);
@@ -57,10 +61,12 @@ export async function getPublicWorlds(excludeUserId?: string): Promise<PublicWor
 }
 
 /**
- * 取得所有公開角色（排除當前用戶的內容）
+ * 取得公開角色（排除當前用戶的內容，支援分頁）
  * @param excludeUserId 要排除的用戶 ID（選填）
+ * @param limit 每頁數量（預設 50）
+ * @param offset 偏移量（預設 0）
  */
-export async function getPublicCharacters(excludeUserId?: string): Promise<PublicCharacter[]> {
+export async function getPublicCharacters(excludeUserId?: string, limit = 50, offset = 0): Promise<PublicCharacter[]> {
     let query = (supabase
         .from('characters') as any)
         .select(`
@@ -75,7 +81,9 @@ export async function getPublicCharacters(excludeUserId?: string): Promise<Publi
         query = query.neq('user_id', excludeUserId);
     }
 
-    const { data, error } = await query.order('published_at', { ascending: false });
+    const { data, error } = await query
+        .order('published_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
     if (error) {
         console.error('Failed to fetch public characters:', error);
@@ -254,44 +262,52 @@ export async function copyWorldToCollection(
         await (supabase.from('world_state_schema') as any).insert(schemaInserts);
     }
 
-    // 4. 複製標籤關聯（需要為當前用戶建立對應的標籤）
+    // 4. 複製標籤關聯（批次操作，避免 N+1 查詢）
     const { data: sourceTags } = await supabase
         .from('world_tags')
         .select('tags(*)')
         .eq('world_id', worldId);
 
     if (sourceTags && sourceTags.length > 0) {
-        for (const wt of sourceTags as any[]) {
-            if (!wt.tags) continue;
+        const tagNames = (sourceTags as any[])
+            .map((wt) => wt.tags?.name)
+            .filter(Boolean) as string[];
 
-            // 查找或建立用戶自己的同名標籤
-            let { data: existingTag } = await (supabase
+        if (tagNames.length > 0) {
+            // 批次查找用戶已有的同名標籤
+            const { data: existingTags } = await (supabase
                 .from('tags') as any)
-                .select('tag_id')
+                .select('tag_id, name')
                 .eq('user_id', userId)
                 .eq('tag_type', 'world')
-                .eq('name', wt.tags.name)
-                .single();
+                .in('name', tagNames);
 
-            let tagId = (existingTag as any)?.tag_id;
+            const existingMap = new Map(
+                (existingTags || []).map((t: any) => [t.name, t.tag_id])
+            );
 
-            if (!tagId) {
-                const { data: newTag } = await (supabase.from('tags') as any)
-                    .insert({
+            // 批次建立缺失的標籤
+            const missingNames = tagNames.filter((n) => !existingMap.has(n));
+            if (missingNames.length > 0) {
+                const { data: newTags } = await (supabase.from('tags') as any)
+                    .insert(missingNames.map((name) => ({
                         user_id: userId,
                         tag_type: 'world',
-                        name: wt.tags.name,
-                    })
-                    .select('tag_id')
-                    .single();
-                tagId = newTag?.tag_id;
+                        name,
+                    })))
+                    .select('tag_id, name');
+
+                (newTags || []).forEach((t: any) => existingMap.set(t.name, t.tag_id));
             }
 
-            if (tagId) {
-                await (supabase.from('world_tags') as any).insert({
-                    world_id: newWorld.world_id,
-                    tag_id: tagId,
-                });
+            // 批次建立標籤關聯
+            const tagAssociations = tagNames
+                .map((name) => existingMap.get(name))
+                .filter(Boolean)
+                .map((tagId) => ({ world_id: newWorld.world_id, tag_id: tagId }));
+
+            if (tagAssociations.length > 0) {
+                await (supabase.from('world_tags') as any).insert(tagAssociations);
             }
         }
     }
@@ -345,44 +361,52 @@ export async function copyCharacterToCollection(
         throw new Error('複製角色失敗: ' + (insertError?.message || '未知錯誤'));
     }
 
-    // 3. 複製標籤關聯
+    // 3. 複製標籤關聯（批次操作，避免 N+1 查詢）
     const { data: sourceTags } = await supabase
         .from('character_tags')
         .select('tags(*)')
         .eq('character_id', characterId);
 
     if (sourceTags && sourceTags.length > 0) {
-        for (const ct of sourceTags as any[]) {
-            if (!ct.tags) continue;
+        const tagNames = (sourceTags as any[])
+            .map((ct) => ct.tags?.name)
+            .filter(Boolean) as string[];
 
-            // 查找或建立用戶自己的同名標籤
-            let { data: existingTag } = await (supabase
+        if (tagNames.length > 0) {
+            // 批次查找用戶已有的同名標籤
+            const { data: existingTags } = await (supabase
                 .from('tags') as any)
-                .select('tag_id')
+                .select('tag_id, name')
                 .eq('user_id', userId)
                 .eq('tag_type', 'character')
-                .eq('name', ct.tags.name)
-                .single();
+                .in('name', tagNames);
 
-            let tagId = (existingTag as any)?.tag_id;
+            const existingMap = new Map(
+                (existingTags || []).map((t: any) => [t.name, t.tag_id])
+            );
 
-            if (!tagId) {
-                const { data: newTag } = await (supabase.from('tags') as any)
-                    .insert({
+            // 批次建立缺失的標籤
+            const missingNames = tagNames.filter((n) => !existingMap.has(n));
+            if (missingNames.length > 0) {
+                const { data: newTags } = await (supabase.from('tags') as any)
+                    .insert(missingNames.map((name) => ({
                         user_id: userId,
                         tag_type: 'character',
-                        name: ct.tags.name,
-                    })
-                    .select('tag_id')
-                    .single();
-                tagId = newTag?.tag_id;
+                        name,
+                    })))
+                    .select('tag_id, name');
+
+                (newTags || []).forEach((t: any) => existingMap.set(t.name, t.tag_id));
             }
 
-            if (tagId) {
-                await (supabase.from('character_tags') as any).insert({
-                    character_id: newCharacter.character_id,
-                    tag_id: tagId,
-                });
+            // 批次建立標籤關聯
+            const tagAssociations = tagNames
+                .map((name) => existingMap.get(name))
+                .filter(Boolean)
+                .map((tagId) => ({ character_id: newCharacter.character_id, tag_id: tagId }));
+
+            if (tagAssociations.length > 0) {
+                await (supabase.from('character_tags') as any).insert(tagAssociations);
             }
         }
     }
@@ -680,14 +704,9 @@ export async function syncWorldFromSource(
 
     if (updateError) throw new Error('同步失敗：' + updateError.message);
 
-    // 同步標籤
-    const { data: copy } = await (supabase
-        .from('worlds') as any)
-        .select('forked_from_id')
-        .eq('world_id', worldId)
-        .single();
-
-    if (copy?.forked_from_id) {
+    // 同步標籤（使用 diffResult 中已有的 source，避免重複查詢）
+    const forkedFromId = source.world_id;
+    if (forkedFromId) {
         // 刪除現有標籤
         const { error: deleteTagsError } = await supabase
             .from('world_tags')
@@ -702,7 +721,7 @@ export async function syncWorldFromSource(
         const { data: sourceTags, error: sourceTagsError } = await supabase
             .from('world_tags')
             .select('tag_id')
-            .eq('world_id', copy.forked_from_id);
+            .eq('world_id', forkedFromId);
 
         if (sourceTagsError) {
             throw new Error('取得原始標籤失敗：' + sourceTagsError.message);
@@ -731,7 +750,7 @@ export async function syncWorldFromSource(
         const { data: sourceSchema, error: sourceSchemaError } = await (supabase
             .from('world_state_schema') as any)
             .select('*')
-            .eq('world_id', copy.forked_from_id);
+            .eq('world_id', forkedFromId);
 
         if (sourceSchemaError) {
             throw new Error('取得原始狀態 Schema 失敗：' + sourceSchemaError.message);
@@ -787,14 +806,9 @@ export async function syncCharacterFromSource(
 
     if (updateError) throw new Error('同步失敗：' + updateError.message);
 
-    // 同步標籤
-    const { data: copy } = await (supabase
-        .from('characters') as any)
-        .select('forked_from_id')
-        .eq('character_id', characterId)
-        .single();
-
-    if (copy?.forked_from_id) {
+    // 同步標籤（使用 diffResult 中已有的 source，避免重複查詢）
+    const forkedFromCharId = source.character_id;
+    if (forkedFromCharId) {
         // 刪除現有標籤
         const { error: deleteTagsError } = await supabase
             .from('character_tags')
@@ -809,7 +823,7 @@ export async function syncCharacterFromSource(
         const { data: sourceTags, error: sourceTagsError } = await supabase
             .from('character_tags')
             .select('tag_id')
-            .eq('character_id', copy.forked_from_id);
+            .eq('character_id', forkedFromCharId);
 
         if (sourceTagsError) {
             throw new Error('取得原始標籤失敗：' + sourceTagsError.message);

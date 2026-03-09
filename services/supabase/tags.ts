@@ -200,7 +200,15 @@ export async function setEntityTags(
     const config = entityConfig[entityType];
 
     return withRetry(async () => {
-        // 先刪除所有現有關聯
+        // 先取得現有關聯（用於插入失敗時恢復）
+        const { data: existingData } = await supabase
+            .from(config.table)
+            .select('tag_id')
+            .eq(config.idColumn, entityId);
+
+        const existingTagIds = (existingData || []).map((d: any) => d.tag_id);
+
+        // 刪除所有現有關聯
         const { error: deleteError } = await supabase
             .from(config.table)
             .delete()
@@ -222,6 +230,14 @@ export async function setEntityTags(
                 .insert(insertData);
 
             if (insertError) {
+                // 嘗試恢復舊的標籤關聯
+                if (existingTagIds.length > 0) {
+                    const restoreData = existingTagIds.map((tagId: string) => ({
+                        [config.idColumn]: entityId,
+                        tag_id: tagId,
+                    }));
+                    await (supabase.from(config.table) as any).insert(restoreData);
+                }
                 throw new Error('Failed to set entity tags: ' + insertError.message);
             }
         }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { User } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 import {
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const cancelledRef = useRef(false);
 
   // 外部可調用的 refreshUser 函式（例如從設定頁面更新頭像後）
-  const refreshUser = async (): Promise<void> => {
+  const refreshUser = useCallback(async (): Promise<void> => {
     try {
       const currentUser = await getCurrentUser();
       // 檢查組件是否已卸載
@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Failed to refresh user:', error);
     }
-  };
+  }, []);
 
   // Load session on mount and listen for auth changes
   useEffect(() => {
@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     try {
       const result = await loginWithSupabase(email, password);
 
@@ -142,9 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Login failed:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const register = async (email: string, displayName: string, password: string) => {
+  const register = useCallback(async (email: string, displayName: string, password: string) => {
     try {
       const result = await registerWithSupabase(email, password, displayName);
 
@@ -157,18 +157,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Registration failed:', error);
       throw error;
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await logoutWithSupabase();
       setUser(null);
     } catch (error) {
       console.error('Logout failed:', error);
     }
-  };
+  }, []);
 
-  const value: AuthContextType = {
+  const value: AuthContextType = useMemo(() => ({
     user,
     loading,
     login,
@@ -176,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     refreshUser,
     isAuthenticated: user !== null,
-  };
+  }), [user, loading, login, register, logout, refreshUser]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

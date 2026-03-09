@@ -7,6 +7,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -454,7 +455,7 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     if (!userInput.trim() || submitting || !user || !story || !providerSettings) return;
@@ -495,16 +496,16 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [userInput, submitting, user, story, providerSettings, tempUsePreset, tempModel, tempCustomModel, tempTemperature, tempContextTurns, turns, storyId]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
-  };
+  }, [handleSubmit]);
 
-  const handleGenerateSuggestions = async () => {
+  const handleGenerateSuggestions = useCallback(async () => {
     if (!user || !story || !providerSettings || loadingSuggestions) return;
 
     try {
@@ -577,15 +578,15 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingSuggestions(false);
     }
-  };
+  }, [user, story, providerSettings, loadingSuggestions, storyCharacters, characters, stateValues, worldSchema, turns, tempContextTurns, tempUsePreset, tempModel, tempCustomModel, storyId]);
 
-  const handleSelectSuggestion = (suggestion: string) => {
+  const handleSelectSuggestion = useCallback((suggestion: string) => {
     setUserInput(suggestion);
     setSuggestions([]);
     textareaRef.current?.focus();
-  };
+  }, []);
 
-  const handleSaveSettings = async () => {
+  const handleSaveSettings = useCallback(async () => {
     if (!user || !story) return;
 
     try {
@@ -614,9 +615,9 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
     } finally {
       setSavingSettings(false);
     }
-  };
+  }, [user, story, tempUsePreset, tempModel, tempCustomModel, tempTemperature, tempContextTurns]);
 
-  const handleResetStory = async () => {
+  const handleResetStory = useCallback(async () => {
     if (!user || !story) return;
 
     try {
@@ -648,13 +649,13 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
     } finally {
       setResetting(false);
     }
-  };
+  }, [user, story, storyId]);
 
-  const handleDismissUpdate = () => {
+  const handleDismissUpdate = useCallback(() => {
     setUpdateDismissed(true);
     setUpdateInfo(null);
     sessionStorage.setItem(`story-update-dismissed-${storyId}`, 'true');
-  };
+  }, [storyId]);
 
   // ─── Loading / not-found states ───
 
@@ -666,7 +667,7 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
     return null;
   }
 
-  const value: StoryPlayContextType = {
+  const value: StoryPlayContextType = useMemo(() => ({
     loading,
     story,
     turns,
@@ -734,7 +735,18 @@ export function StoryPlayProvider({ children }: { children: ReactNode }) {
 
     storyId,
     router,
-  };
+  }), [
+    loading, story, turns, userInput, submitting, deletingTurnIndex, providerSettings,
+    pendingUserInput, suggestions, loadingSuggestions, submitError,
+    storyCharacters, characters, stateValues, worldSchema, showStatePanel,
+    showSettingsPanel, tempProvider, tempUsePreset, tempModel, tempCustomModel,
+    tempTemperature, tempContextTurns, savingSettings,
+    showResetDialog, resetting, viewingWorldId, viewingCharacterId,
+    updateInfo, updateDismissed,
+    handleSubmit, handleKeyDown, handleDeleteFromTurn, handleRegenerate,
+    handleGenerateSuggestions, handleSelectSuggestion, handleSaveSettings,
+    handleResetStory, handleDismissUpdate, storyId, router,
+  ]);
 
   return <StoryPlayContext.Provider value={value}>{children}</StoryPlayContext.Provider>;
 }

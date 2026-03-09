@@ -60,18 +60,23 @@ export async function withRetry<T>(
 
       console.log(`[withRetry] 開始操作: ${opName}, 嘗試 ${attempt + 1}/${opts.maxRetries}, 超時: ${timeout / 1000}秒`);
 
-      // Create timeout promise
+      // Create timeout promise with cleanup
+      let timeoutId: ReturnType<typeof setTimeout>;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           reject(new Error(`資料庫操作逾時 (${timeout / 1000} 秒) - 操作: ${opName}`));
         }, timeout);
       });
 
-      // Race between operation and timeout
-      const result = await Promise.race([operation(), timeoutPromise]);
-
-      // Success - return result
-      return result;
+      // Race between operation and timeout, then clear timer
+      try {
+        const result = await Promise.race([operation(), timeoutPromise]);
+        clearTimeout(timeoutId!);
+        return result;
+      } catch (error) {
+        clearTimeout(timeoutId!);
+        throw error;
+      }
     } catch (error) {
       lastError = error as Error;
 

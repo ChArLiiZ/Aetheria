@@ -124,6 +124,7 @@ export async function callSuggestionAgent(
     const defaultParams = {
         temperature: 0.8, // Slightly higher for creative suggestions
         top_p: 0.9,
+        max_tokens: 1024,
         ...params,
     };
 

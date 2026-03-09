@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { Area } from 'react-easy-crop';
 import { Button } from '@/components/ui/button';
@@ -144,6 +144,15 @@ export function ImageUpload({
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [zoom, setZoom] = useState(1);
     const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+
+    // Cleanup Object URL on unmount to prevent memory leak
+    useEffect(() => {
+        return () => {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [previewUrl]);
 
     // 顯示的圖片（預覽優先）
     const displayUrl = previewUrl || imageUrl;

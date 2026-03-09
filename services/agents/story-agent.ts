@@ -272,6 +272,7 @@ export async function callStoryAgent(
     const defaultParams = {
         temperature: 0.7,
         top_p: 0.9,
+        max_tokens: 4096,
         ...params,
     };
 
@@ -286,34 +287,7 @@ export async function callStoryAgent(
 
         const parsed = response.parsed;
 
-        // Log the parsed response for debugging
-        console.log('[callStoryAgent] 解析後的回應預覽:', parsed.narrative?.substring(0, 200));
-        console.log('[callStoryAgent] 狀態變更數量:', parsed.state_changes?.length || 0);
-        console.log('[callStoryAgent] 列表操作數量:', parsed.list_ops?.length || 0);
-
-        // 狀態變更統計（監控背景角色更新）
-        const affectedCharacters = new Set([
-            ...(parsed.state_changes || []).map(c => c.target_story_character_id),
-            ...(parsed.list_ops || []).map(c => c.target_story_character_id)
-        ]);
-
-        const backgroundUpdates = (parsed.state_changes || []).filter(c =>
-            c.reason && (
-                c.reason.toLowerCase().includes('background') ||
-                c.reason.toLowerCase().includes('時間') ||
-                c.reason.toLowerCase().includes('背景') ||
-                c.reason.toLowerCase().includes('passage of time') ||
-                c.reason.toLowerCase().includes('regenerat')
-            )
-        );
-
-        console.log('[callStoryAgent] 狀態變更統計:', {
-            totalChanges: (parsed.state_changes?.length || 0) + (parsed.list_ops?.length || 0),
-            affectedCharacters: affectedCharacters.size,
-            backgroundUpdates: backgroundUpdates.length
-        });
-
-        // Validate required fields
+        // Validate required fields BEFORE accessing properties
         if (!parsed || typeof parsed !== 'object') {
             console.error('[callStoryAgent] 解析結果不是物件:', parsed);
             throw new Error('AI 回應格式錯誤：不是有效的 JSON 物件');
@@ -323,6 +297,11 @@ export async function callStoryAgent(
             console.error('[callStoryAgent] 缺少 narrative 欄位');
             throw new Error('AI 回應格式錯誤：缺少 narrative 欄位');
         }
+
+        // Log the parsed response for debugging
+        console.log('[callStoryAgent] 解析後的回應預覽:', parsed.narrative.substring(0, 200));
+        console.log('[callStoryAgent] 狀態變更數量:', parsed.state_changes?.length || 0);
+        console.log('[callStoryAgent] 列表操作數量:', parsed.list_ops?.length || 0);
 
         // Ensure arrays exist
         return {

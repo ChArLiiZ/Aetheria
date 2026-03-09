@@ -75,12 +75,11 @@ function CommunityContent() {
     const [selectedCharIds, setSelectedCharIds] = useState<Set<string>>(new Set());
     const [batchCopying, setBatchCopying] = useState(false);
 
-    // Load public worlds
+    // Load public worlds (always load on mount since it's the default tab)
     useEffect(() => {
         const loadWorlds = async () => {
             try {
                 setLoadingWorlds(true);
-                // 排除當前用戶的內容
                 const data = await getPublicWorlds(user?.user_id);
                 setWorlds(data);
             } catch (err: any) {
@@ -93,14 +92,17 @@ function CommunityContent() {
         loadWorlds();
     }, [user?.user_id]);
 
-    // Load public characters
+    // Lazy load public characters (only when tab is first activated)
+    const [charactersLoaded, setCharactersLoaded] = useState(false);
     useEffect(() => {
+        if (activeTab !== 'characters' || charactersLoaded) return;
+
         const loadCharacters = async () => {
             try {
                 setLoadingCharacters(true);
-                // 排除當前用戶的內容
                 const data = await getPublicCharacters(user?.user_id);
                 setCharacters(data);
+                setCharactersLoaded(true);
             } catch (err: any) {
                 console.error('Failed to load public characters:', err);
                 toast.error('無法載入公開角色');
@@ -109,7 +111,7 @@ function CommunityContent() {
             }
         };
         loadCharacters();
-    }, [user?.user_id]);
+    }, [activeTab, user?.user_id, charactersLoaded]);
 
     // Collect all unique tags for filtering
     const allWorldTags = useMemo(() => collectTagsFromItems(worlds), [worlds]);

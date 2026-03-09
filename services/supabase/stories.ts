@@ -183,10 +183,16 @@ export async function incrementTurnCount(
 
     if (error) {
       // Fallback: get current count and increment manually
-      const story = await getStoryById(storyId, userId);
-      if (story) {
+      const { data: storyData } = await supabase
+        .from('stories')
+        .select('turn_count')
+        .eq('story_id', storyId)
+        .eq('user_id', userId)
+        .single();
+
+      if (storyData) {
         await updateStory(storyId, userId, {
-          turn_count: (story.turn_count || 0) + 1,
+          turn_count: ((storyData as any).turn_count || 0) + 1,
         });
       }
     }

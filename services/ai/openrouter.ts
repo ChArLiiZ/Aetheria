@@ -155,12 +155,13 @@ export async function callOpenRouterWithRetry(
   maxRetries = 1
 ): Promise<{ content: string; usage?: any }> {
   let lastError: Error | null = null;
+  const workingMessages = [...messages];
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const request: OpenRouterRequest = {
         model,
-        messages,
+        messages: workingMessages,
         ...params,
       };
 
@@ -180,15 +181,10 @@ export async function callOpenRouterWithRetry(
       }
 
       if (attempt < maxRetries) {
-        // rate_limit 使用 retryAfter，否則 exponential backoff
+        // rate_limit 使用 retryAfter（上限 60 秒），否則 exponential backoff
         if (error instanceof AIServiceError && error.errorType === 'rate_limit' && error.retryAfter) {
-          await new Promise((resolve) => setTimeout(resolve, error.retryAfter! * 1000));
-        } else if (error instanceof SyntaxError) {
-          messages.push({
-            role: 'user',
-            content:
-              'The previous response had a JSON parsing error. Please provide a valid JSON response following the exact schema specified.',
-          });
+          const waitTime = Math.min(error.retryAfter, 60) * 1000;
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         } else {
           await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         }
@@ -239,7 +235,8 @@ export async function callOpenRouterJsonWithRetry<T>(
 
       if (attempt < maxRetries) {
         if (error instanceof AIServiceError && error.errorType === 'rate_limit' && error.retryAfter) {
-          await new Promise((resolve) => setTimeout(resolve, error.retryAfter! * 1000));
+          const waitTime = Math.min(error.retryAfter, 60) * 1000;
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         } else if (error instanceof AIServiceError && error.errorType === 'parse') {
           workingMessages.push({
             role: 'user',
@@ -355,7 +352,7 @@ export function parseJsonResponse<T>(content: string): T | null {
     if (fixedResult) return fixedResult;
   }
 
-  console.error('[parseJsonResponse] 所有策略都失敗。原始回應:', content);
+  console.error('[parseJsonResponse] 所有策略都失敗。原始回應（前 500 字）:', content.substring(0, 500));
   return null;
 }
 

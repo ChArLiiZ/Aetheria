@@ -203,6 +203,7 @@ export async function generateWorld(
     const defaultParams = {
         temperature: 0.8,
         top_p: 0.9,
+        max_tokens: 4096,
         ...params,
     };
 
@@ -257,6 +258,7 @@ export async function generateCharacter(
     const defaultParams = {
         temperature: 0.8,
         top_p: 0.9,
+        max_tokens: 4096,
         ...params,
     };
 
@@ -522,6 +524,7 @@ export async function generateFullStory(
     const defaultParams = {
         temperature: 0.8,
         top_p: 0.9,
+        max_tokens: 4096,
         ...params,
     };
 

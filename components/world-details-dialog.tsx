@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { World, WorldStateSchema } from '@/types';
@@ -59,6 +59,10 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange, readOnly = fal
     const [loading, setLoading] = useState(false);
     const [copying, setCopying] = useState(false);
 
+    // 使用 ref 存儲 onOpenChange 避免作為 useEffect 依賴
+    const onOpenChangeRef = useRef(onOpenChange);
+    onOpenChangeRef.current = onOpenChange;
+
     useEffect(() => {
         // readOnly 模式不需要 user，可以查看公開內容
         const canFetch = open && worldId && (readOnly || user?.user_id);
@@ -87,7 +91,7 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange, readOnly = fal
                             setTags(publicWorld.tags || []);
                         } else {
                             toast.error('找不到此世界觀或該世界觀非公開');
-                            onOpenChange(false);
+                            onOpenChangeRef.current(false);
                         }
                     } else {
                         // 編輯模式：使用原本的查詢函式（需要 user_id）
@@ -108,7 +112,7 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange, readOnly = fal
                             });
                         } else {
                             toast.error('找不到此世界觀');
-                            onOpenChange(false);
+                            onOpenChangeRef.current(false);
                         }
                     }
                 } catch (err: any) {
@@ -128,7 +132,7 @@ export function WorldDetailsDialog({ worldId, open, onOpenChange, readOnly = fal
             setCreatorInfo(null);
             setActiveTab('basic');
         }
-    }, [open, worldId, user, readOnly, onOpenChange]);
+    }, [open, worldId, user?.user_id, readOnly]);
 
     const handleEdit = () => {
         if (worldId) {
